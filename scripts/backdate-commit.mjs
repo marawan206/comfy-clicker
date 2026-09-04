@@ -18,10 +18,14 @@ let next
 if (explicit) next = new Date(explicit)
 else {
   next = last ? new Date(last.getTime() + (15 + Math.floor(Math.random() * 61)) * 60_000) : start
-  const hour = next.getHours()
-  if (hour >= 23 || hour < 9) {
-    next.setDate(next.getDate() + (hour >= 23 ? 1 : 0))
-    next.setHours(9 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60), 0, 0)
+  // keep commits inside 09:00–23:00 Pacific regardless of the machine's timezone
+  const ptHour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Los_Angeles' }).format(next))
+  if (ptHour >= 23 || ptHour < 9) {
+    const dayShift = ptHour >= 23 ? 1 : 0
+    const ptDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(next) // YYYY-MM-DD
+    const [y, m, d] = ptDate.split('-').map(Number)
+    const base = new Date(Date.UTC(y, m - 1, d + dayShift, 16, 0, 0)) // 09:00 PDT = 16:00 UTC
+    next = new Date(base.getTime() + (Math.floor(Math.random() * 120)) * 60_000)
   }
 }
 const now = new Date()
