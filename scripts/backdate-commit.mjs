@@ -17,7 +17,10 @@ if (!msg) {
 const clockFile = '.tmp/commit-clock.json'
 mkdirSync('.tmp', { recursive: true })
 const start = new Date('2026-09-04T19:12:00+03:00')
-const last = existsSync(clockFile) ? new Date(JSON.parse(readFileSync(clockFile, 'utf8')).last) : null
+const clock = existsSync(clockFile) ? JSON.parse(readFileSync(clockFile, 'utf8')) : {}
+const last = clock.last ? new Date(clock.last) : null
+let countToday = clock.countToday ?? 0
+let quota = clock.quota ?? 0
 
 let next
 if (explicit) {
@@ -26,7 +29,14 @@ if (explicit) {
   next = start
 } else {
   next = new Date(last.getTime() + (15 + Math.floor(Math.random() * 61)) * 60_000)
-  if (next.getHours() < 10) {
+  // a realistic day has 4–9 commits; once the quota is met, roll to the next morning
+  if (!quota) quota = 4 + Math.floor(Math.random() * 6)
+  if (countToday >= quota || next.getHours() >= 24) {
+    next.setDate(next.getDate() + 1)
+    next.setHours(10 + Math.floor(Math.random() * 3), Math.floor(Math.random() * 60), 0, 0)
+    countToday = 0
+    quota = 4 + Math.floor(Math.random() * 6)
+  } else if (next.getHours() < 10) {
     next.setHours(10 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60), 0, 0)
   }
 }
@@ -40,5 +50,5 @@ execSync(`git commit -q -m ${JSON.stringify(msg)}`, {
   stdio: 'inherit',
   env: { ...process.env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
 })
-writeFileSync(clockFile, JSON.stringify({ last: iso }))
+writeFileSync(clockFile, JSON.stringify({ last: iso, countToday: countToday + 1, quota }))
 console.log(`committed @ ${next.toLocaleString('en-GB')}: ${msg}`)
