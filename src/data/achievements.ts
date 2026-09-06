@@ -1,0 +1,629 @@
+/**
+ * Achievement catalog. Each one adds ACHIEVEMENT_MULT to the global multiplier
+ * (see derived.ts), so the list is also a slow-burn progression track.
+ *
+ * Hidden achievements are easter eggs that key off `state.flags`. Flag keys used here and who raises them:
+ *   speedrun, brokeAtZero (actions.ts) · spaghetti (studio.ts) · founderMention (virality.ts)
+ *   sparkCaught, fixedNode (events.ts) · konami (UI, through `actions.setFlag`)
+ * Icon strings are lucide kebab-case names or `src/assets/brand/nodes` file stems.
+ */
+import type { AchievementDef, HardwareFamily, StatKey, UnlockCond } from '@/game/types'
+
+const stat = (key: StatKey, value: number): UnlockCond => ({ type: 'stat', key, value })
+const own = (id: string, count?: number): UnlockCond =>
+  count === undefined ? { type: 'ownHardware', id } : { type: 'ownHardware', id, count }
+const family = (f: HardwareFamily): UnlockCond => ({ type: 'ownFamily', family: f })
+const model = (id: string): UnlockCond => ({ type: 'ownModel', id })
+const upgrade = (id: string): UnlockCond => ({ type: 'upgrade', id })
+const flag = (key: string): UnlockCond => ({ type: 'flag', key })
+const cps = (value: number): UnlockCond => ({ type: 'cps', value })
+
+export const ACHIEVEMENTS: AchievementDef[] = [
+  // ---- clicking ----------------------------------------------------------
+  {
+    id: 'first-click',
+    name: 'It Works On My Machine',
+    desc: 'Click Generate once.',
+    icon: 'mouse-pointer-click',
+    cond: stat('clicks', 1),
+  },
+  {
+    id: 'clicks-100',
+    name: 'Queue Prompt',
+    desc: 'Click Generate 100 times.',
+    icon: 'play',
+    cond: stat('clicks', 100),
+  },
+  {
+    id: 'clicks-1k',
+    name: 'Ctrl+Enter Enjoyer',
+    desc: 'Click Generate 1,000 times.',
+    icon: 'keyboard',
+    cond: stat('clicks', 1_000),
+  },
+  {
+    id: 'clicks-10k',
+    name: 'Carpal Tunnel Attention',
+    desc: 'Click Generate 10,000 times.',
+    icon: 'activity',
+    cond: stat('clicks', 10_000),
+  },
+  {
+    id: 'clicks-100k',
+    name: 'Autoclicker Suspected',
+    desc: 'Click Generate 100,000 times. We believe you.',
+    icon: 'repeat',
+    cond: stat('clicks', 100_000),
+  },
+
+  // ---- credits & income --------------------------------------------------
+  {
+    id: 'credits-1k',
+    name: 'First Invoice',
+    desc: 'Earn 1,000 credits in total.',
+    icon: 'banknote',
+    cond: stat('lifetimeCredits', 1_000),
+  },
+  {
+    id: 'credits-100k',
+    name: 'Side Hustle',
+    desc: 'Earn 100,000 credits in total.',
+    icon: 'wallet',
+    cond: stat('lifetimeCredits', 100_000),
+  },
+  {
+    id: 'credits-1m',
+    name: "Millionaire (Credits Aren't Real)",
+    desc: 'Earn 1,000,000 credits in total.',
+    icon: 'piggy-bank',
+    cond: stat('lifetimeCredits', 1_000_000),
+  },
+  {
+    id: 'credits-1b',
+    name: 'Series B',
+    desc: 'Earn 1,000,000,000 credits in total.',
+    icon: 'landmark',
+    cond: stat('lifetimeCredits', 1_000_000_000),
+  },
+  {
+    id: 'credits-1t',
+    name: 'Trillion-Parameter Wallet',
+    desc: 'Earn 1,000,000,000,000 credits in total.',
+    icon: 'building-2',
+    cond: stat('lifetimeCredits', 1_000_000_000_000),
+  },
+  {
+    id: 'cps-10',
+    name: 'Passive Income',
+    desc: 'Reach 10 credits per second.',
+    icon: 'trending-up',
+    cond: cps(10),
+  },
+  {
+    id: 'cps-1k',
+    name: 'Render Farm',
+    desc: 'Reach 1,000 credits per second.',
+    icon: 'server',
+    cond: cps(1_000),
+  },
+  {
+    id: 'cps-1m',
+    name: 'Compute Is All You Need',
+    desc: 'Reach 1,000,000 credits per second.',
+    icon: 'rocket',
+    cond: cps(1_000_000),
+  },
+
+  // ---- hardware ----------------------------------------------------------
+  {
+    id: 'own-rtx-3060',
+    name: "12 GB Is Enough (It Isn't)",
+    desc: 'Own an RTX 3060.',
+    icon: 'gpu',
+    cond: own('rtx-3060'),
+  },
+  {
+    id: 'own-rtx-3060-x10',
+    name: 'Mining Rig Energy',
+    desc: 'Own ten RTX 3060s. For art.',
+    icon: 'boxes',
+    cond: own('rtx-3060', 10),
+  },
+  {
+    id: 'own-rtx-4090',
+    name: 'Melted Connector',
+    desc: 'Own an RTX 4090.',
+    icon: 'flame',
+    cond: own('rtx-4090'),
+  },
+  {
+    id: 'own-rtx-5090',
+    name: 'Paper Launch Survivor',
+    desc: 'Own an RTX 5090.',
+    icon: 'sparkles',
+    cond: own('rtx-5090'),
+  },
+  {
+    id: 'own-rtx-pro-6000',
+    name: 'Prosumer',
+    desc: 'Own an RTX PRO 6000.',
+    icon: 'award',
+    cond: own('rtx-pro-6000'),
+  },
+  {
+    id: 'own-h100',
+    name: 'Rented Lightning',
+    desc: 'Own an H100.',
+    icon: 'zap',
+    cond: own('h100-80'),
+  },
+  {
+    id: 'own-b200',
+    name: 'Blackwell Believer',
+    desc: 'Own a B200.',
+    icon: 'cuboid',
+    cond: own('b200'),
+  },
+  {
+    id: 'own-cloud-node',
+    name: 'Cluster Headache',
+    desc: 'Own any cloud node.',
+    icon: 'cloud-cog',
+    cond: family('cloud-node'),
+  },
+  {
+    id: 'own-region',
+    name: 'Region: us-comfy-1',
+    desc: 'Own a region.',
+    icon: 'globe',
+    cond: family('region'),
+  },
+  {
+    id: 'own-orbital-dc',
+    name: 'Latency: Astronomical',
+    desc: 'Own the Orbital Datacenter.',
+    icon: 'satellite',
+    cond: own('orbital-dc'),
+  },
+  {
+    id: 'own-dyson-swarm',
+    name: 'Kardashev Type Comfy',
+    desc: 'Own the Dyson Swarm.',
+    icon: 'orbit',
+    cond: own('dyson-swarm'),
+  },
+  {
+    id: 'hardware-50-of-one',
+    name: 'Bulk Order',
+    desc: 'Own fifty of a single card.',
+    icon: 'package',
+    cond: {
+      type: 'any',
+      conds: [
+        own('rtx-3060', 50),
+        own('rtx-4070-ti-super', 50),
+        own('rtx-3090', 50),
+        own('rtx-4090', 50),
+        own('rtx-5080', 50),
+        own('rtx-5090', 50),
+        own('rtx-a6000', 50),
+        own('rtx-pro-6000', 50),
+        own('h100-80', 50),
+        own('b200', 50),
+      ],
+    },
+  },
+
+  // ---- AMD ---------------------------------------------------------------
+  {
+    id: 'rocm-installed',
+    name: 'Forty Minutes Later',
+    desc: 'Set up ROCm.',
+    icon: 'wrench',
+    cond: upgrade('rocm-setup'),
+  },
+  {
+    id: 'amd-first',
+    name: 'Team Red',
+    desc: 'Own any Radeon card.',
+    icon: 'flame',
+    cond: family('amd-consumer'),
+  },
+  {
+    id: 'amd-7900-xtx',
+    name: '24 GB Of Hope',
+    desc: 'Own an RX 7900 XTX.',
+    icon: 'thermometer',
+    cond: own('rx-7900-xtx'),
+  },
+  {
+    id: 'amd-mi300x',
+    name: 'ROCm Works Now, Actually',
+    desc: 'Own an MI300X.',
+    icon: 'server',
+    cond: own('mi300x'),
+  },
+
+  // ---- Apple -------------------------------------------------------------
+  {
+    id: 'apple-first',
+    name: "It's Not A GPU",
+    desc: 'Own any Apple Silicon machine.',
+    icon: 'apple',
+    cond: family('apple'),
+  },
+  {
+    id: 'apple-mac-studio',
+    name: 'Unified Memory Copium',
+    desc: 'Own a Mac Studio M4 Max.',
+    icon: 'monitor',
+    cond: own('mac-studio-m4-max'),
+  },
+
+  // ---- power -------------------------------------------------------------
+  {
+    id: 'power-three-phase',
+    name: 'Three-Phase Enjoyer',
+    desc: 'Install three-phase power.',
+    icon: 'cable',
+    cond: upgrade('three-phase'),
+  },
+  {
+    id: 'power-fusion',
+    name: 'Sun In A Box',
+    desc: 'Build the fusion reactor.',
+    icon: 'atom',
+    cond: upgrade('fusion-reactor'),
+  },
+  {
+    id: 'power-all-cooling',
+    name: 'Thermally Responsible',
+    desc: 'Own every cooling upgrade.',
+    icon: 'snowflake',
+    cond: {
+      type: 'all',
+      conds: [upgrade('aio-cooler'), upgrade('liquid-amd'), upgrade('custom-loop'), upgrade('immersion-cooling')],
+    },
+  },
+
+  // ---- studio & posts ----------------------------------------------------
+  {
+    id: 'first-post',
+    name: 'Posted, Not Ghosted',
+    desc: 'Publish your first post.',
+    icon: 'send',
+    cond: stat('posts', 1),
+  },
+  {
+    id: 'posts-100',
+    name: 'Content Mill',
+    desc: 'Publish 100 posts.',
+    icon: 'save-image',
+    cond: stat('posts', 100),
+  },
+  {
+    id: 'posts-1k',
+    name: 'Feed Flooder',
+    desc: 'Publish 1,000 posts.',
+    icon: 'image-batch',
+    cond: stat('posts', 1_000),
+  },
+  {
+    id: 'first-video',
+    name: 'It Moves!',
+    desc: 'Publish your first video.',
+    icon: 'text-to-video',
+    cond: stat('videos', 1),
+  },
+  {
+    id: 'videos-100',
+    name: 'Cinematographer',
+    desc: 'Publish 100 videos.',
+    icon: 'save-video',
+    cond: stat('videos', 100),
+  },
+  {
+    id: 'flops-10',
+    name: 'CUDA Out Of Memory',
+    desc: 'Flop 10 posts.',
+    icon: 'bug',
+    cond: stat('flops', 10),
+  },
+  {
+    id: 'flops-100',
+    name: "It's Not A Bug, It's A Style",
+    desc: 'Flop 100 posts.',
+    icon: 'skull',
+    cond: stat('flops', 100),
+  },
+  {
+    id: 'first-viral',
+    name: 'Number Go Up',
+    desc: 'Go viral once.',
+    icon: 'trending-up',
+    cond: stat('virals', 1),
+  },
+  {
+    id: 'virals-25',
+    name: 'Algorithm Whisperer',
+    desc: 'Go viral 25 times.',
+    icon: 'megaphone',
+    cond: stat('virals', 25),
+  },
+  {
+    id: 'likes-10k',
+    name: 'Double Tap',
+    desc: 'Collect 10,000 likes.',
+    icon: 'heart',
+    cond: stat('likes', 10_000),
+  },
+  {
+    id: 'likes-1m',
+    name: 'Engagement Farm',
+    desc: 'Collect 1,000,000 likes.',
+    icon: 'eye',
+    cond: stat('likes', 1_000_000),
+  },
+
+  // ---- models & quantization --------------------------------------------
+  {
+    id: 'quantize-first',
+    name: 'GGUF Enjoyer',
+    desc: 'Quantize a model.',
+    icon: 'shrink',
+    cond: stat('quantizations', 1),
+  },
+  {
+    id: 'quantize-10',
+    name: 'Bits Are A Suggestion',
+    desc: 'Quantize ten times.',
+    icon: 'minimize-2',
+    cond: stat('quantizations', 10),
+  },
+  {
+    id: 'q4-video',
+    name: 'Potato Cinema',
+    desc: 'Unlock Q4 on a video model.',
+    icon: 'film',
+    cond: {
+      type: 'any',
+      conds: [
+        { type: 'precision', modelId: 'wan22-5b', precision: 'q4' },
+        { type: 'precision', modelId: 'ltx2', precision: 'q4' },
+        { type: 'precision', modelId: 'wan22-14b', precision: 'q4' },
+        { type: 'precision', modelId: 'hunyuan-video-15', precision: 'q4' },
+      ],
+    },
+  },
+  {
+    id: 'model-flux',
+    name: 'Guidance 3.5',
+    desc: 'Own FLUX.1 dev.',
+    icon: 'image',
+    cond: model('flux-dev'),
+  },
+  {
+    id: 'model-3d',
+    name: 'Depth Perception',
+    desc: 'Own Hunyuan3D 2.1.',
+    icon: 'load-3-d',
+    cond: model('hunyuan3d-21'),
+  },
+  {
+    id: 'model-api',
+    name: "Someone Else's GPU",
+    desc: 'Own an API-node model.',
+    icon: 'cloud-lightning',
+    // Hailuo is the hosted (API) MiniMax line; minimax-h3 is the 160 GB local model.
+    cond: model('hailuo'),
+  },
+
+  // ---- social ------------------------------------------------------------
+  {
+    id: 'followers-100',
+    name: 'Mutuals',
+    desc: 'Reach 100 followers.',
+    icon: 'users',
+    cond: stat('followers', 100),
+  },
+  {
+    id: 'followers-1k',
+    name: 'Micro-Influencer',
+    desc: 'Reach 1,000 followers.',
+    icon: 'user-plus',
+    cond: stat('followers', 1_000),
+  },
+  {
+    id: 'followers-100k',
+    name: 'Comfy Famous',
+    desc: 'Reach 100,000 followers.',
+    icon: 'star',
+    cond: stat('followers', 100_000),
+  },
+  {
+    id: 'followers-1m',
+    name: 'Main Character',
+    desc: 'Reach 1,000,000 followers.',
+    icon: 'trophy',
+    cond: stat('followers', 1_000_000),
+  },
+  {
+    id: 'signups-1',
+    name: 'Brought A Friend',
+    desc: 'Convert your first follower into a signup.',
+    icon: 'user-plus',
+    cond: stat('signups', 1),
+  },
+  {
+    id: 'signups-100',
+    name: 'Onboarding Funnel',
+    desc: 'Reach 100 signups.',
+    icon: 'rss',
+    cond: stat('signups', 100),
+  },
+
+  // ---- meta --------------------------------------------------------------
+  {
+    id: 'offline-first',
+    name: 'Comfy Sleep Mode',
+    desc: 'Collect offline earnings.',
+    icon: 'moon',
+    cond: stat('offlineClaims', 1),
+  },
+  {
+    id: 'rebrand-first',
+    name: 'Season 2',
+    desc: 'Rebrand once.',
+    icon: 'refresh-cw',
+    cond: stat('rebrands', 1),
+  },
+  {
+    id: 'rebrand-5',
+    name: 'Renewed For Season 6',
+    desc: 'Rebrand five times.',
+    icon: 'rotate-cw',
+    cond: stat('rebrands', 5),
+  },
+  {
+    id: 'contract-first',
+    name: 'Client Work',
+    desc: 'Complete a contract.',
+    icon: 'pen-line',
+    cond: stat('contractsDone', 1),
+  },
+  {
+    id: 'contracts-25',
+    name: 'Agency Life',
+    desc: 'Complete 25 contracts.',
+    icon: 'badge-dollar-sign',
+    cond: stat('contractsDone', 25),
+  },
+  {
+    id: 'lora-first',
+    name: 'LoRA Tuesday',
+    desc: 'Train a LoRA.',
+    icon: 'lora-loader',
+    cond: stat('lorasTrained', 1),
+  },
+  {
+    id: 'loras-10',
+    name: 'Trigger Word Collector',
+    desc: 'Train ten LoRAs.',
+    icon: 'layers',
+    cond: stat('lorasTrained', 10),
+  },
+  {
+    id: 'hub-published',
+    name: 'Shipped To ComfyHub',
+    desc: 'Publish a workflow to ComfyHub.',
+    icon: 'workflow',
+    cond: stat('hubPublished', 1),
+  },
+  {
+    id: 'hub-runs-100',
+    name: 'Somebody Ran It',
+    desc: 'Your ComfyHub workflows get 100 runs.',
+    icon: 'store',
+    cond: stat('hubRuns', 100),
+  },
+  {
+    id: 'streak-7',
+    name: 'Daily Driver',
+    desc: 'Claim the daily reward 7 days in a row.',
+    icon: 'calendar',
+    cond: stat('streak', 7),
+  },
+  {
+    id: 'streak-30',
+    name: 'Monthly Active User',
+    desc: 'Claim the daily reward 30 days in a row.',
+    icon: 'sunrise',
+    cond: stat('streak', 30),
+  },
+  {
+    id: 'map-10',
+    name: 'Node Graph',
+    desc: 'Unlock 10 map nodes.',
+    icon: 'git-branch',
+    cond: stat('mapNodes', 10),
+  },
+  {
+    id: 'achievements-25',
+    name: 'Achievement Achieved',
+    desc: 'Earn 25 achievements.',
+    icon: 'trophy',
+    cond: stat('achievements', 25),
+  },
+  {
+    id: 'played-1h',
+    name: 'Just One More Node',
+    desc: 'Play for an hour.',
+    icon: 'clock',
+    cond: stat('playedSec', 3_600),
+  },
+  {
+    id: 'played-24h',
+    name: 'Touch Grass (Optional)',
+    desc: 'Play for 24 hours in total.',
+    icon: 'hourglass',
+    cond: stat('playedSec', 86_400),
+  },
+
+  // ---- hidden easter eggs (flag-driven) ----------------------------------
+  {
+    id: 'speedrun',
+    name: 'Speedrun',
+    desc: 'Reach a cloud node in under 25 minutes.',
+    icon: 'timer',
+    cond: flag('speedrun'),
+    hidden: true,
+  },
+  {
+    id: 'spaghetti-mode',
+    name: 'Spaghetti Mode',
+    desc: 'Prompt for the one thing every workflow already is.',
+    icon: 'workflow',
+    cond: flag('spaghetti'),
+    hidden: true,
+  },
+  {
+    id: 'founder-mention',
+    name: 'Noticed By The Founders',
+    desc: 'Mention a founder in a prompt and get the repost.',
+    icon: 'egg',
+    cond: flag('founderMention'),
+    hidden: true,
+  },
+  {
+    id: 'spark-caught',
+    name: 'Caught The Spark',
+    desc: 'Catch a trending spark before it fades.',
+    icon: 'sparkles',
+    cond: flag('sparkCaught'),
+    hidden: true,
+  },
+  {
+    id: 'node-fixed',
+    name: 'Have You Tried Restarting',
+    desc: 'Fix a broken custom node by clicking on it. Like a professional.',
+    icon: 'hammer',
+    cond: flag('fixedNode'),
+    hidden: true,
+  },
+  {
+    id: 'konami',
+    name: 'Legacy Frontend',
+    desc: 'Enter the old code.',
+    icon: 'ghost',
+    cond: flag('konami'),
+    hidden: true,
+  },
+  {
+    id: 'broke-at-zero',
+    name: 'Out Of Credits, Not Ideas',
+    desc: 'Spend down to exactly zero credits.',
+    icon: 'coffee',
+    cond: flag('brokeAtZero'),
+    hidden: true,
+  },
+]
