@@ -6,16 +6,18 @@
 import { CATALOG } from '@/data'
 import type { Catalog, Derived, GameEvent, GameState } from '@/game/types'
 import { computeDerived } from '@/game/derived'
-import { tick } from '@/game/engine'
+import { needsDerived, tick } from '@/game/engine'
 import * as actions from '@/game/actions'
+import type { ActionContext, ActionResult, BuyCount, QueueJobInput } from '@/game/actions'
 import { createInitialState } from '@/game/state'
-import { deserialize, serialize } from '@/game/save'
+import { loadSave, serialize, SAVE_CORRUPT_KEY } from '@/game/save'
 import { applyOffline } from '@/game/offline'
 import { startLoop } from '@/game/loop'
 import { AUTOSAVE_MS, SAVE_KEY } from '@/game/constants'
 
-export type ActionResult = { events: GameEvent[]; dirty: boolean; error?: string }
-type ActionFn = (state: GameState, derived: Derived, catalog: Catalog, now: number, rng: () => number) => ActionResult
+export type { ActionResult } from '@/game/actions'
+/** An action bound to a context snapshot; see `GameStore.run`. */
+type ActionFn = (ctx: ActionContext) => ActionResult
 
 export interface OfflineReport {
   elapsedSec: number
@@ -79,9 +81,9 @@ export class GameStore {
     const now = Date.now()
     const raw = safeStorageGet(SAVE_KEY)
     if (raw) {
-      const loaded = deserialize(raw, now, guestId())
-      if (!loaded) safeStorageSet(`${SAVE_KEY}.corrupt`, raw)
-      this.state = loaded ?? createInitialState(now, guestId())
+      const { state, corrupt } = loadSave(raw, now, guestId())
+      if (corrupt) safeStorageSet(SAVE_CORRUPT_KEY, raw)
+      this.state = state
     }
     this.derived = computeDerived(this.state, this.catalog)
     const report = applyOffline(this.state, this.derived, this.catalog, now)
@@ -122,9 +124,7 @@ export class GameStore {
     const events = tick(this.state, this.derived, this.catalog, dt, now, Math.random)
     if (events.length) {
       this.emit(events)
-      if (events.some(e => e.type === 'achievement' || e.type === 'eventStart' || e.type === 'eventEnd' || e.type === 'contractDone' || e.type === 'signup' || e.type === 'postResolved')) {
-        this.derived = computeDerived(this.state, this.catalog)
-      }
+      if (needsDerived(events)) this.derived = computeDerived(this.state, this.catalog)
     }
     if (now - this.lastSaveAt > AUTOSAVE_MS) this.save()
     this.notify()
@@ -159,34 +159,35 @@ export class GameStore {
     this.notify()
   }
 
+  /** Everything an action needs, snapshotted once per call so `now` and `rng` are consistent within it. */
+  private context(): ActionContext {
+    return { state: this.state, derived: this.derived, catalog: this.catalog, now: Date.now(), rng: Math.random }
+  }
+
   run(fn: ActionFn): ActionResult {
-    const result = fn(this.state, this.derived, this.catalog, Date.now(), Math.random)
+    const result = fn(this.context())
     if (result.events.length) this.emit(result.events)
     if (result.dirty) this.derived = computeDerived(this.state, this.catalog)
     this.notify()
     return result
   }
 
-  click = (): ActionResult => this.run((s, d, c, now, rng) => actions.click(s, d, c, now, rng))
-  buyHardware = (id: string, n: number | 'max' = 1): ActionResult => this.run((s, d, c, now, rng) => actions.buyHardware(s, d, c, id, n, now, rng))
-  buyUpgrade = (id: string): ActionResult => this.run((s, d, c, now, rng) => actions.buyUpgrade(s, d, c, id, now, rng))
-  unlockMapNode = (id: string): ActionResult => this.run((s, d, c, now, rng) => actions.unlockMapNode(s, d, c, id, now, rng))
-  quantize = (modelId: string, precision: 'fp8' | 'q4'): ActionResult => this.run((s, d, c, now, rng) => actions.quantize(s, d, c, modelId, precision, now, rng))
-  setupModel = (modelId: string): ActionResult => this.run((s, d, c, now, rng) => actions.setupModel(s, d, c, modelId, now, rng))
-  trainLora = (tagId: string): ActionResult => this.run((s, d, c, now, rng) => actions.trainLora(s, d, c, tagId, now, rng))
-  queueJob = (input: actions.QueueJobInput): ActionResult => this.run((s, d, c, now, rng) => actions.queueJob(s, d, c, input, now, rng))
-  claimContract = (index: number): ActionResult => this.run((s, d, c, now, rng) => actions.claimContract(s, d, c, index, now, rng))
-  claimDaily = (): ActionResult => this.run((s, d, c, now, rng) => actions.claimDaily(s, d, c, now, rng))
-  rebrand = (): ActionResult => this.run((s, d, c, now, rng) => actions.rebrand(s, d, c, now, rng))
-  resolveEvent = (defId: string): ActionResult => this.run((s, d, c, now, rng) => actions.resolveEvent(s, d, c, defId, now, rng))
-  upscalePost = (postId: string): ActionResult => this.run((s, d, c, now, rng) => actions.upscalePost(s, d, c, postId, now, rng))
-  toggleSetting = (key: keyof GameState['settings']): ActionResult => this.run((s, d, c, now, rng) => actions.toggleSetting(s, d, c, key, now, rng))
-  setFlag = (key: string): void => {
-    if (this.state.flags[key]) return
-    this.state.flags[key] = true
-    this.emit([{ type: 'easterEgg', id: key }])
-    this.recompute()
-  }
+  click = (): ActionResult => this.run((ctx) => actions.click(ctx))
+  buyHardware = (id: string, n: BuyCount = 1): ActionResult => this.run((ctx) => actions.buyHardware(ctx, id, n))
+  buyUpgrade = (id: string): ActionResult => this.run((ctx) => actions.buyUpgrade(ctx, id))
+  unlockMapNode = (id: string): ActionResult => this.run((ctx) => actions.unlockMapNode(ctx, id))
+  quantize = (modelId: string, precision: 'fp8' | 'q4'): ActionResult => this.run((ctx) => actions.quantize(ctx, modelId, precision))
+  setupModel = (modelId: string): ActionResult => this.run((ctx) => actions.setupModel(ctx, modelId))
+  trainLora = (tagId: string): ActionResult => this.run((ctx) => actions.trainLora(ctx, tagId))
+  queueJob = (input: QueueJobInput): ActionResult => this.run((ctx) => actions.queueJob(ctx, input))
+  claimContract = (index: number): ActionResult => this.run((ctx) => actions.claimContract(ctx, index))
+  claimDaily = (): ActionResult => this.run((ctx) => actions.claimDaily(ctx))
+  rebrand = (): ActionResult => this.run((ctx) => actions.rebrand(ctx))
+  resolveEvent = (defId: string): ActionResult => this.run((ctx) => actions.resolveEvent(ctx, defId))
+  upscalePost = (postId: string): ActionResult => this.run((ctx) => actions.upscalePost(ctx, postId))
+  toggleSetting = (key: keyof GameState['settings'], value?: boolean): ActionResult =>
+    this.run((ctx) => actions.toggleSetting(ctx, key, value))
+  setFlag = (key: string): ActionResult => this.run((ctx) => actions.setFlag(ctx, key))
   setWeekOverride = (week: number | null): void => {
     this.state.weekOverride = week
     this.recompute()
