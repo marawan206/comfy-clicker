@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import Gemini from "../icons/gemini";
+import Gemini from "./gemini";
 
 interface Profile {
   name: string;

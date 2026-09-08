@@ -116,6 +116,8 @@ export type Effect =
   | { kind: 'speedMult'; value: number }
   | { kind: 'concurrency'; value: number }
   | { kind: 'offlineCapHours'; value: number }
+  /** Fraction of cps paid while away (the best owned value wins, floor OFFLINE_EFFICIENCY). */
+  | { kind: 'offlineEfficiency'; value: number }
   | { kind: 'powerBudget'; value: number }
   | { kind: 'payoutRatio'; value: number }
   | { kind: 'followRate'; value: number }
@@ -318,6 +320,8 @@ export interface Post {
   tags: string[]
   matchedTrending: string[]
   thumb: string
+  /** Credits the job cost when it was queued; upscales are priced off this, not today's cps. */
+  cost: number
   targetLikes: number
   likes: number
   creditsPerLike: number
@@ -456,6 +460,8 @@ export interface Derived {
   viralChance: number
   flopChance: number
   offlineCapHours: number
+  /** Share of cps paid for long gaps: OFFLINE_EFFICIENCY unless an `offlineEfficiency` effect raises it. */
+  offlineEfficiency: number
   globalMult: number
   cpMult: number
   familyMult: Partial<Record<HardwareFamily, number>>
@@ -498,3 +504,9 @@ export type GameEvent =
   | { type: 'milestone'; cps: number }
 
 export type Rng = () => number
+
+// ---------------------------------------------------------------------------
+// Catalog lives in src/data/index.ts (it is assembled from the data files). Re-exported here so
+// UI code can import every game type from one module; type-only, so there is no runtime cycle.
+// ---------------------------------------------------------------------------
+export type { Catalog } from '@/data'

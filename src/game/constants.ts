@@ -19,12 +19,18 @@ export const TIER_DELTA_FACTOR = 1.3
 export const ABOVE_TIER_FACTOR = 0.85
 export const CLICK_JOB_BONUS_MS = 150
 export const CLICK_JOB_BONUS_CAP = 0.5
-export const OFFLINE_CAP_HOURS_BASE = 12
-export const OFFLINE_EFFICIENCY = 1
+/** API-node models bill someone else's GPU on top of yours: job cost ×1.5, payout on the pre-surcharge cost. */
+export const API_COST_MULT = 1.5
+/** Idle income: 8 h at half rate out of the box; upgrades and map nodes raise the cap to 48 h and the rate to 100%. */
+export const OFFLINE_CAP_HOURS_BASE = 8
+export const OFFLINE_EFFICIENCY = 0.5
 export const SHORT_GAP_S = 300
 export const POWER_BUDGET_BASE = 650
-export const POWER_THROTTLE = 0.5
-export const SETUP_FEE_MULT = 5
+/**
+ * Installing a model your best card can't hold costs this many × baseCost (the --lowvram tax).
+ * Kept at 1 so "set up + quantize" always undercuts buying the native rig outright.
+ */
+export const SETUP_FEE_MULT = 1
 export const SIGNUP_THRESHOLDS = [0, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000]
 export const SIGNUP_GROWTH = 2
 export const FOLLOW_RATE_BASE = 0.05
@@ -44,6 +50,7 @@ export const REBRAND_CP_EXP = 0.45
 export const CP_MULT_PER_POINT = 0.02
 export const RP_MULT_PER_POINT = 0.01
 export const ACHIEVEMENT_MULT = 0.01
-export const TIER_UPGRADE_THRESHOLDS = [1, 10, 25, 50] as const
+/** Tier 1 waits for 5 owned so its 10× price pays back in ~2 unit paybacks, not ~10. */
+export const TIER_UPGRADE_THRESHOLDS = [5, 10, 25, 50] as const
 export const TIER_UPGRADE_COST_MULT = [10, 100, 1_000, 10_000] as const
 export const TIER_UPGRADE_EFFECT = 2
