@@ -1,0 +1,95 @@
+{
+ "exhaustive": {
+  "nbHits": false,
+  "typo": false
+ },
+ "exhaustiveNbHits": false,
+ "exhaustiveTypo": false,
+ "hits": [
+  {
+   "title": "MiniMax H3 Day-0 Support in ComfyUI: Open Weights, Native Audio, and 2K Video",
+   "url": "https://blog.comfy.org/p/minimax-h3-day-0-support-in-comfyui",
+   "points": 334,
+   "created_at": "2026-08-03T13:34:43Z",
+   "created_at_i": 1785764083,
+   "author": "vblanco",
+   "objectID": "49155629",
+   "num_comments": 94,
+   "_tags": [
+    "story",
+    "author_vblanco",
+    "story_49155629"
+   ]
+  },
+  {
+   "title": "Stable Diffusion:Real time prompting with SDXL Turbo and ComfyUI running locally",
+   "url": "https://old.reddit.com/r/StableDiffusion/comments/1869cnk/real_time_prompting_with_sdxl_turbo_and_comfyui/",
+   "points": 122,
+   "created_at": "2023-11-29T01:41:06Z",
+   "created_at_i": 1701222066,
+   "author": "belltaco",
+   "objectID": "38454349",
+   "num_comments": 42,
+   "_tags": [
+    "story",
+    "author_belltaco",
+    "story_38454349"
+   ]
+  },
+  {
+   "title": "Show HN: Rubbrband – A hosted ComfyUI alternative for image generation",
+   "points": 61,
+   "created_at": "2024-06-26T12:33:50Z",
+   "created_at_i": 1719405230,
+   "author": "jrmylee",
+   "objectID": "40799262",
+   "num_comments": 43,
+   "story_text": "Hey HN! My friends and I built a new platform for generating images.  The app is easy to use for people who find ComfyUI hard to use, or just simply don’t have a GPU to use it on.<p>For those not familiar, ComfyUI is a great tool for using open-source models like Stable Diffusion. It’s primarily great because it’s a node-based tool, which means you can chain together models, upscalers, prompting nodes, etc… which let you create images in the exact aesthetic you want. There’s also a vibrant dev community behind ComfyUI, which means that there are a ton of nodes and customizability.<p>We’re users of Comfy, but there are some major problems we’ve had with it. First is that it runs primarily on your own hardware, so if you don’t have beefy GPUs it’s not possible to use on your machine. Second, we found that the interface is rather clunkly. Lastly, the ecosystem is very fragmented. All extensions and workflows are scattered around Github&#x2F;Reddit&#x2F;Discord, which means new tools are hard to find, and also often times incompatible with your local installation of Comfy, which is super frustrating.<p>We built Rubbrband as own take on an image-generation tool, taking the customizability of ComfyUI, with the ease-of-use of something like Midjourney.<p>Here are the key features:<p>- Fully hosted as a website\n- Use any Stable-Diffusion checkpoint or LORA from CivitAI\n- Unlimited image storage\n- Over 20 nodes, including SD, ControlNet, Masking nodes, GPT-4V, etc…\n- Color Palettes control, Image References(IP-adapter), etc…\n- A Playground page, for using workflows in a much simpler interface\n- A Community page, for sharing workflows with others<p>Would love to get your thoughts! You can use the app here: <a href=\"https:&#x2F;&#x2F;rubbrband.com\">https:&#x2F;&#x2F;rubbrband.com</a><p>We’re looking to also create an API so that you can create nodes on our platform as well! If you’re interested in getting early-access, please let me know!",
+   "_tags": [
+    "story",
+    "author_jrmylee",
+    "story_40799262",
+    "show_hn"
+   ]
+  },
+  {
+   "title": "Show HN: Comflowy – A ComfyUI Tutorial for Beginners",
+   "url": "https://www.comflowy.com/",
+   "points": 56,
+   "created_at": "2024-01-03T15:43:28Z",
+   "created_at_i": 1704296608,
+   "author": "thinkingjimmy",
+   "objectID": "38855346",
+   "num_comments": 22,
+   "_tags": [
+    "story",
+    "author_thinkingjimmy",
+    "story_38855346",
+    "show_hn"
+   ]
+  },
+  {
+   "title": "ComfyUI V1: a seamless desktop experience for ComfyUI",
+   "url": "https://blog.comfy.org/comfyui-v1-release/",
+   "points": 20,
+   "created_at": "2024-10-21T18:49:05Z",
+   "created_at_i": 1729536545,
+   "author": "ttul",
+   "objectID": "41907136",
+   "num_comments": 3,
+   "_tags": [
+    "story",
+    "author_ttul",
+    "story_41907136"
+   ]
+  }
+ ],
+ "hitsPerPage": 10,
+ "nbHits": 389,
+ "nbPages": 39,
+ "page": 0,
+ "params": "query=comfyui&tags=story&hitsPerPage=10&advancedSyntax=true&analyticsTags=backend",
+ "processingTimeMS": 24,
+ "query": "comfyui",
+ "serverTimeMS": 25
+}

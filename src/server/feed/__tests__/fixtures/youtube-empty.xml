@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UCaVhziQbXkTLiERYTak95Qw"/>
+ <id>yt:channel:aVhziQbXkTLiERYTak95Qw</id>
+ <yt:channelId>aVhziQbXkTLiERYTak95Qw</yt:channelId>
+ <title>comfyui</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/UCaVhziQbXkTLiERYTak95Qw"/>
+ <author>
+  <name>comfyui</name>
+  <uri>https://www.youtube.com/channel/UCaVhziQbXkTLiERYTak95Qw</uri>
+ </author>
+ <published>2023-10-30T04:47:58+00:00</published>
+</feed>

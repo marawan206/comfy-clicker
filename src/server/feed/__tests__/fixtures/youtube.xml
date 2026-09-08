@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UCsOXR1n2MR15vuK2htE5EkQ"/>
+ <id>yt:channel:sOXR1n2MR15vuK2htE5EkQ</id>
+ <yt:channelId>sOXR1n2MR15vuK2htE5EkQ</yt:channelId>
+ <title>ComfyUI</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/UCsOXR1n2MR15vuK2htE5EkQ"/>
+ <author>
+  <name>ComfyUI</name>
+  <uri>https://www.youtube.com/channel/UCsOXR1n2MR15vuK2htE5EkQ</uri>
+ </author>
+ <published>2013-07-24T19:09:21+00:00</published>
+ <entry>
+  <id>yt:video:zF-5R-Cg8tQ</id>
+  <yt:videoId>zF-5R-Cg8tQ</yt:videoId>
+  <yt:channelId>UCsOXR1n2MR15vuK2htE5EkQ</yt:channelId>
+  <title>One talking-head video, multiple camera angles</title>
+  <link rel="alternate" href="https://www.youtube.com/shorts/zF-5R-Cg8tQ"/>
+  <author>
+   <name>ComfyUI</name>
+   <uri>https://www.youtube.com/channel/UCsOXR1n2MR15vuK2htE5EkQ</uri>
+  </author>
+  <published>2026-09-11T19:58:00+00:00</published>
+  <updated>2026-09-12T07:35:27+00:00</updated>
+  <media:group>
+   <media:title>One talking-head video, multiple camera angles</media:title>
+   <media:content url="https://www.youtube.com/v/zF-5R-Cg8tQ?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/zF-5R-Cg8tQ/hqdefault.jpg" width="480" height="360"/>
+   <media:description>This Seedance 2.5 workflow takes a video of someone speaking to camera and generates alternate angles of the same moment, making a simple talking-head shot feel much more dynamic.
+
+To try this workflow: https://links.comfy.org/3T0zKKj</media:description>
+   <media:community>
+    <media:starRating count="12" average="5.00" min="1" max="5"/>
+    <media:statistics views="745"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:6ZT9y3rdvFg</id>
+  <yt:videoId>6ZT9y3rdvFg</yt:videoId>
+  <yt:channelId>UCsOXR1n2MR15vuK2htE5EkQ</yt:channelId>
+  <title>Comfy Agent Beta: VFX, Marketing &amp; E-Commerce Workflows</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=6ZT9y3rdvFg"/>
+  <author>
+   <name>ComfyUI</name>
+   <uri>https://www.youtube.com/channel/UCsOXR1n2MR15vuK2htE5EkQ</uri>
+  </author>
+  <published>2026-09-11T05:51:08+00:00</published>
+  <updated>2026-09-11T06:31:06+00:00</updated>
+  <media:group>
+   <media:title>Comfy Agent Beta: VFX, Marketing &amp; E-Commerce Workflows</media:title>
+   <media:content url="https://www.youtube.com/v/6ZT9y3rdvFg?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/6ZT9y3rdvFg/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Comfy Agent is entering beta, and we're opening the door! Join us live as the team behind it walks through what the agent actually does on the canvas and the story of how it got built.
+
+Comfy Agent doesn't sit off to the side handing you instructions. It builds, runs, and edits real workflows on the graph, working alongside you rather than in place of you. We'll show that live, including an agent-optimized VFX workflow and a product SKU example generating a full batch of on-brand marketing shots.
+
+We'll also get into how it's different from running your own agent through Comfy MCP using Claude, Cursor, etc.
+
+What we'll cover:
+🤖 What Comfy Agent is, shown live on the canvas
+🤖 Comfy Agent demos for different use cases (VFX, marketing/e-commerce)
+🤖 How this differs from bringing your own agent via Comfy MCP
+🤖 How to get beta access, and what the free tier covers
+
+Join the beta: https://links.comfy.org/agentbeta
+
+⏰ Subscribe and enable notifications to catch the stream live
+💬 Submit your questions in chat during the broadcast or before the stream in the comments!
+👍 Leave a like if you'd like to see more on agent-driven workflows!</media:description>
+   <media:community>
+    <media:starRating count="102" average="5.00" min="1" max="5"/>
+    <media:statistics views="6461"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:v-XRntapVNA</id>
+  <yt:videoId>v-XRntapVNA</yt:videoId>
+  <yt:channelId>UCsOXR1n2MR15vuK2htE5EkQ</yt:channelId>
+  <title>Five generated stills, one audio track, one context.</title>
+  <link rel="alternate" href="https://www.youtube.com/shorts/v-XRntapVNA"/>
+  <author>
+   <name>ComfyUI</name>
+   <uri>https://www.youtube.com/channel/UCsOXR1n2MR15vuK2htE5EkQ</uri>
+  </author>
+  <published>2026-09-10T19:04:22+00:00</published>
+  <updated>2026-09-11T10:29:29+00:00</updated>
+  <media:group>
+   <media:title>Five generated stills, one audio track, one context.</media:title>
+   <media:content url="https://www.youtube.com/v/v-XRntapVNA?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/v-XRntapVNA/hqdefault.jpg" width="480" height="360"/>
+   <media:description>No location was shot. The subject reference and every location came out of an image generator first, then straight into MiniMax H3 as references.
+
+The cuts between locations came back in the generation itself.
+
+Run the workflow: https://links.comfy.org/4xpj8u1</media:description>
+   <media:community>
+    <media:starRating count="6" average="5.00" min="1" max="5"/>
+    <media:statistics views="658"/>
+   </media:community>
+  </media:group>
+ </entry>
+</feed>
