@@ -8,6 +8,12 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
 import path from 'node:path'
 import sharp from 'sharp'
+import { execFileSync } from 'node:child_process'
+
+function hasFfmpeg() {
+  try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); return true } catch { return false }
+}
+const FFMPEG = hasFfmpeg()
 
 const SIZES = { hardware: 256, models: [352, 528], ui: 1024, badges: 192, avatars: 160, thumbs: 512, map: 128 }
 const SRC = 'art-src'
@@ -57,7 +63,13 @@ async function main() {
       const id = f.replace(/\.(png|jpg|jpeg|webp|mp4)$/i, '')
       if (/\.mp4$/i.test(f)) {
         mkdirSync(path.join(OUT, category), { recursive: true })
-        copyFileSync(path.join(dir, f), path.join(OUT, category, f))
+        const dest = path.join(OUT, category, f)
+        if (FFMPEG) {
+          // 640 px wide, muted, web-optimised H.264 (~300–600 KB for a 4 s loop)
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', path.join(dir, f), '-an', '-vf', 'scale=640:-2', '-c:v', 'libx264', '-preset', 'slow', '-crf', '30', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', dest])
+        } else {
+          copyFileSync(path.join(dir, f), dest)
+        }
       } else if (/\.(png|jpg|jpeg|webp)$/i.test(f)) {
         await convert(path.join(dir, f), category, id)
       }
