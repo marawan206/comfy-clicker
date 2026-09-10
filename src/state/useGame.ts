@@ -22,18 +22,25 @@ export function shallowEqual<T>(a: T, b: T): boolean {
 /**
  * Subscribe to a slice of game state. The selector runs on every store version bump
  * (≈20 Hz while the loop runs) but the component re-renders only when `equals` says the slice changed.
+ *
+ * The snapshot cache lives in refs that are read and written inside `getSnapshot`, which React
+ * invokes during render: this is the same memoisation pattern as `use-sync-external-store/with-selector`
+ * and is required so `getSnapshot` returns a referentially stable value while the slice is unchanged.
  */
 export function useGame<T>(selector: Selector<T>, equals: Equals<T> = refEquals): T {
   const store = getGameStore()
   const cache = useRef<{ version: number; value: T } | null>(null)
   const selectorRef = useRef(selector)
+  // eslint-disable-next-line react-hooks/refs -- keep the latest selector without re-subscribing
   selectorRef.current = selector
   const getSnapshot = useCallback((): T => {
     const version = store.version
+    const cached = cache.current
+    if (cached && cached.version === version) return cached.value
     const next = selectorRef.current(store.state, store.derived, store)
-    if (cache.current && (cache.current.version === version || equals(cache.current.value, next))) {
-      cache.current.version = version
-      return cache.current.value
+    if (cached && equals(cached.value, next)) {
+      cached.version = version
+      return cached.value
     }
     cache.current = { version, value: next }
     return next
@@ -62,6 +69,8 @@ export function useGameLifecycle(): void {
 /** Subscribe to engine events (for FX, toasts, sounds). */
 export function useGameEvents(handler: (event: GameEvent) => void): void {
   const ref = useRef(handler)
-  ref.current = handler
+  useEffect(() => {
+    ref.current = handler
+  })
   useEffect(() => getGameStore().onEvent(e => ref.current(e)), [])
 }
