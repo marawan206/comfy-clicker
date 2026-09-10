@@ -16,7 +16,9 @@ export function NumberTicker({ value, format = formatNum, speed = 0.25, classNam
   const [shown, setShown] = useState(value)
   const target = useRef(value)
   const current = useRef(value)
-  target.current = value
+  useEffect(() => {
+    target.current = value
+  }, [value])
   useEffect(() => {
     let raf = 0
     const step = () => {
