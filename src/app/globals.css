@@ -181,3 +181,182 @@
   --radius-comfy: 0.354em;
   --shadow-press: 0 4px 0 #0e0e0f;
 }
+
+/* ---------- Shell layer (ui-shell): canvas, scrollbars, keyframes, projector ---------- */
+
+/* Litegraph canvas: 24 px dots, every fifth one brighter, plus a soft vignette. */
+@utility cc-dot-grid {
+  background-color: var(--color-charcoal-800);
+  background-image:
+    radial-gradient(circle at center, rgb(60 61 66 / 0.9) 1px, transparent 1.35px),
+    radial-gradient(circle at center, rgb(85 86 94 / 0.95) 1.6px, transparent 2px);
+  background-size:
+    24px 24px,
+    120px 120px;
+  background-position:
+    0 0,
+    0 0;
+}
+@utility cc-vignette {
+  background: radial-gradient(ellipse 70% 65% at 50% 45%, transparent 0%, rgb(14 14 15 / 0.35) 70%, rgb(14 14 15 / 0.7) 100%);
+}
+
+/* Long lists: let the browser skip layout for off-screen rows. */
+@utility cv-auto {
+  content-visibility: auto;
+}
+
+/* ComfyUI-style striped progress fill; set `--cc-stripe` to recolour. */
+@utility cc-striped {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--cc-stripe, rgb(255 255 255 / 0.18)) 0 8px,
+    transparent 8px 16px
+  );
+  background-size: 22.63px 22.63px;
+  animation: cc-stripes 0.7s linear infinite;
+}
+
+/* Horizontal marquee: duplicate the track twice inside a `.cc-marquee` and it loops seamlessly. */
+@utility cc-marquee {
+  display: flex;
+  width: max-content;
+  animation: cc-marquee var(--cc-marquee-duration, 60s) linear infinite;
+  will-change: transform;
+}
+
+/* Rotating conic aura behind the hero button; speed via `--cc-aura-duration`. */
+@utility cc-aura {
+  animation: cc-aura var(--cc-aura-duration, 12s) linear infinite;
+  will-change: transform;
+}
+
+/* Slow breathing glow (splash logo, claimable chips). */
+@utility cc-breathe {
+  animation: cc-breathe 2.4s ease-in-out infinite;
+}
+
+/* Text shimmer for headings/ribbons: apply to a bg-clip-text gradient element. */
+@utility cc-shimmer {
+  background-size: 200% 100%;
+  animation: cc-shimmer 2.5s linear infinite;
+}
+
+@keyframes cc-stripes {
+  to {
+    background-position: 22.63px 0;
+  }
+}
+@keyframes cc-marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+@keyframes cc-aura {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@keyframes cc-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+@keyframes cc-shimmer {
+  from {
+    background-position: 200% center;
+  }
+  to {
+    background-position: -200% center;
+  }
+}
+
+/* Marquee pauses while the pointer rests on it so a line can be read (or clicked). */
+.cc-marquee-host:hover .cc-marquee,
+.cc-marquee-host:focus-within .cc-marquee {
+  animation-play-state: paused;
+}
+
+/* Reduced motion: the OS setting or the in-game toggle (`html.reduced-motion`) stops the CSS loops. */
+@media (prefers-reduced-motion: reduce) {
+  .cc-striped,
+  .cc-marquee,
+  .cc-aura,
+  .cc-breathe,
+  .cc-shimmer {
+    animation: none;
+  }
+}
+html.reduced-motion .cc-striped,
+html.reduced-motion .cc-marquee,
+html.reduced-motion .cc-aura,
+html.reduced-motion .cc-breathe,
+html.reduced-motion .cc-shimmer {
+  animation: none;
+}
+
+/* Scrollbars: thin, charcoal, no arrows — panels scroll internally so there are many. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-charcoal-200) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-charcoal-200);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-charcoal-100);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Keyboard focus is always electric, never the shadcn grey ring. */
+:focus-visible {
+  outline: 2px solid var(--color-electric-400);
+  outline-offset: 2px;
+}
+
+/* Tabular numerals everywhere a number ticks. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Projector mode. Every Tailwind size is rem-based, so bumping the root size scales the whole UI
+ * (type, panel padding, header height) together; the shell also carries `.projector` so
+ * components can opt into extra emphasis.
+ */
+html.projector {
+  font-size: 18px;
+}
+.projector {
+  --cc-scale: 1.125;
+}
+.projector .cc-hide-projector {
+  display: none;
+}
+@media (min-width: 1920px) {
+  html.projector {
+    font-size: 20px;
+  }
+}
