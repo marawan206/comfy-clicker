@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored registry components (shadcn base + Kokonut UI) kept for later use; not app code.
+    "src/components/ui/**",
+    "src/components/kokonutui/**",
   ]),
 ]);
 

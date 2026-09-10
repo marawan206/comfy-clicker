@@ -5,8 +5,8 @@ import { isCronAuthorized } from '@/server/supabase/env'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+/** Vercel cron sends `Authorization: Bearer $CRON_SECRET`; nothing else (headers included) counts. */
 function authorized(req: NextRequest): boolean {
-  if (req.headers.get('x-vercel-cron')) return true
   return isCronAuthorized(req.headers.get('authorization'))
 }
 
