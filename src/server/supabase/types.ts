@@ -1,5 +1,5 @@
 /**
- * Row types mirroring `supabase/migrations/0001_init.sql`, shaped like the output of
+ * Row types mirroring `supabase/migrations/0001_init.sql` + `0003_hub_integrity.sql`, shaped like the output of
  * `supabase gen types` so they plug into `SupabaseClient<Database>` generics.
  *
  * Keep this file in sync with the migration by hand (the schema is small).
@@ -52,6 +52,8 @@ export type HubWorkflowRow = {
   runs_24h: number
   runs_total: number
   rep: number
+  /** Sum of hub_runs.royalty, maintained by the insert trigger (0003). */
+  royalties_total: number
   created_at: string
 }
 
@@ -61,6 +63,10 @@ export type HubRunRow = {
   runner_id: string
   credits_paid: number
   royalty: number
+  /** Rep the author earned from this run (0003). */
+  rep: number
+  /** When the author's game collected this run; null = unclaimed (0003). */
+  claimed_at: string | null
   created_at: string
 }
 
@@ -148,6 +154,7 @@ export type Database = {
           runs_24h?: number
           runs_total?: number
           rep?: number
+          royalties_total?: number
           created_at?: string
         }
         Update: Partial<HubWorkflowRow>
@@ -169,6 +176,8 @@ export type Database = {
           runner_id: string
           credits_paid?: number
           royalty?: number
+          rep?: number
+          claimed_at?: string | null
           created_at?: string
         }
         Update: Partial<HubRunRow>
@@ -233,6 +242,11 @@ export type Database = {
       refresh_hub_runs_24h: {
         Args: Record<PropertyKey, never>
         Returns: number
+      }
+      /** Service role only. Marks the author's unclaimed hub_runs as claimed; one summary row. */
+      claim_hub_royalties: {
+        Args: { p_author: string }
+        Returns: { runs: number; royalty: number; rep: number }[]
       }
     }
     Enums: Record<string, never>

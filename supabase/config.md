@@ -5,7 +5,12 @@ project is checked in). Migrations are additive and numbered; never edit an appl
 add `0002_*.sql` instead. The TypeScript row types in `src/server/supabase/types.ts` are
 maintained by hand and must be updated alongside.
 
-## 1. Apply the migration
+## 1. Apply the migrations
+
+`0001_init.sql` is the schema; `0003_hub_integrity.sql` (required by the ComfyHub run and
+royalty routes and the daily route's writes) moves `hub_runs` / `daily_logins` writes behind
+the service role, adds the royalty ledger and `claim_hub_royalties()`. `0002_feed_cron.sql`
+is optional (pg_cron for the feed) and needs its placeholders replaced. Apply in order.
 
 ### Option A — Supabase MCP (recommended from Claude Code)
 
@@ -39,10 +44,12 @@ supabase db push        # applies supabase/migrations/*.sql in order
 
 ## 2. Auth settings (Dashboard → Authentication)
 
-- **Anonymous sign-ins: ON** — guests get a real `auth.users` row so cloud saves and the
-  leaderboard work before they add an email.
-- **Email provider: ON**. Magic link / OTP is enough; no password UI is planned.
-- Add the site URL and `http://localhost:3000/**` to **Redirect URLs**.
+- **Email provider: ON** with **email + password** (the app ships a sign-in / create-account
+  sheet; guests never need an account — the local save keeps working without one).
+- **Confirm email** may stay on: sign-up then shows "check your inbox" and the confirmation
+  link lands on `/auth/callback`, which exchanges the code and bounces back signed in.
+- **Redirect URLs**: add `<site>/auth/callback` and `http://localhost:3000/auth/callback`
+  (or the `/**` wildcards). Anonymous sign-ins are not used.
 - Every new `auth.users` row triggers `public.handle_new_user()` which creates the
   `profiles` row with `handle = 'comfy-' || left(id::text, 6)`.
 
@@ -63,15 +70,12 @@ the app falls back to guest mode.
 ## 4. Scheduled jobs
 
 `public.refresh_hub_runs_24h()` decays `hub_workflows.runs_24h`. It is executable by the
-service role only. Either:
+service role only. Both callers are wired:
 
-- **Vercel Cron** → a route handler that checks `isCronAuthorized()` and calls
-  `refreshHubRuns24h()` from `src/server/supabase/admin.ts` (every 15 min is plenty), or
-- **pg_cron** inside Supabase:
-
-  ```sql
-  select cron.schedule('refresh-hub-runs-24h', '*/15 * * * *', $$select public.refresh_hub_runs_24h()$$);
-  ```
+- **Vercel Cron** → `/api/hub/refresh` (in `vercel.json`, every 30 min) checks
+  `isCronAuthorized()` and calls `refreshHubRuns24h()` from `src/server/supabase/admin.ts`.
+- **pg_cron** → `0003_hub_integrity.sql` schedules `comfy-clicker-hub-runs-24h` every 15 min
+  when the `pg_cron` extension is installed (it is skipped silently otherwise).
 
 The feed pipeline (`src/server/feed`) writes `feed_items`, `trending_tags` and `feed_meta`
 with the admin client on its own cron.
@@ -82,9 +86,9 @@ with the admin client on its own cron.
 | --- | --- | --- |
 | `profiles` | everyone | owner (insert/update) |
 | `saves` | owner only | owner |
-| `daily_logins` | owner only | owner (insert/update) |
-| `hub_workflows` | everyone | author (insert/update/delete); run counters and `rep` are server-owned |
-| `hub_runs` | everyone | runner (insert) — trigger bumps the workflow's counters |
+| `daily_logins` | owner only | service role only (`/api/daily`, since 0003) |
+| `hub_workflows` | everyone | author (insert/update/delete); run counters, `rep` and `royalties_total` are server-owned |
+| `hub_runs` | everyone | service role only (`/api/hub/run` clamps `credits_paid` to the job cost and rate-limits; trigger bumps the workflow's counters) — since 0003 |
 | `feed_items`, `trending_tags`, `feed_meta` | everyone | service role only |
 | `leaderboard` (view) | everyone | — (top 100 by `lifetime_credits`; never exposes `state`) |
 
@@ -94,6 +98,6 @@ with the admin client on its own cron.
 pnpm vitest run src/server/supabase/__tests__/schema.test.ts
 ```
 
-checks the SQL text (RLS on every table, policies present, no destructive statements,
-leaderboard view exists). After applying, the Dashboard's **Database → Policies** page
+checks the SQL text of `0001` (RLS on every table, policies present, no destructive
+statements, leaderboard view exists); `0003` intentionally drops two policies. After applying, the Dashboard's **Database → Policies** page
 should list every table above with RLS enabled.

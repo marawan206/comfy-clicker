@@ -1,10 +1,20 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Sparkles, TriangleAlert } from "lucide-react";
+import { Check, Sparkles, TriangleAlert, Upload, Workflow, X } from "lucide-react";
 import { useGameStore } from "@/state/useGame";
 import { Panel } from "@/components/common/Panel";
 import { CreditsIcon } from "@/components/brand/CreditsIcon";
+import { PublishDialog } from "@/components/hub/PublishDialog";
+import {
+  STUDIO_LOAD_EVENT,
+  clearPendingStudioLoad,
+  ensureHubRoyaltyBridge,
+  isStudioLoadDetail,
+  openHubPublish,
+  peekPendingStudioLoad,
+  type StudioLoadDetail,
+} from "@/components/hub/useHub";
 import { formatNum } from "@/game/format";
 import { cn } from "@/lib/utils";
 import { ModelChips } from "./ModelChips";
@@ -16,6 +26,8 @@ import { QueueList } from "./QueueList";
 import {
   CostPreviewProvider,
   FOCUS_RING,
+  MAX_SELECTED_TAGS,
+  patchSelection,
   useComputeCostPreview,
   useMotionOK,
   useStudioSelection,
@@ -48,6 +60,33 @@ export function StudioPanel() {
     [],
   );
 
+  // A ComfyHub recipe handed to the Studio: parked in sessionStorage across the /hub → / route
+  // change (read here, cleared once adopted) or delivered live by `comfy:studio-load`. It tags
+  // the next queued job with `hubWorkflowId` so the author's royalty is recorded when the post
+  // resolves — as long as the form still matches the recipe's model and precision.
+  const [hubJob, setHubJob] = useState<StudioLoadDetail | null>(peekPendingStudioLoad);
+  useEffect(() => {
+    clearPendingStudioLoad();
+    ensureHubRoyaltyBridge();
+    const onLoad = (e: Event) => {
+      const detail = (e as CustomEvent<unknown>).detail;
+      if (!isStudioLoadDetail(detail)) return;
+      patchSelection({
+        modelId: detail.modelId,
+        precision: detail.precision,
+        tags: detail.tags.slice(0, MAX_SELECTED_TAGS),
+        ...(detail.prompt !== undefined ? { prompt: detail.prompt } : {}),
+      });
+      setHubJob(detail);
+    };
+    window.addEventListener(STUDIO_LOAD_EVENT, onLoad);
+    return () => window.removeEventListener(STUDIO_LOAD_EVENT, onLoad);
+  }, []);
+  const hubMatches =
+    hubJob !== null &&
+    hubJob.modelId === modelId &&
+    hubJob.precision === precision;
+
   const disabled = preview.blocker !== null;
   const generate = useCallback(() => {
     if (disabled) {
@@ -57,18 +96,30 @@ export function StudioPanel() {
       });
       return;
     }
-    const result = store.queueJob({ modelId, precision, prompt, tags });
+    const result = store.queueJob({
+      modelId,
+      precision,
+      prompt,
+      tags,
+      ...(hubMatches && hubJob ? { hubWorkflowId: hubJob.hubWorkflowId } : {}),
+    });
     if (result.error) showFlash({ kind: "err", text: result.error });
-    else
+    else {
+      if (hubMatches) setHubJob(null);
       showFlash({
         kind: "ok",
         text:
           preview.queueLen === 0
-            ? "Queued · rendering now"
+            ? hubMatches
+              ? "Queued from ComfyHub · rendering now"
+              : "Queued · rendering now"
             : `Queued · #${preview.queueLen + 1} in line`,
       });
+    }
   }, [
     disabled,
+    hubJob,
+    hubMatches,
     modelId,
     precision,
     preview.blocker,
@@ -78,6 +129,11 @@ export function StudioPanel() {
     store,
     tags,
   ]);
+
+  const publish = useCallback(
+    () => openHubPublish({ modelId, precision, hashtags: tags }),
+    [modelId, precision, tags],
+  );
 
   return (
     <CostPreviewProvider value={preview}>
@@ -96,6 +152,67 @@ export function StudioPanel() {
         <PrecisionToggle />
         <PromptInput />
         <HashtagPicker />
+
+        <AnimatePresence initial={false}>
+          {hubJob ? (
+            <motion.div
+              key={hubJob.hubWorkflowId}
+              role="status"
+              initial={motionOk ? { opacity: 0, y: -4 } : false}
+              animate={{ opacity: 1, y: 0 }}
+              exit={motionOk ? { opacity: 0, y: -4 } : undefined}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className={cn(
+                "flex items-center gap-2 rounded-xl border-2 border-l-4 px-3 py-2 text-xs",
+                hubMatches
+                  ? "border-charcoal-400 border-l-sapphire-700 bg-charcoal-700/60 text-smoke-600"
+                  : "border-slot-vae/40 border-l-slot-vae bg-charcoal-700/60 text-smoke-600",
+              )}
+            >
+              <Workflow
+                size={14}
+                className={cn("shrink-0", hubMatches ? "text-[#7f8dff]" : "text-slot-vae/80")}
+                aria-hidden="true"
+              />
+              <span className="min-w-0 flex-1 truncate">
+                {hubMatches ? (
+                  <>
+                    Next post runs{" "}
+                    <span className="font-semibold text-smoke-100">
+                      {hubJob.name ?? "a ComfyHub workflow"}
+                    </span>
+                    {hubJob.authorHandle ? (
+                      <>
+                        {" "}by{" "}
+                        <span className="font-semibold text-smoke-100">@{hubJob.authorHandle}</span>
+                      </>
+                    ) : null}
+                    {" "}· 5% royalty to the author
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold text-smoke-100">
+                      {hubJob.name ?? "The ComfyHub workflow"}
+                    </span>{" "}
+                    needs its own model and precision — switch back, or drop it.
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setHubJob(null)}
+                aria-label="Drop the ComfyHub workflow"
+                title="Drop the workflow · the next post is just yours"
+                className={cn(
+                  "grid size-6 shrink-0 place-items-center rounded-[0.354em] text-smoke-800 transition-colors hover:bg-charcoal-500 hover:text-smoke-100",
+                  FOCUS_RING,
+                )}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         <div className="flex flex-col gap-2 rounded-xl border-2 border-charcoal-400 bg-charcoal-700/60 p-3">
           <CostLine />
@@ -134,6 +251,22 @@ export function StudioPanel() {
                 <CreditsIcon size={12} aria-hidden="true" />
                 {formatNum(preview.cost)}
               </span>
+            </motion.button>
+            <motion.button
+              type="button"
+              onClick={publish}
+              whileTap={motionOk ? { scale: 0.96, y: 2 } : undefined}
+              transition={{ type: "spring", stiffness: 500, damping: 28 }}
+              title="Publish this model, precision and tags to ComfyHub · every run pays you 5%"
+              aria-label="Publish to ComfyHub"
+              className={cn(
+                "inline-flex h-11 items-center gap-2 rounded-xl border-2 border-charcoal-400 bg-charcoal-600 px-4 text-sm font-bold text-smoke-100 shadow-[0_4px_0_#0e0e0f] transition-colors hover:border-sapphire-700 hover:text-[#7f8dff]",
+                FOCUS_RING,
+              )}
+            >
+              <Upload size={16} aria-hidden="true" />
+              <span className="hidden sm:inline">Publish to ComfyHub</span>
+              <span className="sm:hidden">Publish</span>
             </motion.button>
             <div
               className="min-w-0 flex-1 text-xs"
@@ -194,6 +327,7 @@ export function StudioPanel() {
 
         <QueueList />
       </Panel>
+      <PublishDialog />
     </CostPreviewProvider>
   );
 }
