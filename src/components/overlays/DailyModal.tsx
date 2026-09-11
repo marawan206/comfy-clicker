@@ -1,13 +1,17 @@
 'use client'
 /**
  * Daily login calendar: seven tiles for the current cycle, today's reward preview computed with the
- * daily module, Claim → `store.claimDaily()`. Opens itself once per session when a claim is
- * available (after the offline report is gone) and on `comfy:open-modal` → 'daily'.
+ * daily module, Claim → `store.claimDaily()` for guests. Signed-in players ask POST /api/daily,
+ * which times the day on the server clock, decides the streak and refuses a second claim; the
+ * payout then runs `store.claimDailyFromServer` with the server's day and streak, and a 409
+ * adopts the server's record locally so the header stops asking. Opens itself once per session
+ * when a claim is available (after the offline report is gone) and on `comfy:open-modal` → 'daily'.
  */
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { motion } from 'motion/react'
 import { CalendarDays, Check, Flame, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/components/auth/useAuth'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { fx } from '@/components/fx/fxBus'
 import { ModalBase, ModalButton, useReducedMotionPref } from '@/components/overlays/ModalBase'
@@ -16,6 +20,7 @@ import { useNow } from '@/hooks/useNow'
 import { DAILY_BASE_SECS } from '@/game/constants'
 import { DAILY_CP_DAY, DAILY_CYCLE_DAYS, DAILY_RP_DAY, canClaim, cycleDay, dailyReward, dayKey, effectiveStreak } from '@/game/daily'
 import { formatDuration, formatNum } from '@/game/format'
+import type { ServerDailyClaim } from '@/state/cloudActions'
 import { useGameShallow, useGameStore } from '@/state/useGame'
 
 const DAY_MS = 86_400_000
@@ -56,11 +61,49 @@ export function DailyModal({ open, onClose, onOpen }: DailyModalProps) {
   )
 }
 
+/** Outcome of asking the server before a signed-in claim. */
+type ServerVerdict =
+  | { kind: 'accepted'; claim: ServerDailyClaim }
+  | { kind: 'refused'; message: string; claim: ServerDailyClaim | null }
+  | { kind: 'unreachable' }
+
+function readClaim(json: unknown): ServerDailyClaim | null {
+  if (typeof json !== 'object' || json === null) return null
+  const { day, streak } = json as { day?: unknown; streak?: unknown }
+  return typeof day === 'string' && typeof streak === 'number' && Number.isFinite(streak) ? { day, streak } : null
+}
+
+/**
+ * Asks /api/daily to record today's claim on the server clock. Success carries the server's day
+ * and streak; a 4xx is a refusal (already claimed — with the day it holds — or signed out); a
+ * network failure or 5xx is "unreachable" and the caller decides.
+ */
+async function claimOnServer(): Promise<ServerVerdict> {
+  try {
+    const res = await fetch('/api/daily', { method: 'POST', cache: 'no-store' })
+    if (res.status >= 500) return { kind: 'unreachable' }
+    let json: unknown = null
+    try {
+      json = await res.json()
+    } catch {
+      /* non-JSON body — treated below */
+    }
+    const claim = readClaim(json)
+    if (res.ok) return claim ? { kind: 'accepted', claim } : { kind: 'unreachable' }
+    const error = typeof json === 'object' && json !== null ? (json as { error?: unknown }).error : undefined
+    return { kind: 'refused', message: typeof error === 'string' ? error : 'The server declined this claim.', claim }
+  } catch {
+    return { kind: 'unreachable' }
+  }
+}
+
 function DailyBody({ onClose }: { onClose: () => void }) {
   const store = useGameStore()
   const reduced = useReducedMotionPref()
   const now = useNow(1000)
+  const auth = useAuth()
   const [justClaimed, setJustClaimed] = useState(false)
+  const [claiming, setClaiming] = useState(false)
   const closeTimer = useRef<number | null>(null)
   useEffect(
     () => () => {
@@ -87,16 +130,48 @@ function DailyBody({ onClose }: { onClose: () => void }) {
   const resetInSec = Math.max(0, (Date.parse(`${todayKey}T00:00:00Z`) + DAY_MS - now) / 1000)
   const displayStreak = can ? streakNow : storedStreak
 
-  const claim = (e: MouseEvent<HTMLButtonElement>) => {
-    const r = store.claimDaily()
+  const finishClaim = (x: number, y: number, claim: ServerDailyClaim | null) => {
+    const r = claim ? store.claimDailyFromServer(claim) : store.claimDaily()
     if (r.error) {
       toast(r.error, { tone: 'danger', title: 'Daily' })
       return
     }
-    fx.burst(e.clientX, e.clientY, 22)
+    fx.burst(x, y, 22)
     setJustClaimed(true)
     if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
     closeTimer.current = window.setTimeout(onClose, 1100)
+  }
+
+  const claim = async (e: MouseEvent<HTMLButtonElement>) => {
+    if (claiming) return
+    const { clientX, clientY } = e
+    if (auth.status !== 'signed-in') {
+      finishClaim(clientX, clientY, null)
+      return
+    }
+    // Signed in: the server clock decides the day and the streak. Local state only changes once
+    // it has answered — with a yes, or with the claim it already holds for today.
+    setClaiming(true)
+    const verdict = await claimOnServer()
+    setClaiming(false)
+    if (verdict.kind === 'refused') {
+      if (verdict.claim) store.markDailyClaimed(verdict.claim)
+      toast(verdict.message, { tone: 'danger', title: 'Daily', key: 'daily' })
+      if (verdict.claim) onClose()
+      return
+    }
+    if (verdict.kind === 'unreachable') {
+      // Never block the game on the network: record it locally and say so.
+      toast('Server unreachable — claimed locally', {
+        title: 'Daily',
+        description: 'The cloud calendar did not answer. The streak is kept in this browser for now.',
+        tone: 'electric',
+        key: 'daily',
+      })
+      finishClaim(clientX, clientY, null)
+      return
+    }
+    finishClaim(clientX, clientY, verdict.claim)
   }
 
   return (
@@ -183,9 +258,18 @@ function DailyBody({ onClose }: { onClose: () => void }) {
             <Check size={16} /> Claimed
           </span>
         ) : can ? (
-          <ModalButton tone="primary" size="lg" onClick={claim} data-autofocus aria-label={`Claim day ${todayDay} reward`}>
+          <ModalButton
+            tone="primary"
+            size="lg"
+            onClick={(e) => void claim(e)}
+            disabled={claiming}
+            aria-disabled={claiming ? 'true' : undefined}
+            aria-busy={claiming}
+            data-autofocus
+            aria-label={`Claim day ${todayDay} reward`}
+          >
             <CreditsIcon size={16} />
-            Claim day {todayDay}
+            {claiming ? 'Checking the clock…' : `Claim day ${todayDay}`}
           </ModalButton>
         ) : (
           <ModalButton tone="secondary" size="lg" disabled aria-disabled="true">
