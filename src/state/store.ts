@@ -14,6 +14,7 @@ import { loadSave, serialize, SAVE_CORRUPT_KEY } from '@/game/save'
 import { applyOffline } from '@/game/offline'
 import { startLoop } from '@/game/loop'
 import { AUTOSAVE_MS, SAVE_KEY } from '@/game/constants'
+import * as cloud from '@/state/cloudActions'
 
 export type { ActionResult } from '@/game/actions'
 /** An action bound to a context snapshot; see `GameStore.run`. */
@@ -188,6 +189,11 @@ export class GameStore {
   toggleSetting = (key: keyof GameState['settings'], value?: boolean): ActionResult =>
     this.run((ctx) => actions.toggleSetting(ctx, key, value))
   setFlag = (key: string): ActionResult => this.run((ctx) => actions.setFlag(ctx, key))
+  // Server-driven actions (src/state/cloudActions.ts): the daily calendar on the server clock and ComfyHub bookkeeping.
+  claimDailyFromServer = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.claimDailyFromServer(ctx, claim))
+  markDailyClaimed = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.markDailyClaimed(ctx, claim))
+  recordHubPublish = (): ActionResult => this.run((ctx) => cloud.recordHubPublish(ctx))
+  applyHubRoyalties = (grant: cloud.HubRoyaltyGrant): ActionResult => this.run((ctx) => cloud.applyHubRoyalties(ctx, grant))
   setWeekOverride = (week: number | null): void => {
     this.state.weekOverride = week
     this.recompute()

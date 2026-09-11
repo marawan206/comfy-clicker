@@ -4,6 +4,7 @@ import Link from 'next/link'
 import type { ComponentType } from 'react'
 import { ChartColumn, Flame, Settings, Trophy, UserPlus, Waypoints, Workflow, type LucideProps } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
+import { AccountMenu } from '@/components/auth/AccountMenu'
 import { CreditsCounter } from '@/components/hero/CreditsCounter'
 import { PowerMeter } from '@/components/hero/PowerMeter'
 import { ProjectorToggle } from '@/components/layout/ProjectorToggle'
@@ -218,7 +219,7 @@ function Nav() {
         <span className="hidden xl:inline">Hub</span>
         <span className="sr-only xl:hidden">Hub</span>
       </Link>
-      <Link href="/leaderboard" className={NAV_LINK} title="Leaderboard">
+      <Link href="/leaderboard" className={NAV_LINK} title="Leaderboard — top 100 cloud saves by lifetime credits">
         <Trophy size={14} aria-hidden="true" />
         <span className="hidden xl:inline">Board</span>
         <span className="sr-only xl:hidden">Board</span>
@@ -247,6 +248,8 @@ function Nav() {
         <Settings size={16} aria-hidden="true" />
       </motion.button>
       <ProjectorToggle showLabel={false} className="hidden md:inline-flex" />
+      <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-charcoal-400 sm:block" />
+      <AccountMenu />
     </nav>
   )
 }
