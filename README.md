@@ -46,6 +46,12 @@ logic and everything is unit-tested with Vitest — including a pacing simulator
 Art is generated with the [Comfy Cloud MCP](https://docs.comfy.org/agent-tools/mcp) from prompts in
 `scripts/art-prompts.ts`; the UI ships designed fallbacks so nothing breaks while assets are missing.
 
+## Playing it
+
+- **Guest play** works instantly (localStorage). **Sign in** with email + password to keep the save in the cloud, appear on the leaderboard and collect the daily login bonus (server-timed streaks).
+- **The Graph** (`/map`) is the progression map; **ComfyHub** (`/hub`) is where you publish workflows other players run — you earn royalties and rep, they get a likes boost.
+- Hotkeys: `Space` generate, `S` save, `Esc` close. There are easter eggs. One of them involves a very famous key sequence.
+
 ## Development
 
 ```bash
@@ -57,6 +63,8 @@ pnpm typecheck
 pnpm balance                 # pacing simulation table
 pnpm assets:check            # which generated assets are still missing
 ```
+
+Deployment (Vercel + Supabase) is documented in [docs/DEPLOY.md](docs/DEPLOY.md); the UI contract lives in [docs/UI-SPEC.md](docs/UI-SPEC.md) and the engine contract in [src/game/CONTRACT.md](src/game/CONTRACT.md).
 
 ## Credits
 
