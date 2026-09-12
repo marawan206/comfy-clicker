@@ -13,11 +13,11 @@
 | `CRON_SECRET` | any long random string; used by `/api/feed/refresh` |
 
 3. `pnpm dlx vercel --prod` (or push to `main` with the Git integration).
-4. `vercel.json` already schedules `/api/feed/refresh` every 6 hours; Vercel sends the `Authorization: Bearer $CRON_SECRET` header automatically when `CRON_SECRET` is set.
+4. `vercel.json` schedules `/api/feed/refresh` and `/api/hub/refresh` once a day (Hobby plan limit); Vercel sends the `Authorization: Bearer $CRON_SECRET` header automatically when `CRON_SECRET` is set. The feed also refreshes lazily whenever a page view finds it older than 15 minutes.
 
 ## 2. Supabase
 
-- Schema: `supabase/migrations/0001_init.sql` (applied). Apply `0002_feed_cron.sql` after replacing `__DEPLOY_URL__` and `__CRON_SECRET__` — it makes Postgres call the refresh route every 15 minutes with `pg_cron` + `pg_net`.
+- Schema: `supabase/migrations/0001_init.sql` and `0003_hub_integrity.sql` (both applied; 0003 makes hub runs and daily claims server-only and adds the royalty ledger). Apply `0002_feed_cron.sql` after replacing `__DEPLOY_URL__` and `__CRON_SECRET__` — it makes Postgres call the refresh route every 15 minutes with `pg_cron` + `pg_net`.
 - Auth → Providers → Email: enable email + password. For a frictionless demo, turn **Confirm email** off (otherwise new accounts must click the confirmation link before cloud saves sync).
 - Auth → URL configuration: set Site URL to the Vercel URL and add `https://<vercel-url>/auth/callback` to redirect URLs.
 
