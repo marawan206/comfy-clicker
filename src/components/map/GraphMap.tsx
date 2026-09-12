@@ -346,7 +346,7 @@ function GraphMapInner({ className }: { className?: string }) {
             onPaneClick={onPaneClick}
             onNodeClick={onNodeClick}
             nodeOrigin={[0, 0]}
-            aria-label="The Graph — skill tree canvas"
+            aria-label="The Graph: skill tree canvas"
           >
             {/* Litegraph grid: 24 px dots with every fifth one brighter. */}
             <Background id="cc-dots" variant={BackgroundVariant.Dots} gap={24} size={1.2} color={DOT_MINOR} bgColor="#171718" />
@@ -473,7 +473,7 @@ function Legend({ onPick }: { onPick: (branch: MapBranch) => void }) {
             <button
               type="button"
               onClick={() => onPick(branch)}
-              title={`${meta.label} — ${c.owned} of ${c.total} unlocked. ${meta.blurb}`}
+              title={`${meta.label}: ${c.owned} of ${c.total} unlocked. ${meta.blurb}`}
               className={cn(
                 'inline-flex h-7 items-center gap-1.5 rounded-comfy border bg-charcoal-600/90 px-2 text-[10px] font-semibold uppercase tracking-[0.06em] backdrop-blur-sm transition-colors hover:bg-charcoal-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400',
                 done ? 'border-electric-400/50 text-smoke-100' : 'border-charcoal-400 text-smoke-600 hover:text-smoke-100',

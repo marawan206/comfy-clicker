@@ -103,8 +103,8 @@ export function FeedPanel() {
                 className="mt-0.5 shrink-0 text-electric-400"
                 aria-hidden="true"
               />
-              Nothing posted yet. Queue a prompt in the Studio and it lands here
-              — likes, payout and the occasional flop included.
+              Nothing posted yet. Queue a prompt in the Studio and it lands here,
+              likes, payout and the occasional flop included.
             </p>
           ) : null}
           <ul className="flex flex-col gap-3" aria-label="Feed">

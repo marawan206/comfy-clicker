@@ -222,7 +222,7 @@ describe('trendMult', () => {
     expect(trendMult([], trending, -4, 'image', FIX)).toBe(1)
   })
 
-  it('scores against whatever catalog it is given — the shipped one included', () => {
+  it('scores against whatever catalog it is given, the shipped one included', () => {
     const t = ['videogen', 'cats', 'space']
     expect(trendMult(['cats'], t, 0, 'video', CATALOG)).toBeCloseTo(2.2, 10)
     expect(trendMult(['cats'], t, 0, 'image', CATALOG)).toBeCloseTo(2.0, 10)

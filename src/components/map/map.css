@@ -1,5 +1,5 @@
 /*
- * The Graph — React Flow restyled as a ComfyUI/litegraph canvas.
+ * The Graph: React Flow restyled as a ComfyUI/litegraph canvas.
  * Loaded after `@xyflow/react/dist/style.css`; everything is scoped under `.cc-map` so it wins on
  * specificity alone. Colours are the brand tokens from globals.css, spelled out because this file
  * is not run through Tailwind: charcoal 800 #171718 · 700 #202121 · 600 #262729 · 500 #2d2e32 ·

@@ -1,6 +1,6 @@
 /**
  * Shared helpers for the feed fetchers: a guarded `fetch`, HTML-entity decoding and tiny
- * regex-based HTML/XML extraction. Deliberately parser-free — the payloads are small and the
+ * regex-based HTML/XML extraction. Deliberately parser-free; the payloads are small and the
  * shapes are stable, so a full DOM/XML dependency is not worth it.
  */
 
@@ -133,7 +133,7 @@ const NAMED_ENTITIES: Record<string, string> = {
   apos: "'",
   nbsp: '\u00a0',
   ndash: '–',
-  mdash: '—',
+  mdash: '\u2014',
   hellip: '…',
   lsquo: '‘',
   rsquo: '’',
@@ -210,7 +210,7 @@ export function clampText(s: string, max: number): string {
   if (s.length <= max) return s
   const cut = s.slice(0, max)
   const lastSpace = cut.lastIndexOf(' ')
-  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:.—-]+$/, '') + '…'
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:.\u2014-]+$/, '') + '…'
 }
 
 /** `"1,234"` → 1234; null when not a number. */

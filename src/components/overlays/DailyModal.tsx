@@ -75,7 +75,7 @@ function readClaim(json: unknown): ServerDailyClaim | null {
 
 /**
  * Asks /api/daily to record today's claim on the server clock. Success carries the server's day
- * and streak; a 4xx is a refusal (already claimed — with the day it holds — or signed out); a
+ * and streak; a 4xx is a refusal (already claimed, with the day it holds, or signed out); a
  * network failure or 5xx is "unreachable" and the caller decides.
  */
 async function claimOnServer(): Promise<ServerVerdict> {
@@ -86,7 +86,7 @@ async function claimOnServer(): Promise<ServerVerdict> {
     try {
       json = await res.json()
     } catch {
-      /* non-JSON body — treated below */
+      /* non-JSON body, treated below */
     }
     const claim = readClaim(json)
     if (res.ok) return claim ? { kind: 'accepted', claim } : { kind: 'unreachable' }
@@ -150,7 +150,7 @@ function DailyBody({ onClose }: { onClose: () => void }) {
       return
     }
     // Signed in: the server clock decides the day and the streak. Local state only changes once
-    // it has answered — with a yes, or with the claim it already holds for today.
+    // it has answered, with a yes, or with the claim it already holds for today.
     setClaiming(true)
     const verdict = await claimOnServer()
     setClaiming(false)
@@ -162,7 +162,7 @@ function DailyBody({ onClose }: { onClose: () => void }) {
     }
     if (verdict.kind === 'unreachable') {
       // Never block the game on the network: record it locally and say so.
-      toast('Server unreachable — claimed locally', {
+      toast('Server unreachable, claimed locally', {
         title: 'Daily',
         description: 'The cloud calendar did not answer. The streak is kept in this browser for now.',
         tone: 'electric',
@@ -184,7 +184,7 @@ function DailyBody({ onClose }: { onClose: () => void }) {
           </p>
           <p className="text-xs text-smoke-600">
             {lapsed
-              ? 'Streak lapsed. Back to day 1 — the GPUs forgive, the calendar does not.'
+              ? 'Streak lapsed. Back to day 1. The GPUs forgive, the calendar does not.'
               : grace
                 ? 'Streak grace active: one missed day is forgiven.'
                 : `Claim every UTC day to keep it going. Day ${DAILY_RP_DAY} adds RP, day ${DAILY_CP_DAY} adds CP.`}

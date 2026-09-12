@@ -1,5 +1,5 @@
 /**
- * Service-role Supabase client. SERVER ONLY — bypasses RLS.
+ * Service-role Supabase client. SERVER ONLY. Bypasses RLS.
  *
  * Use it for the feed pipeline (feed_items / trending_tags / feed_meta writes),
  * `refresh_hub_runs_24h()`, and hub counters. Never import from a client component;

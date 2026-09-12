@@ -74,7 +74,7 @@ export interface FeedVocabEntry {
   /** Without `#`; defaults to `id`. */
   tag?: string
   keywords: string[]
-  /** Type tag (image/video/3d/audio) — trending must always contain at least one non-type tag. */
+  /** Type tag (image/video/3d/audio); trending must always contain at least one non-type tag. */
   kind?: string
   family?: string
 }

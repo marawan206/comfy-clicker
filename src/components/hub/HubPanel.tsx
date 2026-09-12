@@ -181,7 +181,7 @@ export function HubPanel() {
           <Empty
             icon={<Workflow size={22} aria-hidden="true" />}
             title={hub.tag ? 'Nothing published under that hashtag yet' : 'Nobody has published yet'}
-            body="Publish your Studio recipe and be the workflow everyone downloads and never credits — except here, where they must."
+            body="Publish your Studio recipe and be the workflow everyone downloads and never credits, except here, where they must."
             action={
               <button type="button" onClick={() => openHubPublish()} className={cn('text-xs font-semibold text-electric-400 hover:underline', FOCUS_RING)}>
                 Publish the first one

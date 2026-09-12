@@ -131,7 +131,7 @@ export async function fetchLinkedInPost(target: LinkedInTarget): Promise<FeedIte
   return item
 }
 
-/** Activity ids visible on a public profile page, newest first. Empty on any failure — discovery is optional. */
+/** Activity ids visible on a public profile page, newest first. Empty on any failure; discovery is optional. */
 export async function discoverLinkedInActivityIds(slug: string): Promise<string[]> {
   try {
     const html = await fetchText(`https://www.linkedin.com/in/${slug}`, { headers: BROWSER_HEADERS })

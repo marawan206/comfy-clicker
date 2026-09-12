@@ -5,7 +5,7 @@
  * multiplier forever (derived.ts). Achievements, the whole map, RP, CP, LoRAs, hub rep, the daily
  * streak and flags survive. Prestige map nodes with `startHardware` seed the new season's rack.
  *
- * Followers reset with the account — it is a rebrand, and "Legacy Audience" on the prestige lane
+ * Followers reset with the account. It is a rebrand, and "Legacy Audience" on the prestige lane
  * exists precisely because they normally do not remember you. Lifetime stats are untouched.
  */
 import type { Catalog } from '@/data'
@@ -27,7 +27,7 @@ export function canRebrand(state: GameState, catalog: Catalog): boolean {
   return false
 }
 
-/** CP for a season: floor((credits / 1e8) ^ 0.45) — 1e8 → 1, 1e10 → 7, 1e12 → 63. */
+/** CP for a season: floor((credits / 1e8) ^ 0.45): 1e8 → 1, 1e10 → 7, 1e12 → 63. */
 export function rebrandCp(seasonCredits: number): number {
   if (!(seasonCredits > 0)) return 0
   return Math.floor((seasonCredits / REBRAND_CP_DIVISOR) ** REBRAND_CP_EXP)

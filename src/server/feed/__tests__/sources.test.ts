@@ -189,7 +189,7 @@ describe('blog', () => {
       likes: null,
       verified: true,
     })
-    expect(items[0].text.startsWith('Forward Deployed Creatives — Comfy experts embedded with your team')).toBe(true)
+    expect(items[0].text.startsWith('Forward Deployed Creatives: Comfy experts embedded with your team')).toBe(true)
     expect(items[0].mediaUrl).toMatch(/^https:\/\/substackcdn\.com\//)
   })
 })
@@ -234,7 +234,7 @@ describe('registry', () => {
       stats: { downloads: 1621927, stars: 1744 },
     })
     expect(item.url).toMatch(/^https:\/\//)
-    expect(item.text.startsWith('ComfyUI-Florence2 — Nodes to use Florence2 VLM')).toBe(true)
+    expect(item.text.startsWith('ComfyUI-Florence2: Nodes to use Florence2 VLM')).toBe(true)
   })
   it('dedupes across pages', () => {
     const nodes = parseRegistryPage(fixtureJson('registry.json'))

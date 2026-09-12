@@ -32,12 +32,12 @@ const RESETS: string[] = [
   'Rigs, tier upgrades and credit-bought upgrades',
   'Models (SD 1.5 stays preinstalled)',
   'Queue, feed, contracts and live events',
-  'Followers — a new brand, a new audience',
+  'Followers: a new brand, a new audience',
 ]
 
 const KEEPS: string[] = [
   'Achievements and their income bonus',
-  'The Graph — every unlocked node',
+  'The Graph: every unlocked node',
   'Research Points and Comfy Points',
   'LoRAs, ComfyHub reputation, daily streak',
   'Lifetime stats, followers and likes',
@@ -143,7 +143,7 @@ function RebrandBody({ onClose }: { onClose: () => void }) {
             cp === 0 ? (
               <span>
                 You would bank <span className="font-semibold text-smoke-100">0 CP</span>. Reach{' '}
-                <span className="font-semibold text-credits">{formatNum(creditsForCp(1))}</span> season credits first — or do it for the story.
+                <span className="font-semibold text-credits">{formatNum(creditsForCp(1))}</span> season credits first, or do it for the story.
               </span>
             ) : (
               <span>Hold to start Season {season + 1}. The rack goes back to one CPU and a lot of optimism.</span>

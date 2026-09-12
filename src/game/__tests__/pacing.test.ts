@@ -13,7 +13,7 @@ const cloudNodeIds = HARDWARE.filter((h) => h.family === 'cloud-node').map((h) =
 const firstOf = (r: { firsts: Record<string, number> }, ids: string[]): number =>
   Math.min(...ids.map((id) => r.firsts[id] ?? Infinity))
 
-describe('pacing — climb (save for the best reachable unit, 3 clicks/s tapering off)', () => {
+describe('pacing: climb (save for the best reachable unit, 3 clicks/s tapering off)', () => {
   it('reaches the used RTX 3060 within 3 minutes', () => {
     expect(climb.firsts['rtx-3060']).toBeLessThan(3 * MIN)
   })
@@ -53,7 +53,7 @@ describe('pacing — climb (save for the best reachable unit, 3 clicks/s taperin
   })
 })
 
-describe('pacing — climb upper bounds (something has to be slow)', () => {
+describe('pacing: climb upper bounds (something has to be slow)', () => {
   const longClimb = simulate('climb', 3 * 60 * MIN)
 
   it('does not own a Comfy Cloud region inside three hours of continuous play', () => {
@@ -86,7 +86,7 @@ describe('pacing — climb upper bounds (something has to be slow)', () => {
   })
 })
 
-describe('pacing — naive (spend everything on the best affordable payback)', () => {
+describe('pacing: naive (spend everything on the best affordable payback)', () => {
   // Naive spending trips the breaker with cheap boxes, so the proportional throttle costs it a few minutes.
   const naiveLong = simulate('naive', 60 * MIN)
 

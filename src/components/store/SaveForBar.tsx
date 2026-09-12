@@ -14,7 +14,7 @@ interface Props {
   onSelectFamily?: (family: HardwareFamily) => void
 }
 
-/** "Next: RTX 4090 in 0:48" — the cheapest unit you can't afford yet, with a progress bar toward it. */
+/** "Next: RTX 4090 in 0:48": the cheapest unit you can't afford yet, with a progress bar toward it. */
 export function SaveForBar({ onSelectFamily }: Props) {
   const store = useGameStore()
   const target = useSaveTarget()

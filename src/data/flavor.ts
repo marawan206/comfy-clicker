@@ -1,5 +1,5 @@
 /**
- * Flavor text pools. Pure data — the UI picks from these with `pick(rng, arr)`
+ * Flavor text pools. Pure data. The UI picks from these with `pick(rng, arr)`
  * or a rotating index. Keep lines short enough for a single ticker/toast row.
  */
 
@@ -117,7 +117,7 @@ export const FLOP_LINES: string[] = [
   'Reposted by no one. Not even the account that reposts everything.',
   'Face detailer made the face worse. Impressively.',
   'It was a video of a static image.',
-  '"Nice" — one like, from you, by accident.',
+  '"Nice". One like, from you, by accident.',
   'Ratio: 1 like, 4 comments about the hands.',
   'The frame interpolation interpolated the wrong frames.',
   'Aspect ratio: wrong for every platform simultaneously.',

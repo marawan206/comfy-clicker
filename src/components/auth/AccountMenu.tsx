@@ -2,8 +2,8 @@
 /**
  * Header account menu (after Kokonut's profile-dropdown, on the game's chrome): an avatar tile
  * with the handle or "Guest", a cloud-sync status dot, and a dropdown with Save to cloud now /
- * Leaderboard / Sign in / Sign out. It also mounts the AuthSheet and CloudMergeModal — the
- * header is on every route, so they are always reachable — and boots cloud sync once.
+ * Leaderboard / Sign in / Sign out. It also mounts the AuthSheet and CloudMergeModal (the
+ * header is on every route, so they are always reachable) and boots cloud sync once.
  */
 import Link from 'next/link'
 import { useEffect, useState, type ReactNode } from 'react'

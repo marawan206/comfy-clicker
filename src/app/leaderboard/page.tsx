@@ -1,6 +1,6 @@
 'use client'
 /**
- * /leaderboard — the global board inside the game chrome. The store keeps ticking (root
+ * /leaderboard: the global board inside the game chrome. The store keeps ticking (root
  * GameProvider), so the header counter still climbs while you compare rigs. Data comes from
  * GET /api/leaderboard, refreshed every minute and on tab focus. The shared Header and Overlays
  * are mounted so the account menu, daily calendar and toasts behave exactly as on the game page.

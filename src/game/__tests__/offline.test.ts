@@ -267,7 +267,7 @@ describe('applyOffline', () => {
     state.queue = [job('j1', { startedAt: T0 - 5000, endsAt: T0 + 5000 }), job('j2'), job('j3')]
     const r = applyOffline(state, derived, withContracts, T0 + 3600_000)
     expect(state.contracts.active[0]!.progress).toBe(3)
-    // Three more posts would finish it — and the completion is announced in the same batch.
+    // Three more posts would finish it, and the completion is announced in the same batch.
     state.queue = [job('j4'), job('j5')]
     const r2 = applyOffline(state, derived, withContracts, T0 + 7200_000)
     expect(state.contracts.active[0]!.done).toBe(true)

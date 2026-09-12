@@ -1,7 +1,7 @@
 /**
  * Auth callback. Email confirmation and magic links land here with either a PKCE `code`
  * (exchanged for a session written to the cookies) or a `token_hash` + `type` pair (verified
- * directly). Then it bounces to `next` — same-origin paths only — with `?auth=` on the query
+ * directly). Then it bounces to `next` (same-origin paths only) with `?auth=` on the query
  * string so the client can toast the outcome.
  */
 import { NextResponse, type NextRequest } from 'next/server'

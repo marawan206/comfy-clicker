@@ -1,5 +1,5 @@
 -- =============================================================================
--- Comfy Clicker — ComfyHub integrity + royalty ledger
+-- Comfy Clicker: ComfyHub integrity + royalty ledger
 -- =============================================================================
 -- Closes the review findings on hub runs:
 --   * hub_runs are written by the server only (service role via /api/hub/run, which clamps
@@ -88,7 +88,7 @@ end;
 $$;
 
 -- -----------------------------------------------------------------------------
--- claim_hub_royalties(author) — collect every unclaimed run of the author's workflows.
+-- claim_hub_royalties(author): collect every unclaimed run of the author's workflows.
 -- Service role only (called by /api/hub/royalties for the cookie-authenticated user).
 -- Self-runs never count: they carry no royalty, no rep, and are excluded from `runs`.
 -- -----------------------------------------------------------------------------

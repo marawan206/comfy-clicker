@@ -132,7 +132,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * from `now`'s year. Uses the viewer's local time zone.
  */
 export function formatCompactDate(ts: number, now: number = Date.now()): string {
-  if (!Number.isFinite(ts)) return '—'
+  if (!Number.isFinite(ts)) return '–'
   const d = new Date(ts)
   const month = MONTHS[d.getMonth()] ?? '???'
   const day = d.getDate()

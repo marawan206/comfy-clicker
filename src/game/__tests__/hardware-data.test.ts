@@ -107,7 +107,7 @@ function collectRefs(cond: UnlockCond | undefined, out: { hardware: string[]; no
   }
 }
 
-describe('hardware ladder — shape', () => {
+describe('hardware ladder: shape', () => {
   it('has unique kebab-case ids in the specified order', () => {
     const ids = HARDWARE.map((h) => h.id)
     expect(new Set(ids).size).toBe(ids.length)
@@ -138,7 +138,7 @@ describe('hardware ladder — shape', () => {
   })
 })
 
-describe('hardware ladder — payback design', () => {
+describe('hardware ladder: payback design', () => {
   it('paybackForRank: 125 − 4.5·rank to the knee, then a geometric stretch toward 40 s up to the peak', () => {
     expect(paybackForRank(0)).toBe(125)
     expect(paybackForRank(1)).toBe(120.5)
@@ -198,7 +198,7 @@ describe('hardware ladder — payback design', () => {
         // Each climbing rung is a visible improvement, not float dust.
         expect(prev - cur, label).toBeGreaterThan(0.25)
       } else {
-        // Every tail rung is a bigger, less efficient purchase — by a clear margin.
+        // Every tail rung is a bigger, less efficient purchase, by a clear margin.
         expect(cur / prev, label).toBeGreaterThan(1.1)
       }
     }
@@ -255,7 +255,7 @@ describe('hardware ladder — payback design', () => {
   })
 })
 
-describe('hardware ladder — unlocks, power, tiers', () => {
+describe('hardware ladder: unlocks, power, tiers', () => {
   it('every unlock references an existing hardware id or a known map node', () => {
     for (const h of HARDWARE) {
       const refs = { hardware: [], nodes: [], other: [] } as { hardware: string[]; nodes: string[]; other: string[] }

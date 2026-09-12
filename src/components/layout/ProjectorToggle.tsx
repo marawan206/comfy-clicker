@@ -12,7 +12,7 @@ interface ProjectorToggleProps {
 
 /**
  * Flips `settings.projector`. The shell mirrors the flag as `html.projector`, which bumps the
- * root font size so every rem-based Tailwind size grows together — built for the back row.
+ * root font size so every rem-based Tailwind size grows together, built for the back row.
  */
 export function ProjectorToggle({ showLabel = true, className }: ProjectorToggleProps) {
   const store = useGameStore()
@@ -23,7 +23,7 @@ export function ProjectorToggle({ showLabel = true, className }: ProjectorToggle
       type="button"
       onClick={() => store.toggleSetting('projector')}
       aria-pressed={on}
-      aria-label={on ? 'Projector mode on — switch back to normal size' : 'Projector mode — bigger type for the back row'}
+      aria-label={on ? 'Projector mode on. Switch back to normal size' : 'Projector mode: bigger type for the back row'}
       title={on ? 'Projector mode: on' : 'Projector mode: bigger type for the back row'}
       whileTap={reduced ? undefined : { scale: 0.94 }}
       transition={{ type: 'spring', stiffness: 500, damping: 30 }}

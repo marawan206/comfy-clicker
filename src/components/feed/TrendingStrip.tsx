@@ -78,7 +78,7 @@ export function TrendingStrip() {
               <button
                 type="button"
                 onClick={() => pickHashtag(c.id)}
-                title={i === 0 ? `Hottest tag — match it in a prompt for ×${1 + TRENDING_WEIGHTS[0]} reach` : 'Match it in a prompt for extra reach'}
+                title={i === 0 ? `Hottest tag. Match it in a prompt for ×${1 + TRENDING_WEIGHTS[0]} reach` : 'Match it in a prompt for extra reach'}
                 aria-label={`Use ${c.label} in the Studio`}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-[0.354em] border px-2 py-0.5 text-[12px] font-bold tabular-nums transition-transform hover:-translate-y-px active:translate-y-px',

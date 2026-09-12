@@ -156,7 +156,7 @@ interface Glyph {
 const settle = (text: string): Glyph[] => text.split('').map((char) => ({ char: char === ' ' ? '\u00a0' : char, state: 'done' }))
 
 /**
- * Letters flicker through binary in Matrix green, left to right, before settling on the line —
+ * Letters flicker through binary in Matrix green, left to right, before settling on the line,
  * Kokonut's MatrixText effect rebuilt on inline spans so it can sit inside a toast paragraph.
  * One interval for the whole line; it stops once every letter has landed.
  */

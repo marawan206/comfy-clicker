@@ -12,7 +12,7 @@ royalty routes and the daily route's writes) moves `hub_runs` / `daily_logins` w
 the service role, adds the royalty ledger and `claim_hub_royalties()`. `0002_feed_cron.sql`
 is optional (pg_cron for the feed) and needs its placeholders replaced. Apply in order.
 
-### Option A — Supabase MCP (recommended from Claude Code)
+### Option A: Supabase MCP (recommended from Claude Code)
 
 With the Supabase MCP server connected to the project:
 
@@ -23,10 +23,10 @@ apply_migration({ name: "0001_init", query: <contents of supabase/migrations/000
 `apply_migration` runs the SQL as the `postgres` role in one transaction and records it in
 `supabase_migrations.schema_migrations`, so re-running it is refused rather than duplicated.
 
-### Option B — psql
+### Option B: psql
 
 Grab the direct connection string from **Project Settings → Database** (use the session
-pooler or direct URL, not the transaction pooler — the migration creates functions and
+pooler or direct URL, not the transaction pooler. The migration creates functions and
 triggers):
 
 ```sh
@@ -35,7 +35,7 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -1 -f supabase/migrations/0001_init.s
 
 `-1` wraps the file in a single transaction; `ON_ERROR_STOP` aborts on the first error.
 
-### Option C — Supabase CLI
+### Option C: Supabase CLI
 
 ```sh
 supabase link --project-ref <ref>
@@ -45,7 +45,7 @@ supabase db push        # applies supabase/migrations/*.sql in order
 ## 2. Auth settings (Dashboard → Authentication)
 
 - **Email provider: ON** with **email + password** (the app ships a sign-in / create-account
-  sheet; guests never need an account — the local save keeps working without one).
+  sheet; guests never need an account: the local save keeps working without one).
 - **Confirm email** may stay on: sign-up then shows "check your inbox" and the confirmation
   link lands on `/auth/callback`, which exchanges the code and bounces back signed in.
 - **Redirect URLs**: add `<site>/auth/callback` and `http://localhost:3000/auth/callback`
@@ -88,9 +88,9 @@ with the admin client on its own cron.
 | `saves` | owner only | owner |
 | `daily_logins` | owner only | service role only (`/api/daily`, since 0003) |
 | `hub_workflows` | everyone | author (insert/update/delete); run counters, `rep` and `royalties_total` are server-owned |
-| `hub_runs` | everyone | service role only (`/api/hub/run` clamps `credits_paid` to the job cost and rate-limits; trigger bumps the workflow's counters) — since 0003 |
+| `hub_runs` | everyone | service role only (`/api/hub/run` clamps `credits_paid` to the job cost and rate-limits; trigger bumps the workflow's counters), since 0003 |
 | `feed_items`, `trending_tags`, `feed_meta` | everyone | service role only |
-| `leaderboard` (view) | everyone | — (top 100 by `lifetime_credits`; never exposes `state`) |
+| `leaderboard` (view) | everyone | none (top 100 by `lifetime_credits`; never exposes `state`) |
 
 ## 6. Verifying
 

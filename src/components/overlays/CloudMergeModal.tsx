@@ -129,7 +129,7 @@ function SaveCard({ summary, selected, suggested, onSelect }: { summary: SaveSum
         <Stat label="Followers" value={formatNum(summary.followers)} />
         <Stat label="Season" value={`S${summary.season}`} />
         <Stat label="Played" value={formatDuration(summary.playedSec)} />
-        <Stat label="Last write" value={summary.savedAt > 0 ? formatCompactDate(summary.savedAt) : '—'} className="col-span-2" />
+        <Stat label="Last write" value={summary.savedAt > 0 ? formatCompactDate(summary.savedAt) : 'never'} className="col-span-2" />
       </dl>
     </button>
   )

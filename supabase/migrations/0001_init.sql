@@ -1,5 +1,5 @@
 -- =============================================================================
--- Comfy Clicker — initial schema
+-- Comfy Clicker: initial schema
 -- =============================================================================
 -- Apply with the Supabase MCP `apply_migration` tool or psql (see supabase/config.md).
 -- Conventions:
@@ -11,7 +11,7 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- profiles — one row per auth user, auto-created by trigger (handle = comfy-xxxxxx)
+-- profiles: one row per auth user, auto-created by trigger (handle = comfy-xxxxxx)
 -- -----------------------------------------------------------------------------
 create table if not exists public.profiles (
   id          uuid primary key references auth.users (id) on delete cascade,
@@ -25,7 +25,7 @@ comment on table public.profiles is 'Public player profile. Readable by everyone
 comment on column public.profiles.avatar_seed is 'Deterministic seed for the generated avatar (derived from the user id at signup).';
 
 -- -----------------------------------------------------------------------------
--- saves — one cloud save per user. `state` is the opaque serialized GameState;
+-- saves: one cloud save per user. `state` is the opaque serialized GameState;
 -- the numeric columns are denormalised for the leaderboard view.
 -- -----------------------------------------------------------------------------
 create table if not exists public.saves (
@@ -44,7 +44,7 @@ create index if not exists saves_lifetime_credits_idx on public.saves (lifetime_
 comment on table public.saves is 'Cloud save per user. Owner only; the leaderboard view exposes the summary columns.';
 
 -- -----------------------------------------------------------------------------
--- daily_logins — one row per (user, UTC day) claim; streak snapshot at claim time
+-- daily_logins: one row per (user, UTC day) claim; streak snapshot at claim time
 -- -----------------------------------------------------------------------------
 create table if not exists public.daily_logins (
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -54,7 +54,7 @@ create table if not exists public.daily_logins (
 );
 
 -- -----------------------------------------------------------------------------
--- hub_workflows — ComfyHub: shareable workflows other players can run
+-- hub_workflows: ComfyHub: shareable workflows other players can run
 -- -----------------------------------------------------------------------------
 create table if not exists public.hub_workflows (
   id         uuid primary key default gen_random_uuid(),
@@ -80,7 +80,7 @@ comment on column public.hub_workflows.runs_24h is 'Rolling 24h run count. Bumpe
 comment on column public.hub_workflows.rep is 'Reputation score, maintained by the server (service role).';
 
 -- -----------------------------------------------------------------------------
--- hub_runs — a player ran someone else's workflow; author earns a royalty
+-- hub_runs: a player ran someone else's workflow; author earns a royalty
 -- -----------------------------------------------------------------------------
 create table if not exists public.hub_runs (
   id           uuid primary key default gen_random_uuid(),
@@ -96,7 +96,7 @@ create index if not exists hub_runs_runner_idx           on public.hub_runs (run
 create index if not exists hub_runs_created_at_idx       on public.hub_runs (created_at desc);
 
 -- -----------------------------------------------------------------------------
--- feed_items / trending_tags / feed_meta — server-fetched social feed cache.
+-- feed_items / trending_tags / feed_meta: server-fetched social feed cache.
 -- Written only by the feed pipeline (service role); readable by everyone.
 -- -----------------------------------------------------------------------------
 create table if not exists public.feed_items (
@@ -273,7 +273,7 @@ grant all on public.profiles, public.saves, public.daily_logins, public.hub_work
 grant usage, select on sequence public.trending_tags_id_seq to service_role;
 
 -- =============================================================================
--- Leaderboard view — top 100 by lifetime credits.
+-- Leaderboard view: top 100 by lifetime credits.
 -- Deliberately NOT security_invoker: it runs as the view owner so every visitor
 -- can read the summary columns even though `saves` itself is owner-only.
 -- The private `state` blob is never exposed.
@@ -391,7 +391,7 @@ create or replace trigger hub_runs_after_insert
   after insert on public.hub_runs
   for each row execute function public.hub_runs_after_insert();
 
--- refresh_hub_runs_24h() — recompute the rolling 24h window from hub_runs.
+-- refresh_hub_runs_24h(): recompute the rolling 24h window from hub_runs.
 -- Service role only (cron). Returns the number of workflow rows that changed.
 create or replace function public.refresh_hub_runs_24h()
 returns integer

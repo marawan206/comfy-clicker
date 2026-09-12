@@ -8,9 +8,9 @@
  *   creditsPerLike = credits / targetLikes
  *
  * where `paid` is the job cost before the API surcharge (`job.cost / API_COST_MULT` for API
- * models — the surcharge is a fee, not a bigger bet). Credits depend on the roll and the
+ * models, the surcharge is a fee, not a bigger bet). Credits depend on the roll and the
  * precision only: reach (trend, audience, likesMult, tag bonuses, events, founder) moves likes,
- * and likes move followers, signups and contracts — never the payout. A native post therefore
+ * and likes move followers, signups and contracts, never the payout. A native post therefore
  * returns E[M] ≈ 1.23 × payoutRatio of its cost whatever the player has unlocked, and the Studio
  * stays a side income next to the rack instead of replacing it.
  */
@@ -49,7 +49,7 @@ export function mentionsFounder(prompt: string): boolean {
 /**
  * Thumbnail keyword for a post (`Post.thumb`): the first prompt word that is one of the model's
  * `thumbTags`, else a stable pick from the pool by prompt hash. This is a *keyword*, not an asset
- * id — the UI resolves it with the asset manifest:
+ * id. The UI resolves it with the asset manifest:
  * `assetManifest.pickThumb(thumbFamilyFor(post.modelId, post.kind), post.prompt, hashString(post.prompt))`.
  */
 export function pickThumbTag(model: ModelDef, prompt: string): string {

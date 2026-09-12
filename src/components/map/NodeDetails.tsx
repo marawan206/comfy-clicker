@@ -148,7 +148,7 @@ export function NodeDetails({ def, layout, sets, onClose, onSelect }: NodeDetail
               ) : (
                 <p className="text-xs text-smoke-600">
                   {isMarker(def.id)
-                    ? 'No stat line. This node switches something on elsewhere — the description says where.'
+                    ? 'No stat line. This node switches something on elsewhere. The description says where.'
                     : cost === 0
                       ? 'Nothing yet. It is the root; the rest of the graph hangs off it.'
                       : 'Story node. Bragging rights only.'}

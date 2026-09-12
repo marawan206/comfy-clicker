@@ -3,7 +3,7 @@ import { publishWorkflow } from '@/server/hub'
 
 export const dynamic = 'force-dynamic'
 
-/** `POST /api/hub/publish` — publish a workflow as the signed-in player. */
+/** `POST /api/hub/publish`: publish a workflow as the signed-in player. */
 export async function POST(req: NextRequest) {
   let body: unknown
   try {

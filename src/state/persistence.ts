@@ -56,7 +56,7 @@ export const CLOUD_MERGE_EVENT = 'comfy:cloud-merge'
 export const CLOUD_SYNC_MS = 60_000
 /** localStorage receipt of the last row this device wrote: `{ userId, savedAt }`. */
 const RECEIPT_KEY = 'comfy-clicker:cloud'
-/** Postgres unique_violation — an insert raced another device's first upload. */
+/** Postgres unique_violation: an insert raced another device's first upload. */
 const UNIQUE_VIOLATION = '23505'
 
 type CloudClient = SupabaseClient<Database>
@@ -516,6 +516,6 @@ function writeReceipt(r: Receipt): void {
   try {
     window.localStorage.setItem(RECEIPT_KEY, JSON.stringify(r))
   } catch {
-    /* storage unavailable — the next login asks instead of assuming */
+    /* storage unavailable, the next login asks instead of assuming */
   }
 }

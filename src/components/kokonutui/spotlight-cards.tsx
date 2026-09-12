@@ -147,7 +147,7 @@ function Card({ item, dimmed, onHoverStart, onHoverEnd }: CardProps) {
       }}
       transition={{ duration: 0.18, ease: "easeOut" }}
     >
-      {/* Static accent tint — always visible */}
+      {/* Static accent tint, always visible */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 rounded-2xl"
@@ -232,7 +232,7 @@ export default function SpotlightCards({
         className
       )}
     >
-      {/* Dot grid — light mode only */}
+      {/* Dot grid, light mode only */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 dark:hidden"

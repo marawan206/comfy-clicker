@@ -146,7 +146,7 @@ function hydrate(): void {
     const raw = window.localStorage.getItem(STUDIO_STORAGE_KEY)
     if (raw) selection = sanitize(JSON.parse(raw))
   } catch {
-    /* unreadable save of the studio form — start from defaults */
+    /* unreadable save of the studio form, start from defaults */
   }
 }
 
@@ -154,7 +154,7 @@ function persist(): void {
   try {
     window.localStorage.setItem(STUDIO_STORAGE_KEY, JSON.stringify(selection))
   } catch {
-    /* storage unavailable — the form still works for this session */
+    /* storage unavailable, the form still works for this session */
   }
 }
 
@@ -252,7 +252,7 @@ export interface ModelRosterEntry {
   runnable: Record<Precision, boolean>
   /** Name of the unit a job would run on, per precision. */
   hardwareName: Partial<Record<Precision, string>>
-  /** Set up and runnable at some unlocked precision — selectable in the Studio. */
+  /** Set up and runnable at some unlocked precision, selectable in the Studio. */
   ready: boolean
   lockReasons: Record<Precision, string | null>
   setupFee: number
@@ -263,7 +263,7 @@ export interface ModelRosterEntry {
 
 /**
  * Everything the roster depends on, as one string, so the roster is rebuilt only when a model,
- * a unit, a Graph node or an unlock condition changes — never on credits ticking.
+ * a unit, a Graph node or an unlock condition changes, never on credits ticking.
  */
 function rosterSignature(s: GameState, d: Derived, store: GameStore): string {
   const { catalog } = store

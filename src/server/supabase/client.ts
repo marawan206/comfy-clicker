@@ -3,7 +3,7 @@
  * components and route handlers can read the same session).
  *
  * Returns `null` when Supabase isn't configured so the game keeps working in guest
- * mode — callers must branch on it rather than assume a client exists.
+ * mode; callers must branch on it rather than assume a client exists.
  */
 import { createBrowserClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'

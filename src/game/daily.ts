@@ -37,7 +37,7 @@ export function dailyReward(cps: number, day: number): number {
 
 /**
  * Streak the next claim would extend: 0 when it would restart (or the player never claimed),
- * otherwise the current streak. Also the value the UI should display — a streak that lapsed
+ * otherwise the current streak. Also the value the UI should display, since a streak that lapsed
  * yesterday is already gone even though `state.daily.streak` still holds the old number.
  */
 export function effectiveStreak(state: GameState, now: number, grace = false): number {

@@ -58,7 +58,7 @@ function Brand() {
   return (
     <Link
       href="/"
-      aria-label="Comfy Clicker — home"
+      aria-label="Comfy Clicker, home"
       className="flex min-w-0 items-center gap-2.5 rounded-comfy pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
     >
       <Image src="/brand/comfy-logo.svg" alt="" width={32} height={32} priority draggable={false} className="size-8 shrink-0 select-none" />
@@ -69,7 +69,7 @@ function Brand() {
       {season > 1 ? (
         <span
           className="hidden rounded-comfy border border-slot-model/50 bg-slot-model/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slot-model md:inline"
-          title={`Season ${season} — you have rebranded ${season - 1} ${season === 2 ? 'time' : 'times'}`}
+          title={`Season ${season}. You have rebranded ${season - 1} ${season === 2 ? 'time' : 'times'}`}
         >
           S{season}
         </span>
@@ -109,7 +109,7 @@ function CpsLine() {
         'hidden whitespace-nowrap text-xs font-semibold tabular-nums md:inline',
         throttled ? 'text-slot-vae/70' : 'text-smoke-600',
       )}
-      title={throttled ? 'Income throttled — the breaker tripped. Buy a PSU or shed a card.' : 'Credits per second from your rack'}
+      title={throttled ? 'Income throttled. The breaker tripped. Buy a PSU or shed a card.' : 'Credits per second from your rack'}
       aria-label={`${formatCps(cps)} credits per second${throttled ? ', throttled' : ''}`}
     >
       {cps > 0 ? '+' : ''}
@@ -175,10 +175,10 @@ function StreakChip() {
       transition={TAP}
       aria-label={
         claimable
-          ? `Daily reward ready — day ${nextDay} of 7. Open the daily calendar.`
+          ? `Daily reward ready, day ${nextDay} of 7. Open the daily calendar.`
           : `Login streak: ${streak} ${streak === 1 ? 'day' : 'days'}. Open the daily calendar.`
       }
-      title={claimable ? 'Your daily reward is waiting' : 'Daily streak — come back tomorrow to keep it'}
+      title={claimable ? 'Your daily reward is waiting' : 'Daily streak. Come back tomorrow to keep it'}
       className={cn(
         'relative inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-comfy border px-2 text-xs font-semibold tabular-nums transition-colors',
         claimable
@@ -209,17 +209,17 @@ function Nav() {
   const off = useMotionOff()
   return (
     <nav aria-label="Primary" className="flex items-center gap-1">
-      <Link href="/map" className={NAV_LINK} title="The Graph — spend Research Points on the skill tree">
+      <Link href="/map" className={NAV_LINK} title="The Graph: spend Research Points on the skill tree">
         <Waypoints size={14} aria-hidden="true" />
         <span className="hidden xl:inline">Map</span>
         <span className="sr-only xl:hidden">Map</span>
       </Link>
-      <Link href="/hub" className={NAV_LINK} title="ComfyHub — publish and run each other's workflows">
+      <Link href="/hub" className={NAV_LINK} title="ComfyHub: publish and run each other's workflows">
         <Workflow size={14} aria-hidden="true" />
         <span className="hidden xl:inline">Hub</span>
         <span className="sr-only xl:hidden">Hub</span>
       </Link>
-      <Link href="/leaderboard" className={NAV_LINK} title="Leaderboard — top 100 cloud saves by lifetime credits">
+      <Link href="/leaderboard" className={NAV_LINK} title="Leaderboard: top 100 cloud saves by lifetime credits">
         <Trophy size={14} aria-hidden="true" />
         <span className="hidden xl:inline">Board</span>
         <span className="sr-only xl:hidden">Board</span>
@@ -242,7 +242,7 @@ function Nav() {
         whileTap={off ? undefined : { scale: 0.92, rotate: 20 }}
         transition={TAP}
         aria-label="Settings"
-        title="Settings — save, export, sound, particles, motion"
+        title="Settings: save, export, sound, particles, motion"
         className={cn(NAV_LINK, 'w-8 justify-center px-0')}
       >
         <Settings size={16} aria-hidden="true" />

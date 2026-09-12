@@ -168,7 +168,7 @@ export const HubCard = memo(function HubCard({ workflow, trending, meId, verdict
         {verdict.ok ? (
           <p className="min-w-0 truncate text-xs text-smoke-600" title={runTitle}>
             Runs on <span className="font-semibold text-smoke-100">{verdict.hardwareName ?? 'your rig'}</span>
-            {mine ? ' · your own — no royalty' : ' · 5% royalty to the author'}
+            {mine ? ' · your own, no royalty' : ' · 5% royalty to the author'}
           </p>
         ) : (
           <p className="flex min-w-0 items-center gap-1.5 text-xs text-slot-vae/80" title={runTitle}>

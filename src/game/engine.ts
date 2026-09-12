@@ -1,5 +1,5 @@
 /**
- * The engine tick — the one function the game loop calls every STEP_S.
+ * The engine tick: the one function the game loop calls every STEP_S.
  *
  * `tick` never recomputes `Derived`; the caller owns that and recomputes it whenever an action
  * reports `dirty` or a tick emits an event listed in `DERIVED_EVENT_TYPES`. Everything the tick
@@ -10,7 +10,7 @@
  * (`WeakMap`): the trending week seen on the previous tick (so a rollover can be announced) and
  * the previous throttle flag (so the breaker flip can be announced). A freshly loaded state
  * seeds the week from `meta.lastTickAt`. The store always runs `applyOffline` before the first
- * tick, which stamps `lastTickAt = now` — so a rollover that happened while the tab was away is
+ * tick, which stamps `lastTickAt = now`, so a rollover that happened while the tab was away is
  * announced by `applyOffline` itself (it still knows the old `lastTickAt`), and the first tick
  * then seeds from the current week and stays quiet. Either way the new tags are announced once.
  */
@@ -137,7 +137,7 @@ export function tick(
   pushEvents(events, maybeStartEvent(state, derived, catalog, now, rng))
 
   // 4. Contracts: progress goals from what happened this tick; refill/rotate when due
-  //    (timer elapsed, a free slot, or a claimed one to drop — rotateContracts reschedules itself).
+  //    (timer elapsed, a free slot, or a claimed one to drop; rotateContracts reschedules itself).
   pushEvents(events, progressContracts(state, events, catalog))
   if (contractsDue(state, now)) pushEvents(events, rotateContracts(state, derived, catalog, now, rng))
 

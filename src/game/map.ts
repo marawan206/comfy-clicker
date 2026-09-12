@@ -3,7 +3,7 @@
  *
  * Currency rules:
  *  - credits are deducted from `state.credits`
- *  - rp is never deducted — the RP income multiplier in derived.ts reads `state.rp`, so spending
+ *  - rp is never deducted: the RP income multiplier in derived.ts reads `state.rp`, so spending
  *    RP on nodes must not weaken it. Spent RP is instead derived from the unlocked RP nodes
  *    (`rpSpent`), and `rpAvailable = rp − rpSpent`.
  *  - cp works the same way via the explicit `state.cpSpent` counter (`cpAvailable = cp − cpSpent`).
@@ -110,7 +110,7 @@ export function canAffordNode(
 
 /**
  * Whether `node` can be unlocked right now: not owned, every parent owned (root has none),
- * unlock condition met, and — for hidden nodes — its discovery flag set (hidden nodes without
+ * unlock condition met, and (for hidden nodes) its discovery flag set (hidden nodes without
  * a condition can never surface). Affordability is checked separately by `canAffordNode`.
  */
 export function mapNodeAvailable(

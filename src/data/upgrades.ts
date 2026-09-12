@@ -1,6 +1,6 @@
 /**
  * Upgrade catalog: named upgrades plus the virtual per-hardware tier upgrades
- * (`tier:<hardwareId>:<1..4>`). Pure data — no React, no DOM.
+ * (`tier:<hardwareId>:<1..4>`). Pure data. No React, no DOM.
  *
  * Icon strings are either a file stem from `src/assets/brand/nodes` (e.g. `lora-loader`)
  * or a kebab-case lucide icon name (e.g. `zap`).
@@ -538,7 +538,7 @@ const TIER_ICON: Record<HardwareFamily, string> = {
   region: 'globe',
 }
 
-/** djb2 over the hardware id — deterministic, no dependency on rng.ts. */
+/** djb2 over the hardware id, deterministic, no dependency on rng.ts. */
 function hashId(id: string): number {
   let h = 5381
   for (let i = 0; i < id.length; i++) h = ((h * 33) ^ id.charCodeAt(i)) >>> 0

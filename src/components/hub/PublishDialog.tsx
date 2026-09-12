@@ -201,7 +201,7 @@ export function PublishDialog() {
       })
       toast(`Published “${workflow.name}”`, {
         title: 'ComfyHub',
-        description: `Every run pays you ${Math.round(HUB_ROYALTY_RATE * 100)}% of the job and bumps your rep. Nobody has to credit you — the hub does it for them.`,
+        description: `Every run pays you ${Math.round(HUB_ROYALTY_RATE * 100)}% of the job and bumps your rep. Nobody has to credit you. The hub does it for them.`,
         icon: <Workflow className="text-electric-400" />,
         tone: 'electric',
         key: 'hub-published',
@@ -364,7 +364,7 @@ export function PublishDialog() {
                 else if (draft.hashtags.length < HUB_MAX_HASHTAGS) patch({ hashtags: [...draft.hashtags, id] })
               }}
             />
-            <p className="text-[11px] text-smoke-800">Trending tags rank the card higher on the hub — and stay honest: three trending tags on a post reads as spam to the algorithm.</p>
+            <p className="text-[11px] text-smoke-800">Trending tags rank the card higher on the hub, and stay honest: three trending tags on a post reads as spam to the algorithm.</p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

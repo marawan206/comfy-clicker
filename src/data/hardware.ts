@@ -4,20 +4,20 @@
  * Units are listed in ascending `baseCost`; a unit's position in that list is its `rank`. The
  * ladder has two halves, split at the RTX PRO 6000 (rank PAYBACK_PEAK_RANK):
  *
- *   The climb (rank ≤ 19) — design payback (seconds of income to recoup the first unit) falls
+ *   The climb (rank ≤ 19): design payback (seconds of income to recoup the first unit) falls
  *   with rank, so "save for the biggest thing you can reach" is the right call all the way up
  *   the consumer and workstation aisles:
  *     payback(rank) = 125 − 4.5·rank                        for rank ≤ 14  (125 → 62 s)
  *     payback(rank) = 40 + (62 − 40) × 0.9^(rank − 14)      for 14 < rank ≤ 19  (→ 53 s)
  *
- *   The tail (rank > 19) — payback rises again, family by family (TAIL_PAYBACK_S): datacenter
+ *   The tail (rank > 19): payback rises again, family by family (TAIL_PAYBACK_S): datacenter
  *   silicon 1 → 4 min, cloud nodes 5 min → 4 h, Comfy Cloud regions 12 → 48 h, then the Orbital
  *   Datacenter (five days) and the Dyson swarm (ten). Every rung is a bigger, *less* efficient
  *   purchase, so income keeps growing but the game decelerates the way an incremental should;
  *   the cheaper tail units stay worth buying until their per-unit growth (1.15 past the
  *   workstation aisle) catches them up. Tail prices step ×1.5–3 per rung so that a rung is
  *   exhausted in hours, not minutes: with tier upgrades worth ×16 per unit, the number of units a
- *   rung yields — not its first-unit payback — is what sets the pace. `scripts/balance.ts` is the
+ *   rung yields, not its first-unit payback, is what sets the pace. `scripts/balance.ts` is the
  *   referee: PRO 6000 inside 15 min, a cloud node inside 25, no region inside three hours of
  *   continuous play, regions on days 2–4 of a one-hour-a-day week, orbit and the swarm beyond it.
  *
@@ -26,7 +26,7 @@
  * discount (256 GB of HBM is the selling point). Apple MPS is ×1.3 (unified memory is roomy, not
  * fast). `baseCps = round3(baseCost / payback)`.
  *
- * Everything else — growth per family, speed tiers, flags — is derived from the spec rows below
+ * Everything else (growth per family, speed tiers, flags) is derived from the spec rows below
  * so the whole ladder can be re-balanced from one place.
  */
 import type { HardwareDef, HardwareFamily, UnlockCond, Vendor } from '@/game/types'

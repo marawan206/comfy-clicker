@@ -122,7 +122,7 @@ export async function signUp(email: string, password: string): Promise<AuthResul
       return { ok: false, error: 'That email already has an account. Sign in instead.' }
     }
     if (!data.session) {
-      return { ok: true, message: 'Check your inbox — confirm the email and this browser signs in on the way back.' }
+      return { ok: true, message: 'Check your inbox, confirm the email and this browser signs in on the way back.' }
     }
     return { ok: true }
   } catch (err) {
@@ -161,7 +161,7 @@ export async function signOut(): Promise<AuthResult> {
 // ---------------------------------------------------------------------------
 const CODE_MESSAGES: Record<string, string> = {
   invalid_credentials: 'Wrong email or password. No, the caps lock is not a feature.',
-  email_not_confirmed: 'Email not confirmed yet — open the link we sent you, then try again.',
+  email_not_confirmed: 'Email not confirmed yet. Open the link we sent you, then try again.',
   user_already_exists: 'That email already has an account. Sign in instead.',
   email_exists: 'That email already has an account. Sign in instead.',
   weak_password: 'Password is too weak. Longer beats cleverer.',
@@ -184,7 +184,7 @@ export function mapAuthError(err: unknown): string {
     if (typeof message === 'string') {
       const m = message.toLowerCase()
       if (m.includes('failed to fetch') || m.includes('network') || m.includes('load failed')) {
-        return 'Could not reach the auth server. Check the connection — the game keeps running locally.'
+        return 'Could not reach the auth server. Check the connection. The game keeps running locally.'
       }
       if (m.includes('invalid login credentials')) return CODE_MESSAGES.invalid_credentials
       if (m.includes('already registered')) return CODE_MESSAGES.user_already_exists

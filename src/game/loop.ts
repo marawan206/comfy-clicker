@@ -9,7 +9,7 @@
  * next step the frame sits.
  *
  * Pure TypeScript apart from the rAF/clock globals, which are looked up lazily and can be
- * injected — outside a browser `startLoop` is a no-op that returns a no-op stop.
+ * injected. Outside a browser `startLoop` is a no-op that returns a no-op stop.
  */
 import { STEP_S } from '@/game/constants'
 

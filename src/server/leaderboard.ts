@@ -6,7 +6,7 @@
  * have produced since the profile was created, with headroom for offline multipliers, contracts,
  * dailies and prestige swings:
  *   lifetime_credits <= cps × secondsSinceCreated × PLAUSIBILITY_MULT + PLAUSIBILITY_FLOOR
- * Rows that fail are flagged, not dropped — a false positive on a legitimate whale would be
+ * Rows that fail are flagged, not dropped. A false positive on a legitimate whale would be
  * worse than an asterisk next to a cheater.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'

@@ -1,5 +1,5 @@
 /**
- * Unlock conditions — the one predicate language shared by store visibility,
+ * Unlock conditions: the one predicate language shared by store visibility,
  * upgrades, map nodes and achievements.
  */
 import type { Catalog } from '@/data'

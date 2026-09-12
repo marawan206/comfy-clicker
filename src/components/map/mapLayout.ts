@@ -50,7 +50,7 @@ export const BRANCH_META: Record<MapBranch, BranchMeta> = {
   regions: { label: 'Regions', color: '#ffd500', stripe: 'clip', art: 'map-regions', blurb: 'Planetary scale, then orbit.' },
   api: { label: 'API', color: '#b39ddb', stripe: 'model', art: 'map-api', blurb: 'Rent other people’s models. Pay the surcharge.' },
   prestige: { label: 'Prestige', color: '#7f8dff', stripe: 'sapphire', art: 'map-prestige', blurb: 'Comfy Points. Survives every rebrand.' },
-  hidden: { label: 'Hidden', color: '#f3f3f3', stripe: 'none', art: 'map-hidden', blurb: 'Found, not bought. Well — found, then bought.' },
+  hidden: { label: 'Hidden', color: '#f3f3f3', stripe: 'none', art: 'map-hidden', blurb: 'Found, not bought. Well, found, then bought.' },
 }
 
 export const CURRENCY_LABEL: Record<Currency, string> = { credits: 'credits', rp: 'RP', cp: 'CP' }

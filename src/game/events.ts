@@ -1,5 +1,5 @@
 /**
- * Random events — the timeline's weather. One rolls every uniform(EVENT_MIN_GAP_MS,
+ * Random events, the timeline's weather. One rolls every uniform(EVENT_MIN_GAP_MS,
  * EVENT_MAX_GAP_MS), weighted by `weight` among defs whose `minTier` the rig has reached and
  * whose kind is not already running.
  *
@@ -14,8 +14,8 @@
  *                  `derived`, so the effect is emitted unless the state itself owns a
  *                  `reservedCapacity` effect (upgrade or map node); derived.ts may additionally
  *                  skip `rigMult` effects with value 0 when `derived.reservedCapacity` is set.
- *   founderRepost  no Effect — `eventLikesBoost` returns ×3 while it runs
- *   trendingSpark  no Effect — catching it (resolveEvent) arms `flags.sparkNext`, which
+ *   founderRepost  no Effect; `eventLikesBoost` returns ×3 while it runs
+ *   trendingSpark  no Effect; catching it (resolveEvent) arms `flags.sparkNext`, which
  *                  `eventLikesBoost` cashes in (×3) on the next post and clears
  */
 import type { Catalog } from '@/data'
@@ -59,7 +59,7 @@ export function ownedCloudNodes(state: GameState, catalog: Catalog): string[] {
   return out
 }
 
-/** Effects the state owns outright (upgrades and map nodes) — events cannot read `derived`. */
+/** Effects the state owns outright (upgrades and map nodes); events cannot read `derived`. */
 function ownedEffects(state: GameState, catalog: Catalog): Effect[] {
   const { upgradeById, mapNodeById } = buildIndex(catalog)
   const out: Effect[] = []
@@ -196,7 +196,7 @@ export function eventEffects(state: GameState, catalog: Catalog): Effect[] {
 
 /**
  * Likes multiplier for the post being rolled right now: ×3 during a founder repost window, ×3 if a
- * caught spark is armed. Consumes the spark flag (one post only) — call it once per rollPost.
+ * caught spark is armed. Consumes the spark flag (one post only), so call it once per rollPost.
  */
 export function eventLikesBoost(state: GameState): number {
   let mult = 1
@@ -210,8 +210,8 @@ export function eventLikesBoost(state: GameState): number {
 
 /**
  * Player interaction with a running event: clicking a broken node fixes it (`fixedNode`), catching
- * a spark inside its window arms `sparkNext`. The event ends immediately. Anything else — an
- * unknown def, a kind that cannot be resolved, or a click after `endsAt` — is a no-op.
+ * a spark inside its window arms `sparkNext`. The event ends immediately. Anything else (an
+ * unknown def, a kind that cannot be resolved, or a click after `endsAt`) is a no-op.
  */
 export function resolveEvent(state: GameState, defId: string, now: number): GameEvent[] {
   const idx = state.events.active.findIndex((e) => e.defId === defId && !e.resolved)

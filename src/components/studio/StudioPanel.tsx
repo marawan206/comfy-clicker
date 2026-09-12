@@ -63,7 +63,7 @@ export function StudioPanel() {
   // A ComfyHub recipe handed to the Studio: parked in sessionStorage across the /hub → / route
   // change (read here, cleared once adopted) or delivered live by `comfy:studio-load`. It tags
   // the next queued job with `hubWorkflowId` so the author's royalty is recorded when the post
-  // resolves — as long as the form still matches the recipe's model and precision.
+  // resolves, as long as the form still matches the recipe's model and precision.
   const [hubJob, setHubJob] = useState<StudioLoadDetail | null>(peekPendingStudioLoad);
   useEffect(() => {
     clearPendingStudioLoad();
@@ -194,7 +194,7 @@ export function StudioPanel() {
                     <span className="font-semibold text-smoke-100">
                       {hubJob.name ?? "The ComfyHub workflow"}
                     </span>{" "}
-                    needs its own model and precision — switch back, or drop it.
+                    needs its own model and precision. Switch back, or drop it.
                   </>
                 )}
               </span>

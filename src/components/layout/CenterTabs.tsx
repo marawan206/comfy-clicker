@@ -27,7 +27,7 @@ interface TabDef {
 const TABS: readonly TabDef[] = [
   { id: 'studio', label: 'Studio', icon: Sparkles, hint: 'Pick a model, write a prompt, queue a post' },
   { id: 'feed', label: 'Feed', icon: Newspaper, hint: 'Your posts settling, plus what the real Comfy community is saying' },
-  { id: 'contracts', label: 'Contracts', icon: ClipboardList, hint: 'Client briefs — finish the goal, claim the credits' },
+  { id: 'contracts', label: 'Contracts', icon: ClipboardList, hint: 'Client briefs: finish the goal, claim the credits' },
 ]
 
 const isTabId = (v: unknown): v is CenterTabId => v === 'studio' || v === 'feed' || v === 'contracts'
@@ -50,7 +50,7 @@ function storeTab(id: CenterTabId): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, id)
   } catch {
-    /* private mode / quota — the choice just does not persist */
+    /* private mode / quota, the choice just does not persist */
   }
 }
 

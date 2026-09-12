@@ -21,7 +21,7 @@ export function parseBlogFeed(xml: string, now = Date.now()): FeedItem[] {
       author: e.author ?? 'Comfy Org',
       handle: BLOG_HANDLE,
       url: e.link,
-      text: summary ? `${e.title} — ${summary}` : e.title,
+      text: summary ? `${e.title}: ${summary}` : e.title,
       date: e.date ?? fallbackDate,
       likes: null,
       tags: [],

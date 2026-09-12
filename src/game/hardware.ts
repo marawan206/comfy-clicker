@@ -188,7 +188,7 @@ export function bestRunnable(
 }
 
 /**
- * Speed tier of the model's native rig (cheapest CUDA card that holds the native weights) — the
+ * Speed tier of the model's native rig (cheapest CUDA card that holds the native weights), the
  * tier `baseTime` is quoted at. 0 for API models (no local tier) and for models no unit can hold.
  */
 export function nativeTier(model: ModelDef, catalog: Catalog): number {
@@ -196,7 +196,7 @@ export function nativeTier(model: ModelDef, catalog: Catalog): number {
 }
 
 /**
- * Cheapest non-CPU unit in an unlocked family that would run the model at that precision — the
+ * Cheapest non-CPU unit in an unlocked family that would run the model at that precision, the
  * "or buy an X" half of a lock reason. Null when no purchasable unit fits.
  */
 export function cheapestPurchasable(

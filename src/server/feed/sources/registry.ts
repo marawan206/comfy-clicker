@@ -1,6 +1,6 @@
 /**
  * Comfy Registry custom nodes. The API has no server-side sort, so we pull the first pages and rank
- * by downloads locally — "trending custom nodes" for the feed. `likes` carries GitHub stars;
+ * by downloads locally, "trending custom nodes" for the feed. `likes` carries GitHub stars;
  * downloads live in `stats`.
  */
 import { isOfficialHandle } from '@/server/feed/normalize'
@@ -56,7 +56,7 @@ export function registryNodeToFeedItem(node: RegistryNode, now = Date.now()): Fe
     author: node.name,
     handle: node.publisher,
     url: node.repository ?? `https://registry.comfy.org/nodes/${encodeURIComponent(node.id)}`,
-    text: `${node.name} — ${clampText(description, 240)}`,
+    text: `${node.name}: ${clampText(description, 240)}`,
     date: node.updatedAt ?? new Date(now).toISOString(),
     likes: node.githubStars,
     tags: ['customnodes'],

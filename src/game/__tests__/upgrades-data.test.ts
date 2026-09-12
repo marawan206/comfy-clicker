@@ -14,7 +14,7 @@ import {
 } from '@/data/flavor'
 
 // ---------------------------------------------------------------------------
-// Reference lists — hardware/model ids that exist in src/data/hardware.ts & models.ts.
+// Reference lists: hardware/model ids that exist in src/data/hardware.ts & models.ts.
 // Kept inline so this test does not depend on those files being present.
 // ---------------------------------------------------------------------------
 const HARDWARE_IDS = new Set([

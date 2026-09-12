@@ -3,7 +3,7 @@ import { listHub } from '@/server/hub'
 
 export const dynamic = 'force-dynamic'
 
-/** `GET /api/hub?sort=trending|new&tag=<hashtag id>&limit=<n>` — the public ComfyHub listing. */
+/** `GET /api/hub?sort=trending|new&tag=<hashtag id>&limit=<n>`: the public ComfyHub listing. */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams
   const result = await listHub({

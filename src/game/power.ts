@@ -2,7 +2,7 @@
  * Power system. Every owned unit draws watts; the budget starts at a single household circuit
  * and grows through PSU/infra upgrades and map nodes. Drawing more than the budget trips the
  * breaker: income is scaled by `budget / draw`, so a rig at twice its budget earns half. The
- * throttle is proportional on purpose — past the breaker another unit only helps if its cps per
+ * throttle is proportional on purpose. Past the breaker another unit only helps if its cps per
  * watt beats the rack's average, which is what makes PSU upgrades and low-watt silicon matter.
  *
  * Pure helpers over `GameState`/`Derived`; derived.ts calls these once per recompute and the
@@ -39,7 +39,7 @@ export function isThrottled(draw: number, budget: number): boolean {
 
 /**
  * Income multiplier for a rig drawing `draw` watts against `budget`: 1 within budget, else
- * `budget / draw` (0 when there is no budget at all). Proportional, no floor — see the header.
+ * `budget / draw` (0 when there is no budget at all). Proportional, no floor, see the header.
  */
 export function throttleMult(draw: number, budget: number): number {
   if (!isThrottled(draw, budget)) return 1

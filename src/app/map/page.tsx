@@ -1,6 +1,6 @@
 'use client'
 /**
- * /map — The Graph. A 64 px header (back to the studio, credits / RP / CP, nodes unlocked) over a
+ * /map: The Graph. A 64 px header (back to the studio, credits / RP / CP, nodes unlocked) over a
  * canvas that fills the rest of the viewport. The store is the same module singleton the game
  * runs on, so income keeps ticking here; the FX canvas and overlays are mounted so unlocks burst
  * and the prestige lane's Rebrand button opens the real dialog. The account menu rides along so
@@ -64,13 +64,13 @@ function MapHeader() {
           <Link
             href="/"
             aria-label="Back to the studio"
-            title="Back to the studio — your rack keeps rendering"
+            title="Back to the studio, your rack keeps rendering"
             className="inline-flex h-9 items-center gap-1.5 rounded-comfy border-2 border-charcoal-400 bg-charcoal-600 px-2.5 text-xs font-semibold text-smoke-600 shadow-[0_3px_0_#0e0e0f] transition-colors hover:border-charcoal-300 hover:text-smoke-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400 active:translate-y-px active:shadow-none"
           >
             <ArrowLeft size={14} aria-hidden="true" />
             <span className="hidden sm:inline">Studio</span>
           </Link>
-          <Link href="/" aria-label="Comfy Clicker — home" className="hidden shrink-0 rounded-comfy md:block">
+          <Link href="/" aria-label="Comfy Clicker, home" className="hidden shrink-0 rounded-comfy md:block">
             <Image src="/brand/comfy-logo.svg" alt="" width={32} height={32} priority draggable={false} className="size-8 select-none" />
           </Link>
           <div className="min-w-0">
@@ -96,11 +96,11 @@ function MapHeader() {
               {formatCps(cps)}
             </span>
           </div>
-          <Chip icon={FlaskConical} tone="#81c784" title={`${formatNum(rp)} Research Points to spend — each signup your posts earn is one RP`}>
+          <Chip icon={FlaskConical} tone="#81c784" title={`${formatNum(rp)} Research Points to spend. Each signup your posts earn is one RP`}>
             <NumberTicker value={rp} />
             <span className="text-smoke-600">RP</span>
           </Chip>
-          <Chip icon={Medal} tone="#7f8dff" title={`${formatNum(cp)} Comfy Points to spend — banked by rebranding`}>
+          <Chip icon={Medal} tone="#7f8dff" title={`${formatNum(cp)} Comfy Points to spend, banked by rebranding`}>
             <NumberTicker value={cp} />
             <span className="text-smoke-600">CP</span>
           </Chip>

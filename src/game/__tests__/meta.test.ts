@@ -152,7 +152,7 @@ const activeOf = (kind: ActiveEvent['kind'], payload?: string, now = T0): Active
 // ---------------------------------------------------------------------------
 // Contracts
 // ---------------------------------------------------------------------------
-describe('contracts — rotation', () => {
+describe('contracts: rotation', () => {
   it('fills every slot with distinct, tier-eligible contracts priced at rewardSecs × cps', () => {
     const state = fresh()
     const derived = derivedWith({ cps: 2, bestTier: 1 })
@@ -259,7 +259,7 @@ describe('contracts — rotation', () => {
   })
 })
 
-describe('contracts — progress', () => {
+describe('contracts: progress', () => {
   const clicks = (n: number): GameEvent[] => Array.from({ length: n }, () => ({ type: 'click', value: 1 }))
 
   it('counts clicks from events and completes exactly once', () => {
@@ -350,7 +350,7 @@ describe('contracts — progress', () => {
   })
 })
 
-describe('contracts — claim', () => {
+describe('contracts: claim', () => {
   it('pays credits plus RP/CP, bumps contractsDone and frees the slot', () => {
     const state = fresh()
     const c = acceptContract(def('c-mods-showcase'), state, derivedWith({ cps: 10 }), T0)
@@ -396,7 +396,7 @@ describe('contracts — claim', () => {
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
-describe('events — lifecycle', () => {
+describe('events: lifecycle', () => {
   it('waits for nextAt, then starts a tier-eligible event and reschedules inside the gap window', () => {
     for (let seed = 0; seed < 40; seed++) {
       const state = fresh()
@@ -472,7 +472,7 @@ describe('events — lifecycle', () => {
   })
 })
 
-describe('events — effects and interaction', () => {
+describe('events: effects and interaction', () => {
   const reservedNode = MAP_NODES.find((n) => n.effects.some((e) => e.kind === 'reservedCapacity'))!
 
   it('encodes each kind as the documented Effect', () => {

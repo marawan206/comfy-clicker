@@ -1,9 +1,9 @@
 /**
  * Server-side Supabase clients bound to the request's cookies.
  *
- *  - `createSupabaseServerClient()` — for route handlers, server actions and server
+ *  - `createSupabaseServerClient()`: for route handlers, server actions and server
  *    components (uses `next/headers`). One client per request; never cache it.
- *  - `createSupabaseProxyClient(req, res)` — for `proxy.ts` (Next 16's middleware),
+ *  - `createSupabaseProxyClient(req, res)`: for `proxy.ts` (Next 16's middleware),
  *    where cookies must be written onto the outgoing response so refreshed tokens
  *    reach the browser.
  *

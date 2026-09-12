@@ -127,7 +127,7 @@ export function requestStudioLoad(detail: StudioLoadDetail): void {
     window.sessionStorage.setItem(PENDING_LOAD_KEY, JSON.stringify(detail))
     window.localStorage.setItem(CENTER_TAB_KEY, 'studio')
   } catch {
-    /* storage unavailable — the live event still reaches a mounted Studio */
+    /* storage unavailable, the live event still reaches a mounted Studio */
   }
   window.dispatchEvent(new CustomEvent<StudioLoadDetail>(STUDIO_LOAD_EVENT, { detail }))
 }
@@ -434,7 +434,7 @@ const reported = new Set<string>()
  * Report a finished hub job: when a post with `hubWorkflowId` resolves, POST the job's cost to
  * `/api/hub/run` so the author's counters and royalty move. Guests are skipped quietly (the
  * insert needs a runner id). Also starts the royalty collector for the signed-in author (see
- * `startRoyaltyCollector`). Idempotent; safe to call from any mounted panel — the Studio and the
+ * `startRoyaltyCollector`). Idempotent; safe to call from any mounted panel. The Studio and the
  * hub page both call it.
  */
 export function ensureHubRoyaltyBridge(): void {
@@ -487,7 +487,7 @@ let lastCollectedFor: string | null = null
 /**
  * Pull the signed-in author's unclaimed royalties into the game: on sign-in, every
  * HUB_ROYALTY_POLL_MS while the tab is visible, and when the tab comes back. The server marks
- * each run claimed, so a second device asking gets nothing twice. Quiet on every failure — the
+ * each run claimed, so a second device asking gets nothing twice. Quiet on every failure. The
  * next poll tries again.
  */
 function startRoyaltyCollector(): void {
@@ -513,7 +513,7 @@ function startRoyaltyCollector(): void {
         durationMs: 5000,
       })
     } catch {
-      /* offline, signed out mid-flight, or the server said no — try again on the next poll */
+      /* offline, signed out mid-flight, or the server said no. Try again on the next poll */
     } finally {
       collecting = false
     }

@@ -1,7 +1,7 @@
 /**
  * Real founder posts, captured verbatim on 2026-09-13. Used as the always-available backbone of the
  * in-game feed (the live fetchers refresh likes/avatars; when LinkedIn/X are unreachable these still show).
- * Pure data — no React, no fetch.
+ * Pure data. No React, no fetch.
  */
 
 export type RealPostPlatform = 'x' | 'linkedin'
@@ -89,7 +89,7 @@ export const realPostsSeed: RealPost[] = [
     platform: 'linkedin',
     url: 'https://www.linkedin.com/posts/yolandyan_comfyui-isnt-just-a-tool-its-a-creative-activity-7358896577266012160-4WT_',
     date: '2025-08-06',
-    text: "ComfyUI isn't just a tool — it's a creative operating system for AI. New models go from paper to plug-and-play in hours.",
+    text: "ComfyUI isn't just a tool, it's a creative operating system for AI. New models go from paper to plug-and-play in hours.",
     likes: 46,
     tags: ['comfyui', 'nodegraph'],
     capturedAt: CAPTURED_AT,

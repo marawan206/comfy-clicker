@@ -6,7 +6,7 @@
  * It reads the shipped HARDWARE ladder, the power upgrades (named upgrades + infra map nodes),
  * the tier-upgrade constants and the game's own `unitCost`, `throttleMult` and `creditsForCp`,
  * and models the rest of the economy (click milestones, global upgrades, content bonus) with the
- * simple rules documented below so the ladder can be judged on its own. It tunes nothing —
+ * simple rules documented below so the ladder can be judged on its own. It tunes nothing:
  * change the data, re-run, read the table.
  *
  * Strategies
@@ -30,7 +30,7 @@
  *   - map-node gates are proxied: regions after any cloud node plus the credit cost of the two
  *     nodes on the way; the orbital and Dyson unlocks are Comfy-Point purchases, so they need
  *     `creditsForCp(cp)` of season credits (25 CP for orbital, 25 + 60 + 200 = 285 CP for the
- *     Dyson blueprint). CP is only banked by rebranding — which resets the rack — so the sim's
+ *     Dyson blueprint). CP is only banked by rebranding (which resets the rack), so the sim's
  *     times for those two are a lower bound on real play.
  */
 import path from 'node:path'
@@ -432,7 +432,7 @@ function runActive(s: SimState, seconds: number, strategy: Strategy, opts: SimOp
   for (let i = 0; i < seconds; i++) stepSecond(s, strategy, opts)
 }
 
-/** Offline earnings: rig cps (no content bonus — nobody is posting) × OFFLINE_EFFICIENCY for up to the base cap. */
+/** Offline earnings: rig cps (no content bonus, nobody is posting) × OFFLINE_EFFICIENCY for up to the base cap. */
 function runOffline(s: SimState, hours: number): number {
   const capped = Math.min(hours, OFFLINE_CAP_HOURS_BASE) * 3600
   const gain = throttledRaw(rawCps(s), powerDraw(s), powerBudget(s)) * globalMult(s) * capped * OFFLINE_EFFICIENCY
@@ -517,7 +517,7 @@ function fmtNum(n: number): string {
 }
 
 function fmtTime(sec: number | undefined): string {
-  if (sec === undefined) return '—'
+  if (sec === undefined) return 'n/a'
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
   const s = Math.floor(sec % 60)
@@ -573,9 +573,9 @@ function main(): void {
   const powerLine = (r: SimResult): string =>
     `${fmtWatts(r.powerDraw)} drawn of ${fmtWatts(r.powerBudget)}${r.powerDraw > r.powerBudget ? ' (throttled)' : ''}`
   console.log(
-    `\nEnd of session — climb: ${fmtNum(climb.cps)}/s, bank ${fmtNum(climb.bank)}, ${powerLine(climb)} · naive: ${fmtNum(naive.cps)}/s, bank ${fmtNum(naive.bank)}, ${powerLine(naive)}`,
+    `\nEnd of session · climb: ${fmtNum(climb.cps)}/s, bank ${fmtNum(climb.bank)}, ${powerLine(climb)} · naive: ${fmtNum(naive.cps)}/s, bank ${fmtNum(naive.bank)}, ${powerLine(naive)}`,
   )
-  console.log(`Gates: orbital needs ${fmtNum(creditsForCp(ORBITAL_CP))} season credits (${ORBITAL_CP} CP), Dyson ${fmtNum(creditsForCp(DYSON_CP))} (${DYSON_CP} CP) — after a rebrand.`)
+  console.log(`Gates: orbital needs ${fmtNum(creditsForCp(ORBITAL_CP))} season credits (${ORBITAL_CP} CP), Dyson ${fmtNum(creditsForCp(DYSON_CP))} (${DYSON_CP} CP), after a rebrand.`)
 
   for (const strategy of ['climb', 'naive'] as const) {
     console.log(
@@ -589,7 +589,7 @@ function main(): void {
         fmtNum(d.offlineGain),
         fmtNum(d.bank),
         d.best,
-        d.firsts.length ? d.firsts.join(', ') : '—',
+        d.firsts.length ? d.firsts.join(', ') : 'none',
       ]),
       [true, true, true, true, false, false],
     )

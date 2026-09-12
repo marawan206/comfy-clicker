@@ -3,7 +3,7 @@
  * with a deliberately forgiving schema: unknown keys are stripped, a field that fails validation
  * falls back to its fresh-state value, records/arrays drop only the entries that are broken, and
  * ids that no longer exist in the catalog are dropped. Only an unparseable blob (or one whose root
- * is not an object) counts as corrupt and yields a fresh state — the store keeps that blob under
+ * is not an object) counts as corrupt and yields a fresh state. The store keeps that blob under
  * `SAVE_CORRUPT_KEY` for forensics.
  *
  * Versioning: `MIGRATIONS[n]` upgrades a save at version `n` to `n + 1`; saves without a version
@@ -484,7 +484,7 @@ function base64ToBytes(b64: string): Uint8Array {
   return out
 }
 
-/** `'CC1|' + base64(utf8 json)` — safe to paste anywhere. */
+/** `'CC1|' + base64(utf8 json)`, safe to paste anywhere. */
 export function exportString(state: GameState): string {
   return EXPORT_PREFIX + bytesToBase64(new TextEncoder().encode(serialize(state)))
 }

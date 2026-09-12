@@ -107,7 +107,7 @@ export interface HardwareRowState {
   owned: number
   /** Units the current buy amount would purchase (0 when nothing is affordable at 'max'). */
   count: number
-  /** Price of `count` units — or of the next single unit when `count` is 0. */
+  /** Price of `count` units, or of the next single unit when `count` is 0. */
   cost: number
   affordable: boolean
   /** Non-credit lock (family, unlock condition, cap); null when the only blocker could be credits. */
@@ -204,7 +204,7 @@ export interface SaveTarget {
 }
 
 /**
- * The cheapest visible, purchasable-but-unaffordable unit — what the player is implicitly saving for.
+ * The cheapest visible, purchasable-but-unaffordable unit: what the player is implicitly saving for.
  * Null when everything visible is affordable (or locked).
  */
 export function useSaveTarget(): SaveTarget | null {

@@ -228,7 +228,7 @@ function safeStorageSet(key: string, value: string): void {
   try {
     window.localStorage.setItem(key, value)
   } catch {
-    /* storage unavailable (private mode, quota) — keep playing in memory */
+    /* storage unavailable (private mode, quota), keep playing in memory */
   }
 }
 

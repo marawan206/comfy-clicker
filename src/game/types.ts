@@ -1,5 +1,5 @@
 /**
- * Core contracts for Comfy Clicker. Pure TypeScript — no React imports here.
+ * Core contracts for Comfy Clicker. Pure TypeScript, no React imports here.
  * Balance numbers live in `src/data/*`; formulas live in the sibling modules.
  */
 

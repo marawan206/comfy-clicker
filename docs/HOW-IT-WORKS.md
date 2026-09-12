@@ -1,4 +1,4 @@
-# Comfy Clicker — how it works
+# Comfy Clicker: how it works
 
 An end-to-end explainer of the codebase for the project owner. Every number, path and table name below is taken from the files as they are today; where a value lives in a constant or a data row, the current value is quoted. Paths are relative to the repository root.
 
@@ -155,7 +155,7 @@ Families and their store tabs (`HARDWARE_FAMILIES`): CPU, Apple, NVIDIA, AMD, Wo
 
 ### Power
 
-`powerDraw = Σ count × watts`; `powerBudget = POWER_BUDGET_BASE (650 W) + Σ powerBudget effects`; `throttleMult = draw > budget ? budget / draw : 1` (`src/game/power.ts`) — proportional, so past the breaker a unit only helps if its cps/W beats the rack's average. Budget comes from the six power upgrades (850 W PSU +300 W for 200 credits up to Fusion Reactor +200 MW for 30 000 000) and the Graph's infra lane (Undervolt +200 W for 5 000 up to Orbital Solar +1 GW for 2e9, plus Antarctic Datacenter +1 MW). Cooling upgrades and nodes add `coolingTier` (+1 speed tier per family). The `powerSurge` event subtracts 40 % of the rig's own budget.
+`powerDraw = Σ count × watts`; `powerBudget = POWER_BUDGET_BASE (650 W) + Σ powerBudget effects`; `throttleMult = draw > budget ? budget / draw : 1` (`src/game/power.ts`), proportional, so past the breaker a unit only helps if its cps/W beats the rack's average. Budget comes from the six power upgrades (850 W PSU +300 W for 200 credits up to Fusion Reactor +200 MW for 30 000 000) and the Graph's infra lane (Undervolt +200 W for 5 000 up to Orbital Solar +1 GW for 2e9, plus Antarctic Datacenter +1 MW). Cooling upgrades and nodes add `coolingTier` (+1 speed tier per family). The `powerSurge` event subtracts 40 % of the rig's own budget.
 
 ### Models (`src/data/models.ts`)
 
@@ -197,7 +197,7 @@ Only API models carry an `unlock`; local models are always listed and gated by t
 
 ### Followers, signups, RP (`src/game/social.ts`)
 
-`addFollowers` banks fractions; each time `lifetimeFollowers` crosses `signupThreshold(k)` — `SIGNUP_THRESHOLDS = [0, 100, 250, 500, 1 000, 2 500, 5 000, 10 000, 25 000, 50 000, 100 000]`, then ×`SIGNUP_GROWTH = 2` per step — one Comfy Cloud signup happens and `rp += 1`. RP raises `globalMult` by 1 % per point forever; spending RP on the Graph never deducts it (`rpAvailable = rp − rpSpent(nodes)`).
+`addFollowers` banks fractions; each time `lifetimeFollowers` crosses `signupThreshold(k)` (`SIGNUP_THRESHOLDS = [0, 100, 250, 500, 1 000, 2 500, 5 000, 10 000, 25 000, 50 000, 100 000]`, then ×`SIGNUP_GROWTH = 2` per step), one Comfy Cloud signup happens and `rp += 1`. RP raises `globalMult` by 1 % per point forever; spending RP on the Graph never deducts it (`rpAvailable = rp − rpSpent(nodes)`).
 
 ### Contracts (`src/game/contracts.ts`, `src/data/contracts.ts`)
 
@@ -241,7 +241,7 @@ One full-viewport `<canvas>` (`z-50`, pointer-events none, DPR ≤ 2) with plain
 
 `Space` → one Generate click (ignored in inputs and on focused buttons unless they carry `data-generate-hotkey`; never repeats while held), `S` → `store.save()` + `comfy:saved` toast, `Esc` → `comfy:close-modals`. The Graph adds `/` (search), Enter, Esc, `+`/`-`, `0` (fit all), `F` (fit the frontier).
 
-### Easter eggs — every flag and its trigger
+### Easter eggs: every flag and its trigger
 
 | Flag | Raised by | Reward |
 |---|---|---|
@@ -263,7 +263,7 @@ One full-viewport `<canvas>` (`z-50`, pointer-events none, DPR ≤ 2) with plain
 
 ### Asset manifest and Art fallbacks
 
-`src/data/assetManifest.ts` declares every raster asset: 38 `hw-*`, 35 `model-*`, 12 `badge-*`, 8 `av-*`, 2 ui (`hero-aura`, `bg-backdrop`), 51 `thumb-<family>-NN` (9 families; the three video families are `.mp4`) and 9 `map-*` — 155 ids. `src/data/assetIndex.json` (written by `art-postprocess.mjs`) lists which files exist under `public/art/`, and `Art` (`src/components/common/Art.tsx`) renders the file only when it is in that index, otherwise a same-size fallback tile (vendor SVG on a hashed gradient, a lucide glyph on sapphire, or a seeded gradient). `thumbFamilyFor(modelId, kind)` and `pickThumb(family, prompt, hash)` choose a post thumbnail by tag overlap with the prompt.
+`src/data/assetManifest.ts` declares every raster asset: 38 `hw-*`, 35 `model-*`, 12 `badge-*`, 8 `av-*`, 2 ui (`hero-aura`, `bg-backdrop`), 51 `thumb-<family>-NN` (9 families; the three video families are `.mp4`) and 9 `map-*`: 155 ids. `src/data/assetIndex.json` (written by `art-postprocess.mjs`) lists which files exist under `public/art/`, and `Art` (`src/components/common/Art.tsx`) renders the file only when it is in that index, otherwise a same-size fallback tile (vendor SVG on a hashed gradient, a lucide glyph on sapphire, or a seeded gradient). `thumbFamilyFor(modelId, kind)` and `pickThumb(family, prompt, hash)` choose a post thumbnail by tag overlap with the prompt.
 
 ## 6. The live feed
 
@@ -324,7 +324,7 @@ Over social items from the last 14 days (`TRENDING_WINDOW_DAYS`), each item weig
 
 ### Availability and currencies (`src/game/map.ts`)
 
-`mapNodeAvailable`: not owned, every parent owned (the root has none), unlock condition met, and hidden nodes need their discovery flag. `mapNodeVisible`: non-hidden nodes are always drawn; hidden ones only once surfaced or owned. Credits are deducted; CP goes through `cpSpent` so `state.cp` (and the prestige multiplier) never falls; RP is never deducted — `rpSpent` is derived from owned RP nodes. `unlockMapNode` reports `Unlock <parent> first`, the unlock description, or `Not enough <currency>`.
+`mapNodeAvailable`: not owned, every parent owned (the root has none), unlock condition met, and hidden nodes need their discovery flag. `mapNodeVisible`: non-hidden nodes are always drawn; hidden ones only once surfaced or owned. Credits are deducted; CP goes through `cpSpent` so `state.cp` (and the prestige multiplier) never falls; RP is never deducted. `rpSpent` is derived from owned RP nodes. `unlockMapNode` reports `Unlock <parent> first`, the unlock description, or `Not enough <currency>`.
 
 ### Rendering (`src/components/map/GraphMap.tsx`)
 
@@ -336,11 +336,11 @@ An `@xyflow/react` canvas dressed as a ComfyUI workflow: lane bands per branch (
 
 **Flow** (`src/server/hub.ts`, `src/components/hub/useHub.ts`):
 
-1. *Publish* — the Studio's "Publish to ComfyHub" opens `PublishDialog` (prefilled from the form); `POST /api/hub/publish` validates with `hubPublishSchema` (`HUB_MAX_HASHTAGS = 3`) and inserts as the signed-in user; the client bumps `stats.hubPublished`.
-2. *List* — `GET /api/hub?sort=trending|new&tag=…`: trending ranks by `runs_24h × (1 + HUB_TRENDING_BONUS (0.5) × liveTrendingMatches)` in memory (over-fetching up to 200 rows), `new` by `created_at`; `HUB_LIST_LIMIT = 60`.
-3. *Run* — a card's Run button is enabled when `computeRunVerdict` (the game's own `runnableHardware`/`lockReason`) says the player can run that model at that precision. `requestStudioLoad` patches the Studio form, parks the recipe in `sessionStorage['comfy-clicker:hub-load']`, forces the centre tab to Studio and navigates to `/`. The next job queued with a matching model and precision carries `hubWorkflowId`; the post gets `HUB_RUN_LIKES_BOOST = 1.15` likes (the runner's reward).
-4. *Royalty* — when that post resolves, `ensureHubRoyaltyBridge` POSTs `{ workflowId, creditsPaid: post.cost }` to `/api/hub/run`. The server rate-limits `HUB_RUNS_PER_MINUTE = 40` per runner, clamps `creditsPaid` to `runCostCap` (the game's `jobCost` at the runner's last uploaded `cps × HUB_CPS_HEADROOM (4)`), computes `royalty = round(paid × 0.05)` (0 on self-runs) and `rep = 1 + floor(log10(1 + royalty))`, and inserts the run; the `hub_runs_after_insert` trigger bumps all four counters atomically.
-5. *Collect* — the author's game polls `POST /api/hub/royalties` on sign-in, every `HUB_ROYALTY_POLL_MS = 120 s` and on tab return; `claim_hub_royalties(author)` marks unclaimed runs and returns `{ runs, royalty, rep }`, applied through `applyHubRoyalties` (credits via `addCredits`, `hubRep`, `stats.hubRuns`).
+1. *Publish*: the Studio's "Publish to ComfyHub" opens `PublishDialog` (prefilled from the form); `POST /api/hub/publish` validates with `hubPublishSchema` (`HUB_MAX_HASHTAGS = 3`) and inserts as the signed-in user; the client bumps `stats.hubPublished`.
+2. *List*: `GET /api/hub?sort=trending|new&tag=…`: trending ranks by `runs_24h × (1 + HUB_TRENDING_BONUS (0.5) × liveTrendingMatches)` in memory (over-fetching up to 200 rows), `new` by `created_at`; `HUB_LIST_LIMIT = 60`.
+3. *Run*: a card's Run button is enabled when `computeRunVerdict` (the game's own `runnableHardware`/`lockReason`) says the player can run that model at that precision. `requestStudioLoad` patches the Studio form, parks the recipe in `sessionStorage['comfy-clicker:hub-load']`, forces the centre tab to Studio and navigates to `/`. The next job queued with a matching model and precision carries `hubWorkflowId`; the post gets `HUB_RUN_LIKES_BOOST = 1.15` likes (the runner's reward).
+4. *Royalty*: when that post resolves, `ensureHubRoyaltyBridge` POSTs `{ workflowId, creditsPaid: post.cost }` to `/api/hub/run`. The server rate-limits `HUB_RUNS_PER_MINUTE = 40` per runner, clamps `creditsPaid` to `runCostCap` (the game's `jobCost` at the runner's last uploaded `cps × HUB_CPS_HEADROOM (4)`), computes `royalty = round(paid × 0.05)` (0 on self-runs) and `rep = 1 + floor(log10(1 + royalty))`, and inserts the run; the `hub_runs_after_insert` trigger bumps all four counters atomically.
+5. *Collect*: the author's game polls `POST /api/hub/royalties` on sign-in, every `HUB_ROYALTY_POLL_MS = 120 s` and on tab return; `claim_hub_royalties(author)` marks unclaimed runs and returns `{ runs, royalty, rep }`, applied through `applyHubRoyalties` (credits via `addCredits`, `hubRep`, `stats.hubRuns`).
 
 **Refresh**: `refresh_hub_runs_24h()` recomputes the rolling window; called by `GET /api/hub/refresh` (cron-authorised, `vercel.json` daily 06:30 UTC) and by the `comfy-clicker-hub-runs-24h` pg_cron job every 15 minutes when the extension is installed.
 
@@ -358,7 +358,7 @@ All tables have RLS enabled; "service role only" means no anon/authenticated pol
 | `feed_items` | `id text` pk, `source`, `author`, `handle`, `avatar_url`, `url`, `text`, `date`, `likes`, `media_url`, `tags text[]`, `verified`, `fetched_at` | everyone | service role |
 | `trending_tags` | `id serial`, `tags text[]`, `computed_at` | everyone | service role |
 | `feed_meta` | `key` pk, `updated_at`, `errors jsonb` | everyone | service role |
-| `leaderboard` (view, `security_invoker = false`) | `user_id, handle, cps, lifetime_credits, followers, season` — top 100 by lifetime credits; never exposes `state` | everyone | — |
+| `leaderboard` (view, `security_invoker = false`) | `user_id, handle, cps, lifetime_credits, followers, season`: top 100 by lifetime credits; never exposes `state` | everyone | none |
 
 **Functions and triggers**: `handle_new_user()` (security definer, `search_path = ''`) on `auth.users` insert creates the profile, retrying with longer uuid prefixes on handle collision; `hub_workflows_protect_counters()` (before update) restores the four counters when `auth.role()` is `authenticated`/`anon` and `pg_trigger_depth() ≤ 1`; `hub_runs_after_insert()` (security definer, after insert) bumps `runs_total`, `runs_24h`, `royalties_total`, `rep`; `refresh_hub_runs_24h()` recomputes `runs_24h` from the last 24 h (service role only); `claim_hub_royalties(uuid)` marks and sums the author's unclaimed runs from other players (service role only).
 
@@ -381,17 +381,17 @@ Workflow: `pnpm tsx scripts/art-prompts.ts [category]` prints the batch JSON; su
 
 ## 12. Operations
 
-**Scripts** (`package.json`): `dev`, `build`, `start`, `lint` (eslint), `test` (`vitest run`; two projects — node for game/data/server/scripts, jsdom for `src/components`), `test:watch`, `typecheck`, `assets:check`, `art:post`, `balance`, `commit` (`node scripts/backdate-commit.mjs`).
+**Scripts** (`package.json`): `dev`, `build`, `start`, `lint` (eslint), `test` (`vitest run`; two projects: node for game/data/server/scripts, jsdom for `src/components`), `test:watch`, `typecheck`, `assets:check`, `art:post`, `balance`, `commit` (`node scripts/backdate-commit.mjs`).
 
 **Env vars** (`.env.example`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`), `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`; server only, the admin module throws if bundled for the browser), `CRON_SECRET`; `GITHUB_TOKEN` is read by the GitHub source but not listed. All optional: without Supabase the game is guest-only.
 
-**Vercel**: `vercel.json` schedules `/api/feed/refresh` at `0 6 * * *` and `/api/hub/refresh` at `30 6 * * *` — once a day each, the Hobby plan's cron limit; Vercel adds the `Authorization: Bearer $CRON_SECRET` header. Feed freshness in between relies on the lazy refresh in `GET /api/feed` (any visit past 15 minutes triggers a background collection) and, if applied, the pg_cron job. `.vercelignore` drops `art-src`, `.tmp`, `node_modules`, `.next`.
+**Vercel**: `vercel.json` schedules `/api/feed/refresh` at `0 6 * * *` and `/api/hub/refresh` at `30 6 * * *`, once a day each, the Hobby plan's cron limit; Vercel adds the `Authorization: Bearer $CRON_SECRET` header. Feed freshness in between relies on the lazy refresh in `GET /api/feed` (any visit past 15 minutes triggers a background collection) and, if applied, the pg_cron job. `.vercelignore` drops `art-src`, `.tmp`, `node_modules`, `.next`.
 
 **Supabase settings** (`supabase/config.md`, `docs/DEPLOY.md`): apply `0001`, then `0003` (required by hub runs, royalties and the daily route), `0002` optionally; enable email + password; add `<site>/auth/callback` (and localhost) to redirect URLs; email confirmation may stay on.
 
 **CI** (`.github/workflows/ci.yml`): on push to `main` and pull requests, Node 24 + pnpm 10, `pnpm install --frozen-lockfile`, `typecheck`, `test`, `build` with placeholder Supabase env.
 
-**Commit conventions**: `scripts/backdate-commit.mjs "message" [iso-date]` commits with scheduled author/committer dates — the first slot is `2026-09-04T19:12:00+03:00`, later slots advance 15–75 minutes inside 10:00–24:00 local, 4–9 commits per day, rolling to the next morning, never past now, tracked in `.tmp/commit-clock.json`. Staged files only when something is staged, else `git add -A`. Per the project's memory notes: no AI attribution lines, commits go straight to `main`, no PRs.
+**Commit conventions**: `scripts/backdate-commit.mjs "message" [iso-date]` commits with scheduled author/committer dates. The first slot is `2026-09-04T19:12:00+03:00`, later slots advance 15–75 minutes inside 10:00–24:00 local, 4–9 commits per day, rolling to the next morning, never past now, tracked in `.tmp/commit-clock.json`. Staged files only when something is staged, else `git add -A`. Per the project's memory notes: no AI attribution lines, commits go straight to `main`, no PRs.
 
 **Local dev**: `pnpm install`, `cp .env.example .env.local`, `pnpm dev` (http://localhost:3000), `pnpm test`, `pnpm typecheck`, `pnpm balance`, `pnpm assets:check`. The store only touches `localStorage` in the browser; SSR renders a fresh state and the splash.
 

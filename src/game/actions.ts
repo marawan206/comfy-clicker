@@ -1,6 +1,6 @@
 /**
  * Player actions. Every action validates, mutates `ctx.state` in place and returns
- * `{ events, dirty }` — `dirty` tells the caller to recompute `Derived`. Validation failures
+ * `{ events, dirty }`. `dirty` tells the caller to recompute `Derived`. Validation failures
  * return `{ events: [], dirty: false, error }` and leave the state untouched.
  *
  * Actions take an `ActionContext` first so the store can bind it once per frame:
@@ -77,7 +77,7 @@ export const BROKE_AT_ZERO_FLAG = 'brokeAtZero'
  * Flags only the UI can discover (a ticker line clicked seven times, the Konami code, seed 42
  * typed into the seed box, the rickroll). The UI raises them through `setFlag`, which announces
  * the `easterEgg` event; src/data/mapNodes.ts (hidden lane) and achievements.ts key off them.
- * Other flag keys are still accepted — this list documents the ones nothing in src/game sets.
+ * Other flag keys are still accepted; this list documents the ones nothing in src/game sets.
  */
 export const UI_FLAGS = ['konami', 'ticker-seven', 'seed42', 'rickroll'] as const
 /** "Speedrun": the first cloud node bought inside this much play time. */
@@ -374,7 +374,7 @@ export function resolveEvent(ctx: ActionContext, defId: string): ActionResult {
   if (!active) return fail('Nothing to resolve')
   if (!RESOLVABLE_KINDS.has(active.kind)) return fail('This event runs its course on its own')
   const events = resolveActiveEvent(state, defId, now)
-  if (events.length === 0) return fail('Too late — it already ended')
+  if (events.length === 0) return fail('Too late, it already ended')
   return ok(events, true)
 }
 
@@ -389,7 +389,7 @@ export function toggleSetting(ctx: ActionContext, key: keyof GameSettings, value
 /**
  * Raise a discovery flag from the UI (see `UI_FLAGS`). Idempotent: the first call sets the flag
  * and announces an `easterEgg`; a repeat is a validation failure so nothing is announced twice.
- * `dirty` is false — flags gate hidden map nodes and achievements, which the tick re-checks on
+ * `dirty` is false: flags gate hidden map nodes and achievements, which the tick re-checks on
  * its own; nothing in `Derived` reads them.
  */
 export function setFlag(ctx: ActionContext, key: string): ActionResult {
@@ -407,7 +407,7 @@ export function setFlag(ctx: ActionContext, key: string): ActionResult {
  * and reaches the new target one `POST_WINDOW_MS` from now; `settlePosts` then pays the extra
  * likes as they land (its `max(post.likes, likesAt)` guarantees no negative delta even if the
  * floored curve sits a like below the paid count). The post stays `granted`, so followers and
- * stats are not counted twice. Flops are refused — a second wave of nothing is still nothing.
+ * stats are not counted twice. Flops are refused, a second wave of nothing is still nothing.
  */
 export function upscalePost(ctx: ActionContext, postId: string): ActionResult {
   const { state, now } = ctx

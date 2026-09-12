@@ -34,7 +34,7 @@ const T0 = 1_757_800_000_000
 const { modelById, hardwareById } = buildIndex(CATALOG)
 const model = (id: string): ModelDef => modelById[id] as ModelDef
 
-/** A Derived built by hand — the studio only reads a handful of fields. */
+/** A Derived built by hand; the studio only reads a handful of fields. */
 function makeDerived(over: Partial<Derived> = {}): Derived {
   return {
     cps: 1,

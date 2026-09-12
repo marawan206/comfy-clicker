@@ -1,7 +1,7 @@
 'use client'
 /**
  * Offline earnings report. `store.offlineReport` is set by `start()` / long gaps once the credits
- * are already banked, so "Claim" only dismisses it — but a number that big deserves a moment.
+ * are already banked, so "Claim" only dismisses it, but a number that big deserves a moment.
  */
 import { useState } from 'react'
 import { motion } from 'motion/react'

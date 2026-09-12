@@ -1,5 +1,5 @@
 /**
- * Client contracts — CONTRACT_SLOTS rotating gigs from the cousin, the Discord mods, DevRel and
+ * Client contracts: CONTRACT_SLOTS rotating gigs from the cousin, the Discord mods, DevRel and
  * friends. A slot is accepted the moment it is rolled; progress accrues from the engine's
  * GameEvents (posts, clicks, likes, followers, virals) or, for "own N of X" and "have N quantized
  * models" goals, from the live state. Done contracts wait for the player to claim them.
@@ -67,7 +67,7 @@ export function absoluteProgress(goal: ContractGoal, state: GameState): number |
 export function contractEligible(def: ContractDef, state: GameState, derived: Derived): boolean {
   if (def.minTier > derived.bestTier) return false
   if (state.contracts.active.some((c) => c.defId === def.id)) return false
-  // An absolute goal the player already meets would be a free reward — skip it.
+  // An absolute goal the player already meets would be a free reward, so skip it.
   const current = absoluteProgress(def.goal, state)
   return current === null || current < goalTarget(def.goal)
 }

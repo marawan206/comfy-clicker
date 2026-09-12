@@ -1,6 +1,6 @@
 'use client'
 /**
- * /hub — ComfyHub. The same litegraph canvas and header as the game (the store is a module
+ * /hub: ComfyHub. The same litegraph canvas and header as the game (the store is a module
  * singleton started in the root layout, so the counter keeps ticking here), a short intro with the
  * player's own hub numbers, and the listing panel with its sort tabs, tag filter and Publish CTA.
  * The full overlay set is mounted so the header's daily / stats / settings buttons work here.
@@ -66,7 +66,7 @@ function Intro() {
           <h1 className="mt-0.5 text-2xl font-extrabold tracking-tight text-smoke-100">Workflows other people will actually run</h1>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-smoke-600">
             Publish a recipe from your Studio. Every time another player runs it, five percent of their job comes back as royalty and your
-            rep climbs. Run someone else&apos;s and the Studio loads it as-is — model, precision, tags. Missing custom nodes not included.
+            rep climbs. Run someone else&apos;s and the Studio loads it as-is: model, precision, tags. Missing custom nodes not included.
           </p>
         </div>
       </div>

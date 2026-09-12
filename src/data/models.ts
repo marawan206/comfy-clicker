@@ -14,10 +14,10 @@ import type { ModelDef, UnlockCond } from '@/game/types'
  *   a native post. Reach (trend, likesMult, audience, founder, events) moves likes and followers,
  *   never credits, so the band holds regardless of upgrades: [1.05, 1.6] for local models, i.e.
  *   payoutRatio in [0.86, 1.30]. Image 1.10–1.18, 3d/audio 1.16, video 1.19–1.22 (longer, pricier
- *   jobs — the premium is mostly in costSecs and baseLikes).
+ *   jobs; the premium is mostly in costSecs and baseLikes).
  * - API models have no VRAM, unlock with the API Nodes map node, cost 12 s of income ×1.5
  *   (API_COST_MULT) with the payout computed on the pre-surcharge cost, and cannot be quantized.
- *   At payoutRatio 1.25 they net ≈ 1.02× — roughly break-even; you rent them for the reach
+ *   At payoutRatio 1.25 they net ≈ 1.02×, roughly break-even; you rent them for the reach
  *   (baseLikes) and because they need no local card. Their baseTime (10 s images, 12 s video)
  *   ignores local hardware, so a real rig still renders the local models faster.
  * virality.test.ts asserts both bands analytically and over 20k rolls.

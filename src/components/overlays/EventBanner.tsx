@@ -263,7 +263,7 @@ const EventRow = memo(function EventRow({
   if (!expanded) {
     return (
       <div
-        title={`${title} — ${typeof desc === "string" ? desc : ""}`.trim()}
+        title={`${title}. ${typeof desc === "string" ? desc : ""}`.trim()}
         className={cn(
           "relative flex h-9 items-center gap-2 overflow-hidden rounded-full border-2 border-charcoal-400 border-l-4 bg-charcoal-600 pr-3 pl-2 shadow-[0_4px_0_#0e0e0f,0_10px_24px_rgba(0,0,0,0.35)]",
           STRIPE_CLASS[meta.stripe],

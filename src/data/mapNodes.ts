@@ -1,5 +1,5 @@
 /**
- * The Node Map — a ComfyUI-flavoured skill tree laid out as a left-to-right graph.
+ * The Node Map: a ComfyUI-flavoured skill tree laid out as a left-to-right graph.
  *
  * Layout: every node sits on a 260×140 grid (`x = column × 260`, `y = row × 140`).
  * Each branch is a horizontal lane (one or more rows); the core lane runs through the
@@ -70,7 +70,7 @@ function lane(branch: MapBranch, row: number, currency: Currency, specs: NodeSpe
 }
 
 // ---------------------------------------------------------------------------
-// Core lane — the trunk everything forks from. Costs 0 → 1e10, ×~4.6 per step.
+// Core lane: the trunk everything forks from. Costs 0 → 1e10, ×~4.6 per step.
 // ---------------------------------------------------------------------------
 const CORE = lane('core', MAP_ROWS.core, 'credits', [
   {
@@ -154,7 +154,7 @@ const CORE = lane('core', MAP_ROWS.core, 'credits', [
 ])
 
 // ---------------------------------------------------------------------------
-// Hardware lane — per-family output multipliers ×1.1 / ×1.25 / ×1.5, three rows.
+// Hardware lane: per-family output multipliers ×1.1 / ×1.25 / ×1.5, three rows.
 // Main chain runs cpu → nvidia → workstation → datacenter → cloud → region;
 // apple hangs off cpu and amd off nvidia (amd additionally needs a ROCm card owned).
 // ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ const HARDWARE: MapNodeDef[] = HW_LANES.flatMap((l) =>
 )
 
 // ---------------------------------------------------------------------------
-// Models lane — loaders, adapters and pipelines that make posts better.
+// Models lane: loaders, adapters and pipelines that make posts better.
 // ---------------------------------------------------------------------------
 const MODELS = lane('models', MAP_ROWS.models, 'credits', [
   {
@@ -321,7 +321,7 @@ const MODELS = lane('models', MAP_ROWS.models, 'credits', [
 ])
 
 // ---------------------------------------------------------------------------
-// Techniques lane — speed, quantization, ROCm, LoRA training, distillation.
+// Techniques lane: speed, quantization, ROCm, LoRA training, distillation.
 // ---------------------------------------------------------------------------
 const TECH = lane('techniques', MAP_ROWS.tech, 'credits', [
   {
@@ -435,7 +435,7 @@ const TECH2 = lane('techniques', MAP_ROWS.tech2, 'credits', [
 ])
 
 // ---------------------------------------------------------------------------
-// Infra lane — power (row 3) and cooling/ops (row 2). Big power beyond the upgrades.
+// Infra lane: power (row 3) and cooling/ops (row 2). Big power beyond the upgrades.
 // ---------------------------------------------------------------------------
 const INFRA_POWER = lane('infra', MAP_ROWS.infraPower, 'credits', [
   {
@@ -558,7 +558,7 @@ const INFRA_OPS = lane('infra', MAP_ROWS.infraOps, 'credits', [
 ])
 
 // ---------------------------------------------------------------------------
-// Regions lane — planetary scale, then orbit. Credits, then Comfy Points.
+// Regions lane: planetary scale, then orbit. Credits, then Comfy Points.
 // ---------------------------------------------------------------------------
 const REGIONS = lane('regions', MAP_ROWS.regions, 'credits', [
   {
@@ -620,7 +620,7 @@ const REGIONS = lane('regions', MAP_ROWS.regions, 'credits', [
 ])
 
 // ---------------------------------------------------------------------------
-// API lane — API Nodes and the business of renting other people's models.
+// API lane: API Nodes and the business of renting other people's models.
 // ---------------------------------------------------------------------------
 const API = lane('api', MAP_ROWS.api, 'credits', [
   {
@@ -670,7 +670,7 @@ const API = lane('api', MAP_ROWS.api, 'credits', [
 ])
 
 // ---------------------------------------------------------------------------
-// Social lane — paid in Research Points (RP). Spending RP never lowers the RP bonus.
+// Social lane: paid in Research Points (RP). Spending RP never lowers the RP bonus.
 // ---------------------------------------------------------------------------
 const SOCIAL = lane('social', MAP_ROWS.social, 'rp', [
   {
@@ -718,7 +718,7 @@ const SOCIAL = lane('social', MAP_ROWS.social, 'rp', [
   {
     id: 'social-tutorial', col: 10, cost: 16, parents: ['social-hub'],
     title: 'Tutorial Series', icon: 'video',
-    desc: 'Follower rate ×1.2. "In this video we will" — 40 minutes — "install a node".',
+    desc: 'Follower rate ×1.2. "In this video we will" (40 minutes) "install a node".',
     effects: [{ kind: 'followRate', value: 1.2 }],
   },
   {
@@ -748,7 +748,7 @@ const SOCIAL = lane('social', MAP_ROWS.social, 'rp', [
 ])
 
 // ---------------------------------------------------------------------------
-// Prestige lane — Comfy Points (CP), earned by rebranding. Persists across seasons.
+// Prestige lane: Comfy Points (CP), earned by rebranding. Persists across seasons.
 // ---------------------------------------------------------------------------
 const PRESTIGE = lane('prestige', MAP_ROWS.prestige, 'cp', [
   {
@@ -838,8 +838,8 @@ const PRESTIGE = lane('prestige', MAP_ROWS.prestige, 'cp', [
 ])
 
 // ---------------------------------------------------------------------------
-// Hidden lane — easter eggs. Invisible until the matching flag is raised by the UI through
-// `actions.setFlag` (keys: ticker-seven, konami, seed42, rickroll — see UI_FLAGS in actions.ts).
+// Hidden lane: easter eggs. Invisible until the matching flag is raised by the UI through
+// `actions.setFlag` (keys: ticker-seven, konami, seed42, rickroll; see UI_FLAGS in actions.ts).
 // ---------------------------------------------------------------------------
 const HIDDEN = lane('hidden', MAP_ROWS.hidden, 'credits', [
   {

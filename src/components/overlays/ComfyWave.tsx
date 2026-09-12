@@ -1,6 +1,6 @@
 'use client'
 /**
- * Comfy Wave — the reward for typing "comfy" anywhere that is not a text box. The Comfy wordmark
+ * Comfy Wave: the reward for typing "comfy" anywhere that is not a text box. The Comfy wordmark
  * (ported from ComfyUI_frontend's LogoComfyWaveLoader: the glyph is a mask, a sine wave rises
  * through it while scrolling sideways) surfs across the header for four seconds. Inline SVG and
  * transform-only Motion tweens; nothing is hit-testable. Under reduced motion the wordmark

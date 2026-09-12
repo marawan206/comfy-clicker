@@ -81,7 +81,7 @@ export function LeaderboardTable({ entries, loading, error, available, currentUs
                     ? error
                     : available
                       ? 'Nobody has uploaded a save yet. The top spot is one sign-in away.'
-                      : 'The board is off on this build — no cloud configured. Your run still counts, just locally.'}
+                      : 'The board is off on this build, no cloud configured. Your run still counts, just locally.'}
                 </td>
               </tr>
             ) : (
@@ -96,7 +96,7 @@ export function LeaderboardTable({ entries, loading, error, available, currentUs
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-charcoal-400 border-l-4 border-l-electric-400 bg-charcoal-700/60 px-4 py-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-smoke-100">Sign in to appear</p>
-            <p className="text-xs text-smoke-600">The board reads cloud saves. Create an account and this run — clicks, rigs, followers — goes up with you.</p>
+            <p className="text-xs text-smoke-600">The board reads cloud saves. Create an account and this run (clicks, rigs, followers) goes up with you.</p>
           </div>
           <ModalButton tone="primary" size="lg" onClick={() => openAuthSheet('sign-up')}>
             <LogIn size={16} />
@@ -168,7 +168,7 @@ function YouTableRow({ you }: { you: YouRow }) {
   return (
     <tr className="bg-electric-400/10 tabular-nums shadow-[inset_4px_0_0_#f0ff41]" aria-current="true">
       <td className={cn(CELL, 'text-right font-extrabold text-smoke-600')} title="Not in the top 100 yet">
-        —
+        ·
       </td>
       <td className={cn(CELL, 'font-semibold text-smoke-100')}>
         <span className="inline-flex items-center gap-2">

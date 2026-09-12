@@ -2,7 +2,7 @@
  * Trending hashtags and prompt tag matching.
  *
  * A "week" is WEEK_MS of wall clock (shortened by the `weekSpeed` effect). Each week a
- * deterministic trio of tags trends — seeded by the week index — so every player on the same
+ * deterministic trio of tags trends (seeded by the week index) so every player on the same
  * week sees the same board, demos can pin a week via `state.weekOverride`, and the server can
  * override the board for half an hour with real trending data (`state.liveTrending`).
  */
@@ -38,7 +38,7 @@ export function weekIndex(now: number, weekSpeed = 1): number {
   return Math.floor(now / weekPeriodMs(weekSpeed))
 }
 
-/** Milliseconds until the next week boundary — in `(0, period]`. */
+/** Milliseconds until the next week boundary, in `(0, period]`. */
 export function msUntilRollover(now: number, weekSpeed = 1): number {
   const period = weekPeriodMs(weekSpeed)
   const into = ((now % period) + period) % period
@@ -110,7 +110,7 @@ const LITERAL_TAG_RE = /#([a-z0-9_]+)/g
 
 /**
  * Which hashtags a post carries: keyword hits in the prompt (word-boundary, phrases allowed),
- * literal `#tags`, and explicitly selected ids — deduped, unknown ids dropped.
+ * literal `#tags`, and explicitly selected ids, deduped, unknown ids dropped.
  * `keywordHits` counts distinct keywords found in the prose (literal tags excluded), which
  * `trendMult` turns into the small "descriptive prompt" bonus.
  */
@@ -186,8 +186,8 @@ export function trendMult(
 }
 
 /**
- * The trending ids a post actually rides, hottest first — matched non-type tags plus a type tag
- * of the post's kind — for the post card. Empty when the spam rule voided the match.
+ * The trending ids a post actually rides, hottest first (matched non-type tags plus a type tag
+ * of the post's kind) for the post card. Empty when the spam rule voided the match.
  */
 export function matchedTrending(
   matched: string[],

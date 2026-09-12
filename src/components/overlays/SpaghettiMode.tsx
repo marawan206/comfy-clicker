@@ -1,6 +1,6 @@
 'use client'
 /**
- * Spaghetti Mode — the Konami reward. Twelve to twenty litegraph wires in ComfyUI slot colours
+ * Spaghetti Mode: the Konami reward. Twelve to twenty litegraph wires in ComfyUI slot colours
  * draw themselves across the viewport and keep wriggling (Motion animates the bezier control
  * points; the endpoints stay put under their slot dots), under a glitching "SPAGHETTI MODE"
  * banner. Pure SVG with `pointer-events: none`, so the game underneath stays clickable.

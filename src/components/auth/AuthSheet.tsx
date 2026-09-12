@@ -142,7 +142,7 @@ function AuthBody({ tab, onTab, onDone, unavailable }: { tab: Tab; onTab: (t: Ta
       <p className="text-xs leading-relaxed text-smoke-600">
         {signup
           ? 'An account backs your save up to the cloud, puts you on the board and times the daily on a clock you cannot nudge. Your guest run comes with you.'
-          : 'Welcome back. Signing in loads your cloud save — if this browser has its own run, you get to pick.'}
+          : 'Welcome back. Signing in loads your cloud save. If this browser has its own run, you get to pick.'}
       </p>
 
       <div className="flex flex-col gap-1.5">

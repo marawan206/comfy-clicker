@@ -5,7 +5,7 @@
 import type { Rng } from '@/game/types'
 
 /**
- * mulberry32 — small, fast 32-bit PRNG with a full 2^32 period.
+ * mulberry32: small, fast 32-bit PRNG with a full 2^32 period.
  * Same seed → same sequence, on every engine, forever.
  */
 export function mulberry32(seed: number): Rng {

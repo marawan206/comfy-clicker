@@ -23,7 +23,7 @@ const MAX_KEYWORD_BONUS = 3
 /** Discovery flags the prompt box can raise (see `UI_FLAGS` in src/game/actions.ts). */
 export const RICKROLL_FLAG = 'rickroll'
 export const SEED_42_FLAG = 'seed42'
-/** "seed 42", "seed:42", "seed=42", "seed42" — but not seed 420. */
+/** "seed 42", "seed:42", "seed=42", "seed42", but not seed 420. */
 const SEED_42_RE = /\bseed\s*[:=]?\s*42(?!\d)/
 const SEED_MAX_DIGITS = 10
 
@@ -176,7 +176,7 @@ export function PromptInput() {
 }
 
 /**
- * The seed box. Purely cosmetic — the engine rolls its own dice — but a fixed seed is a state of
+ * The seed box. Purely cosmetic (the engine rolls its own dice), but a fixed seed is a state of
  * mind, and one particular value is the answer to a hidden node.
  */
 function SeedChip({ onSeed }: { onSeed: (seed: string) => void }) {

@@ -3,7 +3,7 @@ import { recordRun } from '@/server/hub'
 
 export const dynamic = 'force-dynamic'
 
-/** `POST /api/hub/run` — the signed-in player ran a workflow; records the run and the author's royalty. */
+/** `POST /api/hub/run`: the signed-in player ran a workflow; records the run and the author's royalty. */
 export async function POST(req: NextRequest) {
   let body: unknown
   try {

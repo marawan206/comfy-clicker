@@ -118,7 +118,7 @@ export interface HubWorkflow {
   createdAt: string
   /** Live trending tags this workflow carries. */
   trendingMatch: number
-  /** `runs_24h × (1 + 0.5 × trendingMatch)` — the trending sort key. */
+  /** `runs_24h × (1 + 0.5 × trendingMatch)`: the trending sort key. */
   score: number
 }
 
@@ -190,7 +190,7 @@ export async function listHub(input: HubListInput = {}): Promise<HubResult<HubLi
   const { sort, tag, limit } = parsed.data
 
   const db = await createSupabaseServerClient()
-  if (!db) return err(503, 'ComfyHub needs Supabase — the hub is offline in guest mode')
+  if (!db) return err(503, 'ComfyHub needs Supabase; the hub is offline in guest mode')
 
   let query = db.from('hub_workflows').select('*, author:profiles!hub_workflows_author_id_fkey(handle)')
   if (tag) query = query.contains('hashtags', [tag])
@@ -219,7 +219,7 @@ export async function publishWorkflow(input: unknown): Promise<HubResult<HubWork
   if (!parsed.success) return err(400, parsed.error.issues[0]?.message ?? 'Bad request')
 
   const db = await createSupabaseServerClient()
-  if (!db) return err(503, 'ComfyHub needs Supabase — the hub is offline in guest mode')
+  if (!db) return err(503, 'ComfyHub needs Supabase; the hub is offline in guest mode')
   const { data: auth } = await db.auth.getUser()
   const user = auth.user
   if (!user) return err(401, 'Sign in to publish to ComfyHub')
@@ -268,7 +268,7 @@ export async function recordRun(input: unknown): Promise<HubResult<HubRunReceipt
   if (!parsed.success) return err(400, parsed.error.issues[0]?.message ?? 'Bad request')
 
   const db = await createSupabaseServerClient()
-  if (!db) return err(503, 'ComfyHub needs Supabase — the hub is offline in guest mode')
+  if (!db) return err(503, 'ComfyHub needs Supabase; the hub is offline in guest mode')
   const { data: auth } = await db.auth.getUser()
   const user = auth.user
   if (!user) return err(401, 'Sign in so the author gets their royalty')
@@ -324,7 +324,7 @@ export interface HubRoyaltyGrant {
  */
 export async function claimRoyalties(): Promise<HubResult<HubRoyaltyGrant>> {
   const db = await createSupabaseServerClient()
-  if (!db) return err(503, 'ComfyHub needs Supabase — the hub is offline in guest mode')
+  if (!db) return err(503, 'ComfyHub needs Supabase; the hub is offline in guest mode')
   const { data: auth } = await db.auth.getUser()
   const user = auth.user
   if (!user) return err(401, 'Sign in to collect royalties')

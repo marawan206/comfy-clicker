@@ -106,8 +106,8 @@ const calm: Rng = () => 0.99
 const CALM_ROLL = NORMAL_ROLL[0] + (NORMAL_ROLL[1] - NORMAL_ROLL[0]) * 0.99
 
 /**
- * E[M] for the contract's roll bands. Credits follow the roll alone — the founder boost (like
- * every other reach multiplier) moves likes, not payout — so the founder chance is not in here.
+ * E[M] for the contract's roll bands. Credits follow the roll alone. The founder boost (like
+ * every other reach multiplier) moves likes, not payout, so the founder chance is not in here.
  */
 const EXPECTED_MULT = (() => {
   const mean = (r: readonly [number, number]) => (r[0] + r[1]) / 2
@@ -164,7 +164,7 @@ describe('rollPost expected value (20k rolls, untagged native)', () => {
     })
   }
 
-  it('every model — image, video, 3d, audio and API — stays inside its band analytically', () => {
+  it('every model (image, video, 3d, audio and API) stays inside its band analytically', () => {
     expect(CATALOG.models.some((m) => m.kind === 'video')).toBe(true)
     expect(CATALOG.models.some((m) => m.api)).toBe(true)
     for (const m of CATALOG.models) {
@@ -252,7 +252,7 @@ describe('rollPost multipliers', () => {
     expect(b.targetLikes).toBe(Math.round(a.targetLikes * REPOST_PENALTY))
     expect(state.stats.lastPostKey).toBe(repostKey('sd15', [], 'untitled'))
 
-    // A new prompt is a new post, even with the same (empty) tag set — untagged posts on one
+    // A new prompt is a new post, even with the same (empty) tag set; untagged posts on one
     // model are not all reposts of each other.
     const c = rollPost(makeJob('sd15', { prompt: 'a cat' }), state, d, CATALOG, T0, calm)
     expect(c.trendMult).toBeCloseTo(1 + 0.1, 10) // 'cat' is one keyword hit

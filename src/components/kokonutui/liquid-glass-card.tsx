@@ -323,7 +323,7 @@ export function NotificationCenter() {
   const rootRef = React.useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = React.useState(true);
 
-  // Only tick while on screen — an off-screen interval keeps waking the main
+  // Only tick while on screen. An off-screen interval keeps waking the main
   // thread and re-rendering for a component nobody can see.
   React.useEffect(() => {
     const element = rootRef.current;

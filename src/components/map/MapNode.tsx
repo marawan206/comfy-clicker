@@ -2,12 +2,12 @@
 /**
  * The two custom React Flow node types on The Graph:
  *
- *  - `mapNode`  — a ComfyUI-style box: title bar tinted by branch, a body with the node's icon and
+ *  - `mapNode`: a ComfyUI-style box: title bar tinted by branch, a body with the node's icon and
  *    description, a footer with the price and the state control (Unlock / Owned / why-locked),
  *    slot dots on both flanks for the noodles. Owned boxes wear the electric border, available
  *    ones pulse, locked ones sit dim. Click (or Enter/Space) selects the node for the details
  *    panel; the Unlock button buys it straight from the canvas.
- *  - `laneGroup` — a litegraph "group" band behind each branch with the lane label, a dry blurb
+ *  - `laneGroup`: a litegraph "group" band behind each branch with the lane label, a dry blurb
  *    and, on the prestige lane, the Rebrand call to action.
  *
  * Neither subscribes to the store (the canvas pushes status in through `data`), except the small
@@ -82,7 +82,7 @@ function MapNodeImpl({ data }: NodeProps<MapFlowNode>) {
   )
 
   const stateWord = status === 'owned' ? 'unlocked' : status === 'available' ? (affordable ? 'available' : 'available, not affordable yet') : 'locked'
-  const label = `${def.title} — ${meta.label} node, ${cost === 0 ? 'free' : `${formatNum(cost)} ${CURRENCY_LABEL[def.currency]}`}, ${stateWord}${reason ? `. ${reason}` : ''}`
+  const label = `${def.title}, ${meta.label} node, ${cost === 0 ? 'free' : `${formatNum(cost)} ${CURRENCY_LABEL[def.currency]}`}, ${stateWord}${reason ? `. ${reason}` : ''}`
 
   return (
     <motion.div

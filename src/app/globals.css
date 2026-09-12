@@ -304,7 +304,7 @@ html.reduced-motion .cc-shimmer {
   animation: none;
 }
 
-/* Scrollbars: thin, charcoal, no arrows — panels scroll internally so there are many. */
+/* Scrollbars: thin, charcoal, no arrows. Panels scroll internally so there are many. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-charcoal-200) transparent;

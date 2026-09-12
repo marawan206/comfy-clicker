@@ -167,7 +167,7 @@ function httpUrl(url: string | undefined): string | undefined {
 }
 
 /**
- * Clean, tag, dedupe (by id, first wins — callers put live items before seed fallbacks) and sort newest first.
+ * Clean, tag, dedupe (by id, first wins; callers put live items before seed fallbacks) and sort newest first.
  * Items with no id/url/text or with adult-content text are dropped; unparsable dates fall back to `now`.
  */
 export function normalizeItems(items: FeedItem[], vocab: FeedVocabEntry[], now = Date.now()): FeedItem[] {

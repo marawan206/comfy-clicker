@@ -51,7 +51,7 @@ export function RoutePage({ icon: Icon, stripe, eyebrow, title, lede, stats, chi
         <header className="relative z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b-2 border-charcoal-400 bg-charcoal-700 px-4 shadow-[0_4px_0_#0e0e0f]">
           <Link
             href="/"
-            aria-label="Comfy Clicker — back to the studio"
+            aria-label="Comfy Clicker, back to the studio"
             className="flex min-w-0 items-center gap-2.5 rounded-comfy pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
           >
             <Image

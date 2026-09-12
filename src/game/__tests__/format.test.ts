@@ -146,6 +146,6 @@ describe('formatCompactDate', () => {
   it('appends the year otherwise', () => {
     const now = new Date(2026, 8, 13, 12).getTime()
     expect(formatCompactDate(new Date(2025, 11, 31).getTime(), now)).toBe('Dec 31, 2025')
-    expect(formatCompactDate(NaN, now)).toBe('—')
+    expect(formatCompactDate(NaN, now)).toBe('–')
   })
 })

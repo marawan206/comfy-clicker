@@ -1,12 +1,12 @@
 /**
- * POST /api/daily — server-timed daily claim for signed-in players.
+ * POST /api/daily: server-timed daily claim for signed-in players.
  *
  * The UTC day comes from the server clock, not the client's, and `daily_logins` (one row per
  * user and day) is the record: a second claim on the same day is refused with 409 (carrying the
  * day and streak already held, so the client can adopt them), so a clock rolled forward in the
- * browser earns nothing extra. The streak continues when yesterday was claimed — or the day
+ * browser earns nothing extra. The streak continues when yesterday was claimed, or the day
  * before, when the player's cloud save owns the Streak Grace node (read from `saves`, never
- * asserted by the client) — otherwise it restarts at 1. Returns `{ day, streak, rewardMultiplier }`,
+ * asserted by the client); otherwise it restarts at 1. Returns `{ day, streak, rewardMultiplier }`,
  * where `rewardMultiplier` is the position in the seven-day cycle the client pays out for.
  *
  * Writes use the service role (0003 removed the client insert policy); without it the cookie

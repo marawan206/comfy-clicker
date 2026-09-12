@@ -173,7 +173,7 @@ function AchievementGrid() {
 
 const AchievementTile = memo(function AchievementTile({ def, owned }: { def: AchievementDef; owned: boolean }) {
   const secret = def.hidden && !owned
-  const title = secret ? 'Hidden achievement — find it.' : `${def.name} — ${def.desc}${owned ? '' : ' (locked)'}`
+  const title = secret ? 'Hidden achievement. Find it.' : `${def.name}: ${def.desc}${owned ? '' : ' (locked)'}`
   let inner: ReactNode
   if (owned) inner = <Art id={badgeFor(def)} size={40} radius="0" alt="" />
   else if (secret) inner = <span className="text-xl font-extrabold text-smoke-800">?</span>
