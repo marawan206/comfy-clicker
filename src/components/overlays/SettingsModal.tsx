@@ -7,6 +7,7 @@
 import { useId, useState, type ReactNode } from 'react'
 import { Check, ClipboardCopy, Download, Info, Monitor, Save, Sparkles, Trash2, Upload, Volume2, Waves } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCloudSync } from '@/components/auth/useAuth'
 import { HoldToConfirm, ModalBase, ModalButton, SectionLabel } from '@/components/overlays/ModalBase'
 import { toast } from '@/components/overlays/useToasts'
 import { AUTOSAVE_MS } from '@/game/constants'
@@ -54,6 +55,8 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
   const [importText, setImportText] = useState('')
   const [importError, setImportError] = useState<string | null>(null)
   const importId = useId()
+  // Signed in: whatever replaces this run is uploaded within the minute, so say so before the click.
+  const cloud = useCloudSync() !== 'offline'
 
   const saveNow = () => {
     store.save()
@@ -181,7 +184,7 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
             Import &amp; replace
           </ModalButton>
           <span className={cn('text-xs', importError ? 'text-slot-vae' : 'text-smoke-600')} role={importError ? 'alert' : undefined}>
-            {importError ?? 'Replaces the current run. Export first if you want it back.'}
+            {importError ?? (cloud ? 'Replaces the current run — and the cloud save within a minute. Export first if you want it back.' : 'Replaces the current run. Export first if you want it back.')}
           </span>
         </div>
       </section>
@@ -192,7 +195,7 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
         </SectionLabel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-smoke-600">
-            Wipes everything: credits, rigs, the Graph, achievements, CP. No confirmation dialog after this one — the hold is the dialog.
+            Wipes everything: credits, rigs, the Graph, achievements, CP{cloud ? ' — and the cloud save follows within a minute' : ''}. No confirmation dialog after this one — the hold is the dialog.
           </p>
           <HoldToConfirm label="Hold to reset" holdingLabel="Wiping…" holdMs={2000} onConfirm={hardReset} icon={<Trash2 size={15} />} aria-label="Hold for two seconds to erase the save and start over" />
         </div>

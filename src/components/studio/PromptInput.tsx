@@ -1,9 +1,10 @@
 'use client'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Flame, Shuffle, X } from 'lucide-react'
+import { Dices, Flame, Shuffle, X } from 'lucide-react'
 import { PROMPT_CHIPS, type PromptChip } from '@/data/flavor'
 import { useGameStore } from '@/state/useGame'
+import type { GameStore } from '@/state/store'
 import { buildIndex } from '@/game/catalog'
 import { cn } from '@/lib/utils'
 import {
@@ -19,10 +20,35 @@ import {
 const CHIPS_SHOWN = 5
 const MAX_KEYWORD_BONUS = 3
 
+/** Discovery flags the prompt box can raise (see `UI_FLAGS` in src/game/actions.ts). */
+export const RICKROLL_FLAG = 'rickroll'
+export const SEED_42_FLAG = 'seed42'
+/** "seed 42", "seed:42", "seed=42", "seed42" — but not seed 420. */
+const SEED_42_RE = /\bseed\s*[:=]?\s*42(?!\d)/
+const SEED_MAX_DIGITS = 10
+
+/** Raise a UI discovery flag once; `setFlag` refuses repeats, so the check only spares the store a call. */
+function raiseFlag(store: GameStore, key: string): void {
+  if (store.state.flags[key] === true) return
+  store.setFlag(key)
+}
+
 /** Prompt textarea with one-tap idea chips and a live preview of the hashtags the words already hit. */
 export function PromptInput() {
   const store = useGameStore()
   const { prompt, setPrompt } = useStudioSelection()
+  // Two of the hidden flags live in the prompt text itself: the classic link, and the answer.
+  useEffect(() => {
+    const text = prompt.toLowerCase()
+    if (text.includes('rickroll')) raiseFlag(store, RICKROLL_FLAG)
+    if (SEED_42_RE.test(text)) raiseFlag(store, SEED_42_FLAG)
+  }, [prompt, store])
+  const onSeed = useCallback(
+    (seed: string) => {
+      if (seed === '42') raiseFlag(store, SEED_42_FLAG)
+    },
+    [store],
+  )
   const { matched, keywordHits, trending } = useCostPreview()
   const motionOk = useMotionOK()
   const [offset, setOffset] = useState(0)
@@ -47,9 +73,12 @@ export function PromptInput() {
         <label htmlFor="studio-prompt" className={LABEL_CLASS}>
           Prompt
         </label>
-        <span className={cn('text-[11px] tabular-nums', remaining <= 20 ? 'text-slot-cond' : 'text-smoke-800')}>
-          {prompt.length}/{MAX_PROMPT_UI_CHARS}
-        </span>
+        <div className="flex items-center gap-2">
+          <SeedChip onSeed={onSeed} />
+          <span className={cn('text-[11px] tabular-nums', remaining <= 20 ? 'text-slot-cond' : 'text-smoke-800')}>
+            {prompt.length}/{MAX_PROMPT_UI_CHARS}
+          </span>
+        </div>
       </div>
       <div className="relative">
         <textarea
@@ -143,5 +172,40 @@ export function PromptInput() {
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * The seed box. Purely cosmetic — the engine rolls its own dice — but a fixed seed is a state of
+ * mind, and one particular value is the answer to a hidden node.
+ */
+function SeedChip({ onSeed }: { onSeed: (seed: string) => void }) {
+  const [seed, setSeed] = useState('')
+  const fixed = seed !== ''
+  return (
+    <label
+      title="Fix the seed. Reproducibility is a state of mind."
+      className={cn(
+        'inline-flex h-6 items-center gap-1 rounded-full border bg-charcoal-500 pr-1.5 pl-2 text-[11px] transition-colors focus-within:border-electric-400',
+        fixed ? 'border-electric-400/60 text-electric-400' : 'border-charcoal-300 text-smoke-700 hover:border-charcoal-200',
+      )}
+    >
+      <Dices size={11} aria-hidden="true" />
+      <span className="font-semibold tracking-[0.08em] uppercase">seed</span>
+      <input
+        value={seed}
+        onChange={(e) => {
+          const next = e.target.value.replace(/\D/g, '').slice(0, SEED_MAX_DIGITS)
+          setSeed(next)
+          onSeed(next)
+        }}
+        inputMode="numeric"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="random"
+        aria-label="Seed (cosmetic)"
+        className="w-[7ch] bg-transparent text-right text-smoke-100 tabular-nums outline-none placeholder:text-smoke-800"
+      />
+    </label>
   )
 }

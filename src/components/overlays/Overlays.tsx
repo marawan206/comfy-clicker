@@ -1,7 +1,7 @@
 'use client'
 /**
  * Mounts every overlay once (toasts, achievement bridge, event banners, the trending spark, the
- * offline report and the four modals) and routes the window events the rest of the UI dispatches:
+ * easter-egg shows, the offline report and the four modals) and routes the window events the rest of the UI dispatches:
  *   `comfy:open-modal`  { detail: 'settings' | 'stats' | 'daily' | 'rebrand' }
  *   `comfy:close-modals`
  *   `comfy:saved`       (from the S hotkey) → a "Saved" toast
@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Save } from 'lucide-react'
 import { AchievementToast } from '@/components/overlays/AchievementToast'
 import { DailyModal } from '@/components/overlays/DailyModal'
+import { EasterEggs } from '@/components/overlays/EasterEggs'
 import { EventBanner } from '@/components/overlays/EventBanner'
 import { CLOSE_MODALS_EVENT, OPEN_MODAL_EVENT } from '@/components/overlays/ModalBase'
 import { RebrandModal } from '@/components/overlays/RebrandModal'
@@ -64,6 +65,7 @@ export function Overlays() {
       <AchievementToast />
       <EventBanner />
       <TrendingSpark />
+      <EasterEggs />
       <WelcomeBackModal />
       <DailyModal open={modal === 'daily'} onClose={close} onOpen={openDaily} />
       <RebrandModal open={modal === 'rebrand'} onClose={close} />

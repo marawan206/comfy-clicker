@@ -4,7 +4,8 @@
  *
  * Hidden achievements are easter eggs that key off `state.flags`. Flag keys used here and who raises them:
  *   speedrun, brokeAtZero (actions.ts) · spaghetti (studio.ts) · founderMention (virality.ts)
- *   sparkCaught, fixedNode (events.ts) · konami (UI, through `actions.setFlag`)
+ *   sparkCaught, fixedNode (events.ts) · konami, comfy-wave, click-frenzy, ticker-seven, seed42,
+ *   rickroll (UI, through `actions.setFlag`: src/hooks/useEasterEggs.ts, NewsTicker, PromptInput)
  * Icon strings are lucide kebab-case names or `src/assets/brand/nodes` file stems.
  */
 import type { AchievementDef, HardwareFamily, StatKey, UnlockCond } from '@/game/types'
@@ -624,6 +625,46 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     desc: 'Spend down to exactly zero credits.',
     icon: 'coffee',
     cond: flag('brokeAtZero'),
+    hidden: true,
+  },
+  {
+    id: 'comfy-wave',
+    name: 'Comfy Said Hi',
+    desc: 'Type the magic word somewhere that is not a text box.',
+    icon: 'waves',
+    cond: flag('comfy-wave'),
+    hidden: true,
+  },
+  {
+    id: 'click-frenzy',
+    name: 'Batch Size: Yes',
+    desc: 'A hundred Generate clicks inside ten seconds. The mouse has filed a complaint.',
+    icon: 'zap',
+    cond: flag('click-frenzy'),
+    hidden: true,
+  },
+  {
+    id: 'ticker-seven',
+    name: 'Breaking: Nothing',
+    desc: 'Click the wire seven times. It had nothing more to say.',
+    icon: 'radio',
+    cond: flag('ticker-seven'),
+    hidden: true,
+  },
+  {
+    id: 'seed-42',
+    name: 'Deterministic, Allegedly',
+    desc: 'Fix the seed to 42. Same prompt, same image, different opinion.',
+    icon: 'dices',
+    cond: flag('seed42'),
+    hidden: true,
+  },
+  {
+    id: 'rickroll',
+    name: 'Never Gonna Give You Upscale',
+    desc: 'Prompt for the one link everyone still clicks.',
+    icon: 'music',
+    cond: flag('rickroll'),
     hidden: true,
   },
 ]
