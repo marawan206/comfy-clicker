@@ -21,8 +21,7 @@ import {
   FOUNDER_BOOST_CHANCE,
   POST_WINDOW_MS,
   REPOST_PENALTY,
-  VIRAL_FOLLOW_MULT,
-} from '@/game/constants'
+  VIRAL_FOLLOW_MULT, HUB_RUN_LIKES_BOOST } from '@/game/constants'
 import { eventLikesBoost, isEventActive } from '@/game/events'
 import { currentTrending, matchTags, matchedTrending, normalizePromptText, trendMult } from '@/game/hashtags'
 import { chance, hashString, uniform } from '@/game/rng'
@@ -131,6 +130,8 @@ export function rollPost(
     founder = true
   }
   const founderMult = founder ? FOUNDER_BOOST_MULT : 1
+  // Running somebody's ComfyHub workflow borrows their audience: a flat likes boost for the runner.
+  const hubMult = job.hubWorkflowId !== undefined ? HUB_RUN_LIKES_BOOST : 1
 
   // Even a flop gets one like (the alt account). Also keeps credits/like finite.
   const targetLikes = Math.max(
@@ -144,7 +145,8 @@ export function rollPost(
         derived.likesMult *
         tagBonus *
         eventBoost *
-        founderMult,
+        founderMult *
+        hubMult,
     ),
   )
   // Payout: roll and precision only (see the header). The API surcharge is a fee on top of the bet.

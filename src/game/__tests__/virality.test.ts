@@ -14,8 +14,7 @@ import {
   REPOST_PENALTY,
   SIGNUP_THRESHOLDS,
   VIRAL_CHANCE_BASE,
-  VIRAL_FOLLOW_MULT,
-} from '@/game/constants'
+  VIRAL_FOLLOW_MULT, HUB_RUN_LIKES_BOOST } from '@/game/constants'
 import { currentTrending } from '@/game/hashtags'
 import { hashString, mulberry32 } from '@/game/rng'
 import { addFollowers, audienceMult, nextSignupAt, signupThreshold } from '@/game/social'
@@ -570,4 +569,16 @@ describe('social', () => {
     expect(audienceMult(AUDIENCE_REF_DIVISOR * 99)).toBeCloseTo(3, 10)
     expect(audienceMult(-10)).toBe(1)
   })
+
+  it('a job run from a ComfyHub workflow earns the runner a flat likes boost, never extra credits', () => {
+    const state = freshState()
+    state.weekOverride = 3
+    const plain = rollPost(makeJob('sd15', { cost: 500 }), state, makeDerived(), CATALOG, T0, calm)
+    state.stats.lastPostKey = ''
+    const fromHub = rollPost(makeJob('sd15', { cost: 500, hubWorkflowId: 'wf-1' }), state, makeDerived(), CATALOG, T0, calm)
+    expect(fromHub.targetLikes).toBe(Math.max(1, Math.round(plain.targetLikes * HUB_RUN_LIKES_BOOST)))
+    expect(fromHub.targetLikes * fromHub.creditsPerLike).toBeCloseTo(plain.targetLikes * plain.creditsPerLike, 6)
+    expect(fromHub.hubWorkflowId).toBe('wf-1')
+  })
+
 })

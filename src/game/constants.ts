@@ -54,3 +54,6 @@ export const ACHIEVEMENT_MULT = 0.01
 export const TIER_UPGRADE_THRESHOLDS = [5, 10, 25, 50] as const
 export const TIER_UPGRADE_COST_MULT = [10, 100, 1_000, 10_000] as const
 export const TIER_UPGRADE_EFFECT = 2
+
+/** Likes multiplier for a job run from a published ComfyHub workflow (the runner's reward). */
+export const HUB_RUN_LIKES_BOOST = 1.15
