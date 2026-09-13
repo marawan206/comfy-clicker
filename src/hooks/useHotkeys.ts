@@ -3,6 +3,7 @@
  * Global keyboard shortcuts:
  *   Space → one Generate click (never repeats while held; ignored inside inputs)
  *   S     → save now (`comfy:saved` event; Overlays shows the toast)
+ *   ?     → replay the tutorial (same event the header's `?` tile raises)
  *   Esc   → `comfy:close-modals` for every overlay
  */
 import { useEffect } from 'react'
@@ -10,6 +11,8 @@ import { useGameStore } from '@/state/useGame'
 
 export const CLOSE_MODALS_EVENT = 'comfy:close-modals'
 export const SAVED_EVENT = 'comfy:saved'
+/** Same string `ModalBase` exports; declared here so the hook pulls in no component module. */
+const OPEN_MODAL_EVENT = 'comfy:open-modal'
 
 /** Buttons that opt into Space-as-Generate while focused (the hero logo and the Generate pill). */
 export const GENERATE_HOTKEY_ATTR = 'data-generate-hotkey'
@@ -48,6 +51,12 @@ export function useHotkeys(): void {
         e.preventDefault()
         if (e.repeat) return
         store.click()
+        return
+      }
+      // Shift+/ on most layouts, and whatever else produces a question mark on the rest.
+      if (e.key === '?' && !e.repeat) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent<string>(OPEN_MODAL_EVENT, { detail: 'help' }))
         return
       }
       if (e.code === 'KeyS' && !e.repeat) {

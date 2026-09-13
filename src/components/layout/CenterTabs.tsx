@@ -198,6 +198,8 @@ function TabButton({ def, active, off, onSelect, ref }: TabButtonProps) {
       type="button"
       role="tab"
       id={`center-tab-${def.id}`}
+      // The tour spotlights the Feed tab for step three; only that one needs the hook.
+      data-tour={def.id === 'feed' ? 'center-tab-feed' : undefined}
       aria-selected={active}
       aria-controls={`center-panel-${def.id}`}
       tabIndex={active ? 0 : -1}

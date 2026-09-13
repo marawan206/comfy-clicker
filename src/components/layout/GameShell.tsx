@@ -6,6 +6,7 @@ import { FeedProvider } from '@/components/feed/FeedProvider'
 import { FxCanvas } from '@/components/fx/FxCanvas'
 import { FlagshipRig } from '@/components/hero/FlagshipRig'
 import { HeroPanel } from '@/components/hero/HeroPanel'
+import { NextUpPanel } from '@/components/hero/NextUpPanel'
 import { PowerMeter } from '@/components/hero/PowerMeter'
 import { QueueMini } from '@/components/hero/QueueMini'
 import { CenterTabs } from '@/components/layout/CenterTabs'
@@ -13,11 +14,13 @@ import { DotGrid } from '@/components/layout/DotGrid'
 import { Header } from '@/components/layout/Header'
 import { NewsTicker } from '@/components/layout/NewsTicker'
 import { Overlays } from '@/components/overlays/Overlays'
+import { Tutorial } from '@/components/overlays/Tutorial'
 import { RackPanel } from '@/components/rigs/RackPanel'
 import { StorePanel } from '@/components/store/StorePanel'
 import { LOADING_LINES } from '@/data/flavor'
 import { useEasterEggs } from '@/hooks/useEasterEggs'
 import { useHotkeys } from '@/hooks/useHotkeys'
+import { useSfx } from '@/hooks/useSfx'
 import { cn } from '@/lib/utils'
 import { useGame } from '@/state/useGame'
 
@@ -40,6 +43,7 @@ const SPLASH_LINE_MS = 180
  */
 export function GameShell() {
   useHotkeys()
+  useSfx()
   useEasterEggs()
 
   const started = useGame((_s, _d, store) => store.started)
@@ -87,6 +91,7 @@ export function GameShell() {
             <Workbench />
             <FxCanvas />
             <Overlays />
+            <Tutorial />
           </motion.div>
         ) : null}
       </div>
@@ -113,6 +118,7 @@ function Workbench() {
       {/* Scrolling columns keep 4 px of bottom padding so the last panel's hard shadow is not clipped. */}
       <aside aria-label="Your rig" className="relative flex min-h-0 flex-col gap-4 lg:overflow-y-auto lg:pr-0.5 lg:pb-1 [&>*]:shrink-0">
         <HeroPanel />
+        <NextUpPanel />
         <FlagshipRig />
         <PowerMeter />
         <QueueMini />

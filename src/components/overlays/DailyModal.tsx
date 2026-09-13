@@ -21,6 +21,7 @@ import { DAILY_BASE_SECS } from '@/game/constants'
 import { DAILY_CP_DAY, DAILY_CYCLE_DAYS, DAILY_RP_DAY, canClaim, cycleDay, dailyReward, dayKey, effectiveStreak } from '@/game/daily'
 import { formatDuration, formatNum } from '@/game/format'
 import type { ServerDailyClaim } from '@/state/cloudActions'
+import { useTourActive } from '@/state/tourStore'
 import { useGameShallow, useGameStore } from '@/state/useGame'
 
 const DAY_MS = 86_400_000
@@ -45,14 +46,18 @@ export function DailyModal({ open, onClose, onOpen }: DailyModalProps) {
     offlinePending: store.offlineReport !== null,
   }))
 
+  // The tour starts 900 ms in and step one is the hero button, which this would land on top of.
+  // Waiting for it also makes the hand-off natural: the tour ends, the calendar opens.
+  const tourActive = useTourActive()
+
   useEffect(() => {
-    if (!started || !can || offlinePending || open || autoOpenedThisSession) return
+    if (!started || !can || offlinePending || tourActive || open || autoOpenedThisSession) return
     const t = setTimeout(() => {
       autoOpenedThisSession = true
       onOpen()
     }, AUTO_OPEN_DELAY_MS)
     return () => clearTimeout(t)
-  }, [started, can, offlinePending, open, onOpen])
+  }, [started, can, offlinePending, tourActive, open, onOpen])
 
   return (
     <ModalBase open={open} onClose={onClose} title="Daily login" icon={<CalendarDays size={16} />} stripe="clip" size="lg">
