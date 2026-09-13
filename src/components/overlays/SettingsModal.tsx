@@ -228,6 +228,12 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
   )
 }
 
+/**
+ * The knob is positioned from an explicit `left`: without it Chrome puts an absolutely positioned
+ * child of a button at the button's centred static position, so the ON translate pushed the knob
+ * clean out of the pill and OFF looked like ON. The state word sits next to the pill so nobody
+ * has to decode a colour.
+ */
 function Switch({ checked, label, onChange }: { checked: boolean; label: string; onChange: () => void }) {
   return (
     <button
@@ -236,18 +242,31 @@ function Switch({ checked, label, onChange }: { checked: boolean; label: string;
       aria-checked={checked}
       aria-label={label}
       onClick={onChange}
-      className={cn(
-        'relative h-6 w-11 shrink-0 rounded-full border-2 transition-colors',
-        checked ? 'border-electric-400 bg-electric-400' : 'border-charcoal-300 bg-charcoal-700',
-      )}
+      className="group inline-flex shrink-0 items-center gap-2 rounded-comfy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
     >
+      <span
+        className={cn(
+          'w-6 text-right text-[10px] font-bold uppercase tracking-[0.08em] tabular-nums transition-colors',
+          checked ? 'text-electric-400' : 'text-smoke-800',
+        )}
+        aria-hidden="true"
+      >
+        {checked ? 'On' : 'Off'}
+      </span>
       <span
         aria-hidden="true"
         className={cn(
-          'absolute top-0.5 size-4 rounded-full transition-transform',
-          checked ? 'translate-x-[22px] bg-charcoal-800' : 'translate-x-0.5 bg-smoke-600',
+          'relative block h-6 w-11 rounded-full border-2 transition-colors',
+          checked ? 'border-electric-400 bg-electric-400' : 'border-charcoal-300 bg-charcoal-700 group-hover:border-charcoal-200',
         )}
-      />
+      >
+        <span
+          className={cn(
+            'absolute top-0.5 left-0.5 size-4 rounded-full shadow-[0_1px_0_rgba(0,0,0,0.35)] transition-[translate,background-color] duration-150',
+            checked ? 'translate-x-5 bg-charcoal-800' : 'translate-x-0 bg-smoke-600',
+          )}
+        />
+      </span>
     </button>
   )
 }
