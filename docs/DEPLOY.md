@@ -11,6 +11,7 @@
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase legacy anon key (or `sb_publishable_…`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase secret key (`sb_secret_…`); server only |
 | `CRON_SECRET` | any long random string; used by `/api/feed/refresh` |
+| `NEXT_PUBLIC_SITE_URL` | `https://comfy-clicker.vercel.app` (the URL confirmation emails send people back to) |
 
 3. `pnpm dlx vercel --prod` (or push to `main` with the Git integration).
 4. `vercel.json` schedules `/api/feed/refresh` and `/api/hub/refresh` once a day (Hobby plan limit); Vercel sends the `Authorization: Bearer $CRON_SECRET` header automatically when `CRON_SECRET` is set. The feed also refreshes lazily whenever a page view finds it older than 15 minutes.
@@ -19,7 +20,7 @@
 
 - Schema: `supabase/migrations/0001_init.sql` and `0003_hub_integrity.sql` (both applied; 0003 makes hub runs and daily claims server-only and adds the royalty ledger). Apply `0002_feed_cron.sql` after replacing `__DEPLOY_URL__` and `__CRON_SECRET__`. It makes Postgres call the refresh route every 15 minutes with `pg_cron` + `pg_net`.
 - Auth → Providers → Email: enable email + password. For a frictionless demo, turn **Confirm email** off (otherwise new accounts must click the confirmation link before cloud saves sync).
-- Auth → URL configuration: set Site URL to the Vercel URL and add `https://<vercel-url>/auth/callback` to redirect URLs.
+- Auth → URL configuration: set **Site URL** to `https://comfy-clicker.vercel.app` and add these to **Redirect URLs**: `https://comfy-clicker.vercel.app/auth/callback`, `https://comfy-clicker.vercel.app/**`, `http://localhost:3000/**`. If a confirmation email links to `localhost:3000`, this is the setting that is wrong: Supabase falls back to the Site URL whenever the redirect the app asked for is not on the allow-list.
 
 ## 3. Smoke test after deploy
 

@@ -99,6 +99,18 @@ function client(): SupabaseBrowserClient | null {
   return getSupabaseBrowserClient()
 }
 
+/**
+ * Origin the confirmation email should send people back to. `NEXT_PUBLIC_SITE_URL` wins when it is
+ * set (the deployed URL, so a link requested from a preview or a dev server still lands on
+ * production); otherwise the page's own origin. Supabase also needs that origin in its redirect
+ * allow-list, or it silently falls back to the project's Site URL (see docs/DEPLOY.md).
+ */
+export function siteOrigin(): string {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim()
+  if (configured) return configured.replace(/\/+$/, '')
+  return window.location.origin
+}
+
 function validate(email: string, password: string, signup: boolean): string | null {
   const e = email.trim()
   if (!e) return 'Enter your email.'
@@ -113,7 +125,7 @@ export async function signUp(email: string, password: string): Promise<AuthResul
   if (!supabase) return UNAVAILABLE
   const invalid = validate(email, password, true)
   if (invalid) return { ok: false, error: invalid }
-  const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(window.location.pathname)}`
+  const emailRedirectTo = `${siteOrigin()}/auth/callback?next=${encodeURIComponent(window.location.pathname)}`
   try {
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo } })
     if (error) return { ok: false, error: mapAuthError(error) }
