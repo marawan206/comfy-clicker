@@ -360,3 +360,52 @@ html.projector {
     font-size: 20px;
   }
 }
+
+/*
+ * Tooltips (`src/components/common/Tooltip.tsx`). base-ui stamps `data-starting-style` on the popup
+ * for one frame after mount and `data-ending-style` while it leaves, so one transition covers both
+ * directions: 120 ms of opacity plus a 4 px slide away from the anchor.
+ */
+.cc-tooltip {
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+}
+.cc-tooltip[data-starting-style],
+.cc-tooltip[data-ending-style] {
+  opacity: 0;
+}
+.cc-tooltip[data-side='top'][data-starting-style],
+.cc-tooltip[data-side='top'][data-ending-style] {
+  transform: translateY(4px);
+}
+.cc-tooltip[data-side='bottom'][data-starting-style],
+.cc-tooltip[data-side='bottom'][data-ending-style] {
+  transform: translateY(-4px);
+}
+.cc-tooltip[data-side='left'][data-starting-style],
+.cc-tooltip[data-side='left'][data-ending-style] {
+  transform: translateX(4px);
+}
+.cc-tooltip[data-side='right'][data-starting-style],
+.cc-tooltip[data-side='right'][data-ending-style] {
+  transform: translateX(-4px);
+}
+
+/* Reduced motion: the tooltip appears and disappears, it does not travel. */
+@media (prefers-reduced-motion: reduce) {
+  .cc-tooltip,
+  .cc-tooltip[data-starting-style],
+  .cc-tooltip[data-ending-style] {
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+}
+html.reduced-motion .cc-tooltip,
+html.reduced-motion .cc-tooltip[data-starting-style],
+html.reduced-motion .cc-tooltip[data-ending-style] {
+  transition: none;
+  transform: none;
+  opacity: 1;
+}
