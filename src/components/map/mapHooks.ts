@@ -12,6 +12,7 @@ import { canAffordNode, cpAvailable, mapNodeAvailable, mapNodeVisible, rpAvailab
 import type { Derived, GameState, MapNodeDef } from '@/game/types'
 import type { GameStore } from '@/state/store'
 import { useGame, useGameShallow, useGameStore } from '@/state/useGame'
+import { useNow } from '@/hooks/useNow'
 import { BRANCH_META, lockReason, statusOf, type MapSets, type NodeStatus } from './mapLayout'
 
 export { useReducedMotionPref } from '@/components/overlays/ModalBase'
@@ -50,6 +51,31 @@ export function useMapSets(): MapSets {
   const affordable = useMemo(() => toSet(keys.affordable), [keys.affordable])
   const surfaced = useMemo(() => toSet(keys.surfaced), [keys.surfaced])
   return useMemo(() => ({ owned, available, affordable, surfaced }), [owned, available, affordable, surfaced])
+}
+
+/**
+ * How many Graph nodes are available and affordable right now, as one number. Built for the header
+ * badge, which must not walk 132 nodes at the loop's 20 Hz: the caller drives it from a coarse
+ * clock (`useNow(2000)`) and this reads the store outside React, so nothing subscribes per node.
+ */
+export function affordableNodeCount(state: GameState, derived: Derived, catalog: GameStore['catalog']): number {
+  let count = 0
+  for (const node of catalog.mapNodes) {
+    if (!mapNodeAvailable(node, state, derived, catalog)) continue
+    if (canAffordNode(node, state, catalog)) count += 1
+  }
+  return count
+}
+
+/** The same count as a hook, on a 2 s cadence. The header nav badge uses it. */
+export function useAffordableNodeCount(intervalMs = 2000): number {
+  const store = useGameStore()
+  const now = useNow(intervalMs)
+  return useMemo(
+    () => affordableNodeCount(store.state, store.derived, store.catalog),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is the cadence, not an input
+    [store, now],
+  )
 }
 
 export interface MapBalances {

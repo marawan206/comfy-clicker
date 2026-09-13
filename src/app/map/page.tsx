@@ -15,6 +15,7 @@ import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { NumberTicker } from '@/components/common/NumberTicker'
 import { FxCanvas } from '@/components/fx/FxCanvas'
 import { GraphMap } from '@/components/map/GraphMap'
+import { useMarkVisited } from '@/components/layout/navBadges'
 import { useMapBalances } from '@/components/map/mapHooks'
 import { Overlays } from '@/components/overlays/Overlays'
 import { formatCps, formatNum } from '@/game/format'
@@ -22,6 +23,8 @@ import { cn } from '@/lib/utils'
 import { useGame } from '@/state/useGame'
 
 export default function MapPage() {
+  // The header's "new" dot for the Graph stops once it has been opened.
+  useMarkVisited('map')
   const projector = useGame((s) => s.settings.projector)
   const reducedSetting = useGame((s) => s.settings.reducedMotion)
 

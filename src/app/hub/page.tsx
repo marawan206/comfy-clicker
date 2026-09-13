@@ -11,6 +11,7 @@ import { NumberTicker } from '@/components/common/NumberTicker'
 import { HubPanel } from '@/components/hub/HubPanel'
 import { DotGrid } from '@/components/layout/DotGrid'
 import { Header } from '@/components/layout/Header'
+import { useMarkVisited } from '@/components/layout/navBadges'
 import { Overlays } from '@/components/overlays/Overlays'
 import { formatNum } from '@/game/format'
 import { useGame, useGameShallow } from '@/state/useGame'
@@ -18,6 +19,8 @@ import { useGame, useGameShallow } from '@/state/useGame'
 const ENTER = { type: 'spring', stiffness: 260, damping: 26 } as const
 
 export default function HubPage() {
+  // Marks the tile visited and clears the unseen-runs badge the header accumulates.
+  useMarkVisited('hub')
   const os = useReducedMotion()
   const setting = useGame((s) => s.settings.reducedMotion)
   const instant = Boolean(os) || setting

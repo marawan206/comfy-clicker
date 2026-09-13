@@ -13,6 +13,7 @@ import { useAuth } from '@/components/auth/useAuth'
 import { Panel } from '@/components/common/Panel'
 import { DotGrid } from '@/components/layout/DotGrid'
 import { Header } from '@/components/layout/Header'
+import { useMarkVisited } from '@/components/layout/navBadges'
 import { LeaderboardTable, type YouRow } from '@/components/leaderboard/LeaderboardTable'
 import { Overlays } from '@/components/overlays/Overlays'
 import { formatNum } from '@/game/format'
@@ -77,6 +78,8 @@ export default function LeaderboardPage() {
   const signedIn = auth.status === 'signed-in'
   const you: YouRow | null = signedIn ? { handle: auth.handle ?? 'you', ...local } : null
   const myRank = signedIn ? (board.entries.find((e) => e.userId === auth.user?.id)?.rank ?? null) : null
+  // Marks the tile visited and caches the rank (1 h TTL) so the header can badge it without fetching.
+  useMarkVisited('leaderboard', myRank)
 
   return (
     <>
