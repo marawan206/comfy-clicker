@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { AnimatePresence, motion, useAnimation, useIsPresent, useReducedMotion } from 'motion/react'
 import { X } from 'lucide-react'
+import { playCue } from '@/audio/sfxEngine'
 import { useGame } from '@/state/useGame'
 import { cn } from '@/lib/utils'
 import type { Stripe } from '@/components/common/Panel'
@@ -29,6 +30,9 @@ export const STRIPE_CLASS: Record<Stripe, string> = {
   sapphire: 'border-l-sapphire-700',
   none: 'border-l-charcoal-400',
 }
+
+/** Gain for the open whoosh: present, never the loudest thing in the room. */
+const MODAL_OPEN_GAIN = 0.3
 
 const SIZES = {
   sm: 'max-w-[420px]',
@@ -102,6 +106,9 @@ export function ModalBase({
   // Esc + close-modals event + scroll lock + focus management, only while open.
   useEffect(() => {
     if (!open) return
+    // A panel sliding in is the one piece of modal juice that is not an engine event, so it plays
+    // here rather than through `useSfx`. Quiet on purpose: it sits under whatever opened it.
+    playCue({ name: 'whoosh', gain: MODAL_OPEN_GAIN })
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const unlock = lockScroll()
     const close = () => onCloseRef.current()

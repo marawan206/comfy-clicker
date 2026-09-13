@@ -2,12 +2,18 @@
 /**
  * Prestige dialog. Shows the CP the season would bank, what resets versus what survives, and a
  * hold-to-confirm that calls `store.rebrand()`.
+ *
+ * When the gate is shut the hold button is replaced rather than disabled: a dimmed control the
+ * player cannot use answers nothing, so the footer becomes the step that opens it (own a cloud node
+ * or a region) plus a button that takes them to the rows that sell one.
  */
-import { Check, Lock, RefreshCw, RotateCcw } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowRight, Check, Lock, RefreshCw, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { fx } from '@/components/fx/fxBus'
-import { HoldToConfirm, ModalBase, SectionLabel } from '@/components/overlays/ModalBase'
+import { runGuideAction } from '@/components/guidance/navigate'
+import { HoldToConfirm, ModalButton, ModalBase, SectionLabel } from '@/components/overlays/ModalBase'
 import { toast } from '@/components/overlays/useToasts'
 import { CP_MULT_PER_POINT } from '@/game/constants'
 import { formatNum, formatPct } from '@/game/format'
@@ -45,6 +51,7 @@ const KEEPS: string[] = [
 
 function RebrandBody({ onClose }: { onClose: () => void }) {
   const store = useGameStore()
+  const router = useRouter()
   const { can, cp, seasonCredits, season, ownedCp, cpMult, followers } = useGameShallow((s, d) => ({
     can: canRebrand(s, store.catalog),
     cp: rebrandCp(s.seasonCredits),
@@ -151,19 +158,36 @@ function RebrandBody({ onClose }: { onClose: () => void }) {
           ) : (
             <>
               <Lock size={14} className="shrink-0 text-slot-vae" />
-              <span>Own a cloud node or a region before rebranding.</span>
+              <span>
+                <span className="font-semibold text-smoke-100">Own a cloud node or a region first</span>
+                <span className="block text-xs">Rebranding banks CP from this season. The cloud rack is the gate.</span>
+              </span>
             </>
           )}
         </p>
-        <HoldToConfirm
-          label={`Hold to rebrand · +${cp} CP`}
-          holdingLabel="Rebranding…"
-          onConfirm={confirm}
-          disabled={!can}
-          holdMs={1600}
-          icon={<RefreshCw size={16} />}
-          aria-label={`Hold to rebrand and bank ${cp} Comfy Points`}
-        />
+        {can ? null : (
+          <ModalButton
+            tone="primary"
+            size="sm"
+            onClick={() => {
+              onClose()
+              runGuideAction({ type: 'store', tab: 'hardware', family: 'cloud-node' }, router)
+            }}
+          >
+            Take me there
+            <ArrowRight size={14} aria-hidden="true" />
+          </ModalButton>
+        )}
+        {can ? (
+          <HoldToConfirm
+            label={`Hold to rebrand · +${cp} CP`}
+            holdingLabel="Rebranding…"
+            onConfirm={confirm}
+            holdMs={1600}
+            icon={<RefreshCw size={16} />}
+            aria-label={`Hold to rebrand and bank ${cp} Comfy Points`}
+          />
+        ) : null}
       </div>
     </div>
   )

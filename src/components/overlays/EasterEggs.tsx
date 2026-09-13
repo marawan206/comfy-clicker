@@ -11,6 +11,9 @@
  * The generic "Easter egg" discovery toast comes from `AchievementToast`; this file only owns
  * the shows. Reduced motion (OS or setting) keeps the toasts and drops the wires; the wave
  * degrades to a still wordmark fading in over the header.
+ *
+ * Both toasts here pass `sound: false`: the `easterEgg` event that raised them has already played
+ * the egg sting through `useSfx`, and the same cue twice is noise, not juice.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Music, Utensils } from 'lucide-react'
@@ -106,6 +109,7 @@ export function EasterEggs() {
             tone: 'electric',
             key: 'spaghetti-mode',
             durationMs: 7_000,
+            sound: false,
           })
           if (!reduced) startSpaghetti('full')
           return
@@ -120,6 +124,7 @@ export function EasterEggs() {
             tone: 'mask',
             key: 'rickroll',
             durationMs: 9_000,
+            sound: false,
           })
           return
         default:

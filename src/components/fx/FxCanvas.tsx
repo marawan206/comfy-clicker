@@ -15,7 +15,11 @@ const COLOR_ELECTRIC = '#f0ff41'
 const COLOR_SAPPHIRE = '#172dd7'
 const COLOR_PINK = '#ff9cf9'
 const COLOR_WHITE = '#f3f3f3'
+/** slot-vae: the locked/loss colour, and so the colour a ratioed post flashes. */
+const COLOR_RATIO = '#ff6e6e'
 const CONFETTI_COLORS = [COLOR_ELECTRIC, COLOR_SAPPHIRE, COLOR_WHITE, COLOR_PINK]
+/** Roulette multiplier that earns confetti: the golden seed and the x42. */
+const SPIN_CONFETTI_MULT = 10
 
 const MAX_SPRITES = 300
 const MAX_FLOATS = 80
@@ -449,6 +453,9 @@ export function FxCanvas() {
     switch (event.type) {
       case 'postResolved':
         if (event.viral) engine.handle({ kind: 'confetti' })
+        // A ratio gets the same treatment as a viral post, in the opposite colour: one short red
+        // wash, no particles. The card and the toast carry the detail.
+        else if (event.ratioed) engine.handle({ kind: 'flash', color: COLOR_RATIO })
         break
       case 'achievement':
         engine.handle({ kind: 'flash', color: COLOR_ELECTRIC })
@@ -457,6 +464,17 @@ export function FxCanvas() {
         engine.handle({ kind: 'flash', color: COLOR_CREDITS })
         break
       case 'easterEgg':
+        engine.handle({ kind: 'confetti' })
+        break
+      case 'levelUp':
+        engine.handle({ kind: 'confetti' })
+        engine.handle({ kind: 'flash', color: COLOR_ELECTRIC })
+        break
+      case 'spin':
+        // Golden seed and up. Anything smaller is a number changing, not an event.
+        if (event.mult >= SPIN_CONFETTI_MULT) engine.handle({ kind: 'confetti' })
+        break
+      case 'reward':
         engine.handle({ kind: 'confetti' })
         break
       default:

@@ -5,6 +5,11 @@
  * which has its own floating badge, and a spot reclaim that reserved capacity already absorbed).
  * Each row shows the full card for a few seconds, then collapses to a compact pill so a five-minute
  * Model Drop never obstructs the workbench; a broken node stays expanded because it needs the Fix button.
+ *
+ * Sound: the banner raises no toast from an engine event, so there is nothing to silence here.
+ * `eventStart` and `eventEnd` already sound through `useSfx`. The one toast below is a validation
+ * failure from a Fix click the engine refused, which no event accompanies, so it keeps its own
+ * error cue. Anything added here that is driven by a `GameEvent` must pass `sound: false`.
  */
 import { memo, useMemo, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -244,6 +249,7 @@ const EventRow = memo(function EventRow({
 
   const fix = () => {
     const r = store.resolveEvent(row.defId);
+    // A refused Fix emits no event, so this toast is the only sound: it keeps the danger cue.
     if (r.error) toast(r.error, { tone: "danger", title: "Nothing to fix" });
   };
 
