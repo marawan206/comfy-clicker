@@ -1,18 +1,22 @@
 'use client'
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import Link from 'next/link'
 import { motion } from 'motion/react'
-import { Check, Cloud, Download, GraduationCap, Lock, TriangleAlert } from 'lucide-react'
+import { Check, Cloud, Download, GraduationCap, Lock, TrendingUp, TriangleAlert } from 'lucide-react'
 import { useGameShallow, useGameStore } from '@/state/useGame'
 import type { GameStore } from '@/state/store'
 import { buildIndex } from '@/game/catalog'
 import { bestRunnable, lockReason } from '@/game/hardware'
+import { explainQuantize, explainSetup } from '@/game/guidance'
+import { modelLevelLock, playerLevel } from '@/game/level'
 import { quantizeOptions, setupFee } from '@/game/quantize'
 import { LORA_MAP_NODE } from '@/game/actions'
 import { formatNum } from '@/game/format'
 import type { Derived, GameState, ModelKind } from '@/game/types'
 import { Art } from '@/components/common/Art'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
+import { guideCauses } from '@/components/guidance/GuidanceHost'
+import { OPEN_MODAL_EVENT } from '@/components/overlays/ModalBase'
 import { API_COST_MULT } from '@/game/constants'
 import { cn } from '@/lib/utils'
 import { KIND_LABELS, useMotionOK } from '@/components/studio/studioHooks'
@@ -27,6 +31,9 @@ export interface ModelCardState {
   vram: number
   bestVram: number
   apiNodes: boolean
+  /** The engine's level gate on this model: 0 when there is none or it is already cleared. */
+  levelNeed: number
+  playerLevel: number
   owned: boolean
   setup: boolean
   setupFee: number
@@ -57,6 +64,8 @@ const EMPTY: ModelCardState = {
   vram: 0,
   bestVram: 0,
   apiNodes: false,
+  levelNeed: 0,
+  playerLevel: 1,
   owned: false,
   setup: false,
   setupFee: 0,
@@ -82,6 +91,7 @@ function selectCard(id: string, s: GameState, d: Derived, store: GameStore): Mod
   if (!model) return EMPTY
   const entry = s.models[id]
   const fee = setupFee(model, d, catalog)
+  const level = modelLevelLock(model, s)
   const [fp8, q4] = quantizeOptions(model, s, catalog)
   let runsAs: string | null = null
   let runsOn: string | null = null
@@ -104,6 +114,8 @@ function selectCard(id: string, s: GameState, d: Derived, store: GameStore): Mod
     vram: model.vram,
     bestVram: d.bestVram,
     apiNodes: d.apiNodes,
+    levelNeed: level?.need ?? 0,
+    playerLevel: level?.have ?? playerLevel(s),
     owned: entry !== undefined,
     setup: entry?.setup === true,
     setupFee: fee,
@@ -132,6 +144,13 @@ export function useModelCard(id: string): ModelCardState {
 
 const GB = (gb: number): string => (Number.isFinite(gb) ? `${Math.round(gb * 10) / 10} GB` : '∞')
 
+type CardState = 'ready' | 'locked' | 'needs-setup' | 'api-locked' | 'level-locked'
+
+/** Open the Stats modal, where the XP bar and its breakdown live. */
+function openStats(): void {
+  window.dispatchEvent(new CustomEvent<'stats'>(OPEN_MODAL_EVENT, { detail: 'stats' }))
+}
+
 /** One model in the store: art, kind, VRAM against your best card, setup and quantization. */
 export const ModelCard = memo(function ModelCard({ id }: { id: string }) {
   const store = useGameStore()
@@ -139,36 +158,61 @@ export const ModelCard = memo(function ModelCard({ id }: { id: string }) {
   const reduced = !useMotionOK()
   const [error, setError] = useState<string | null>(null)
   const onResult = useCallback((err: string | null) => setError(err), [])
-  const setup = useCallback(() => {
-    const result = store.setupModel(id)
-    setError(result.error ?? null)
-  }, [id, store])
+  const setup = useCallback(
+    (e: ReactMouseEvent<HTMLButtonElement>) => {
+      const anchor = e.currentTarget
+      const result = store.setupModel(id)
+      setError(result.error ?? null)
+      if (!result.error) return
+      const model = buildIndex(store.catalog).modelById[id]
+      const cause = model ? explainSetup(model, store.state, store.derived, store.catalog) : null
+      if (cause) guideCauses(anchor, [cause], store, model?.name ?? id)
+    },
+    [id, store],
+  )
 
-  const state: 'ready' | 'locked' | 'needs-setup' | 'api-locked' = card.api && !card.apiNodes
-    ? 'api-locked'
-    : !card.setup
-      ? 'needs-setup'
-      : card.runnable
-        ? 'ready'
-        : 'locked'
+  // The level gate wins: it is the only lock the player cannot buy their way past today, so
+  // offering "Set up" or "Unlock on the Graph" underneath it would be a dead button.
+  const state: CardState = card.levelNeed > 0
+    ? 'level-locked'
+    : card.api && !card.apiNodes
+      ? 'api-locked'
+      : !card.setup
+        ? 'needs-setup'
+        : card.runnable
+          ? 'ready'
+          : 'locked'
   const stripe =
     state === 'ready' ? 'border-l-sapphire-700' : state === 'needs-setup' ? 'border-l-slot-latent' : 'border-l-slot-vae/70'
+  const dimArt = state === 'api-locked' || state === 'level-locked'
+
+  /** A refused quantize explains itself where it was clicked rather than printing one grey line. */
+  const guideQuantize = useCallback(
+    (e: ReactMouseEvent<HTMLElement>, precision: 'fp8' | 'q4') => {
+      const model = buildIndex(store.catalog).modelById[id]
+      if (!model) return
+      const anchor = (e.target as HTMLElement).closest('button')
+      const cause = explainQuantize(model, precision, store.state, store.catalog)
+      if (anchor && cause) guideCauses(anchor, [cause], store, `${model.name} · ${precision === 'fp8' ? 'FP8' : 'Q4 GGUF'}`)
+    },
+    [id, store],
+  )
 
   return (
     <article
       className={cn(
         'flex flex-col gap-2.5 rounded-[0.75rem] border-2 border-l-4 border-charcoal-400 bg-charcoal-700 p-3',
         stripe,
-        state === 'locked' || state === 'api-locked' ? 'opacity-90' : undefined,
+        state === 'locked' || state === 'api-locked' || state === 'level-locked' ? 'opacity-90' : undefined,
       )}
       aria-label={`${card.name}, ${KIND_LABELS[card.kind]} model`}
     >
       <div className="flex items-start gap-3">
-        <Art id={`model-${id}`} size={56} className={state === 'api-locked' ? 'opacity-60 grayscale' : undefined} />
+        <Art id={`model-${id}`} size={56} className={dimArt ? 'opacity-60 grayscale' : undefined} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-bold text-smoke-100">{card.name}</h3>
-            <KindBadge kind={card.kind} api={card.api} />
+            <KindBadge kind={card.kind} api={card.api} levelNeed={card.levelNeed} />
           </div>
           <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-smoke-700">{card.flavor}</p>
         </div>
@@ -179,6 +223,18 @@ export const ModelCard = memo(function ModelCard({ id }: { id: string }) {
       <StatusLine state={state} card={card} />
 
       <div className="flex flex-wrap items-center gap-1.5">
+        {state === 'level-locked' ? (
+          <button
+            type="button"
+            onClick={openStats}
+            aria-label={`${card.name} needs level ${card.levelNeed}. How do I level up?`}
+            title="XP comes from credits earned, posts and achievements"
+            className="inline-flex h-8 items-center gap-1.5 rounded-[0.5rem] border-2 border-charcoal-200 bg-charcoal-500 px-2.5 text-xs font-bold text-smoke-100 shadow-[0_3px_0_#0e0e0f] hover:border-electric-400"
+          >
+            <TrendingUp size={13} aria-hidden="true" />
+            How do I level up?
+          </button>
+        ) : null}
         {state === 'api-locked' ? (
           <Link
             href="/map"
@@ -222,30 +278,34 @@ export const ModelCard = memo(function ModelCard({ id }: { id: string }) {
             )}
           </motion.button>
         ) : null}
-        {card.quantizable ? (
+        {card.quantizable && state !== 'level-locked' ? (
           <>
-            <QuantizeButton
-              modelId={id}
-              modelName={card.name}
-              precision="fp8"
-              label="FP8"
-              fee={card.fp8Fee}
-              owned={card.fp8Owned}
-              ok={card.fp8Ok}
-              reason={card.fp8Reason}
-              onResult={onResult}
-            />
-            <QuantizeButton
-              modelId={id}
-              modelName={card.name}
-              precision="q4"
-              label="Q4"
-              fee={card.q4Fee}
-              owned={card.q4Owned}
-              ok={card.q4Ok}
-              reason={card.q4Reason}
-              onResult={onResult}
-            />
+            <span className="contents" onClickCapture={(e) => (card.fp8Ok || card.fp8Owned ? undefined : guideQuantize(e, 'fp8'))}>
+              <QuantizeButton
+                modelId={id}
+                modelName={card.name}
+                precision="fp8"
+                label="FP8"
+                fee={card.fp8Fee}
+                owned={card.fp8Owned}
+                ok={card.fp8Ok}
+                reason={card.fp8Reason}
+                onResult={onResult}
+              />
+            </span>
+            <span className="contents" onClickCapture={(e) => (card.q4Ok || card.q4Owned ? undefined : guideQuantize(e, 'q4'))}>
+              <QuantizeButton
+                modelId={id}
+                modelName={card.name}
+                precision="q4"
+                label="Q4"
+                fee={card.q4Fee}
+                owned={card.q4Owned}
+                ok={card.q4Ok}
+                reason={card.q4Reason}
+                onResult={onResult}
+              />
+            </span>
           </>
         ) : null}
       </div>
@@ -271,7 +331,15 @@ export const ModelCard = memo(function ModelCard({ id }: { id: string }) {
   )
 })
 
-function StatusLine({ state, card }: { state: 'ready' | 'locked' | 'needs-setup' | 'api-locked'; card: ModelCardState }) {
+function StatusLine({ state, card }: { state: CardState; card: ModelCardState }) {
+  if (state === 'level-locked') {
+    return (
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slot-vae/90">
+        <Lock size={12} aria-hidden="true" />
+        Level {card.levelNeed} · you are level {card.playerLevel}
+      </p>
+    )
+  }
   if (state === 'api-locked') {
     return (
       <p className="flex items-center gap-1.5 text-[11px] text-slot-vae/80">
@@ -305,7 +373,7 @@ function StatusLine({ state, card }: { state: 'ready' | 'locked' | 'needs-setup'
   )
 }
 
-function KindBadge({ kind, api }: { kind: ModelKind; api: boolean }) {
+function KindBadge({ kind, api, levelNeed }: { kind: ModelKind; api: boolean; levelNeed: number }) {
   const tone: Record<ModelKind, string> = {
     image: 'bg-slot-image/20 text-slot-image',
     video: 'bg-slot-latent/20 text-slot-latent',
@@ -316,6 +384,14 @@ function KindBadge({ kind, api }: { kind: ModelKind; api: boolean }) {
     <span className="flex shrink-0 items-center gap-1">
       <span className={cn('rounded-[0.3rem] px-1.5 py-px text-[10px] font-bold uppercase tracking-wide', tone[kind])}>{KIND_LABELS[kind]}</span>
       {api ? <span className="rounded-[0.3rem] bg-charcoal-400 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-smoke-500">API</span> : null}
+      {levelNeed > 0 ? (
+        <span
+          className="rounded-[0.3rem] border border-slot-vae/60 bg-slot-vae/20 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide tabular-nums text-slot-vae"
+          title={`Unlocks at level ${levelNeed}`}
+        >
+          LV {levelNeed}
+        </span>
+      ) : null}
     </span>
   )
 }

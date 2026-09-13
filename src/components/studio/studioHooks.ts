@@ -13,10 +13,11 @@ import type { Catalog } from '@/data'
 import { PRECISION_ORDER } from '@/data/precisions'
 import { LORA_MAP_NODE, loraCost } from '@/game/actions'
 import { buildIndex } from '@/game/catalog'
-import { API_COST_MULT, MAX_MATCHED_TRENDING, MAX_QUEUE, TRENDING_WEIGHTS } from '@/game/constants'
+import { API_COST_MULT, MAX_MATCHED_TRENDING, MAX_QUEUE, RATIO_LOSS_MULT, TRENDING_WEIGHTS } from '@/game/constants'
 import { formatDuration } from '@/game/format'
 import { bestRunnable, genTimeMs, lockReason } from '@/game/hardware'
-import { currentTrending, matchTags, msUntilRollover, trendMult } from '@/game/hashtags'
+import { currentTrending, matchTags, mismatchedTypeTags, msUntilRollover, trendMult } from '@/game/hashtags'
+import { modelLevelLock, playerLevel } from '@/game/level'
 import { QUANT_NODE_IDS, hasPrecision, quantFee, setupFee } from '@/game/quantize'
 import { jobCost } from '@/game/studio'
 import type { ContractGoal, Derived, GameState, HashtagDef, ModelDef, ModelKind, Precision } from '@/game/types'
@@ -24,7 +25,8 @@ import type { PromptChip } from '@/data/flavor'
 import { describeUnlock, isUnlocked } from '@/game/unlock'
 import { FLOP_ROLL, NORMAL_ROLL, VIRAL_ROLL, repostKey } from '@/game/virality'
 import { useNow } from '@/hooks/useNow'
-import type { GameStore } from '@/state/store'
+import { PICK_HASHTAG_EVENT } from '@/components/feed/feedHooks'
+import { getGameStore, type GameStore } from '@/state/store'
 import { useGame, useGameShallow, useGameStore } from '@/state/useGame'
 
 // ---------------------------------------------------------------------------
@@ -38,10 +40,15 @@ export const QUANT_TIERS = ['fp8', 'q4'] as const
 export type QuantTier = (typeof QUANT_TIERS)[number]
 
 /** Window CustomEvents other panels listen to. */
-export const STORE_TAB_EVENT = 'comfy:store-tab'
 export const CENTER_TAB_EVENT = 'comfy:center-tab'
-export type StoreTab = 'hardware' | 'upgrades' | 'models' | 'power'
 export type CenterTab = 'studio' | 'feed' | 'contracts'
+
+/**
+ * The store panel's own opener, re-exported so a Studio surface can hand a guidance step a
+ * `{ tab, family, focusId }` target and have the row scrolled to and ringed. There used to be a
+ * second, string-only copy here; one dispatcher means one payload shape.
+ */
+export { openStoreTab, STORE_TAB_EVENT, type StoreTab, type StoreTabEventDetail } from '@/components/store/storeHooks'
 
 export const KIND_LABELS: Record<ModelKind, string> = { image: 'Image', video: 'Video', '3d': '3D', audio: 'Audio' }
 
@@ -49,11 +56,6 @@ export const KIND_LABELS: Record<ModelKind, string> = { image: 'Image', video: '
 export const LABEL_CLASS = 'text-[11px] font-semibold uppercase tracking-[0.08em] text-smoke-600'
 export const FOCUS_RING =
   'outline-none focus-visible:ring-2 focus-visible:ring-electric-400 focus-visible:ring-offset-2 focus-visible:ring-offset-charcoal-600'
-
-export function openStoreTab(tab: StoreTab): void {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent<StoreTab>(STORE_TAB_EVENT, { detail: tab }))
-}
 
 export function openCenterTab(tab: CenterTab): void {
   if (typeof window === 'undefined') return
@@ -107,6 +109,15 @@ export function expectedReturn(model: ModelDef, precision: Precision, d: Derived
   const quality = catalog.precisions[precision]?.qualityMult ?? 1
   const api = model.api ? 1 / API_COST_MULT : 1
   return (model.payoutRatio + d.payoutBonus) * expectedRoll(d) * quality * api
+}
+
+/**
+ * Expected return on a ratioed post, as a fraction of the job cost: the whole job is sunk and the
+ * dislikes take `RATIO_LOSS_MULT × roll` of it again, with the roll forced into the flop band. At
+ * the shipped numbers that is a flat -145%, and nothing the player owns moves it.
+ */
+export function ratioedReturn(): number {
+  return -(1 + RATIO_LOSS_MULT * mean(FLOP_ROLL))
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +189,42 @@ export function patchSelection(patch: Partial<StudioSelection>): void {
   for (const l of listeners) l()
 }
 
+/**
+ * Select a hashtag from outside the Studio form (the "Trending this week" chips).
+ *
+ * The three slots are a hard cap, so a pick on a full row rolls the oldest tag out instead of
+ * doing nothing: the chip says "Use #x in the Studio", and a control that silently refuses is the
+ * bug this replaced.
+ */
+export function selectHashtag(id: string): void {
+  hydrate()
+  const tags = selection.tags
+  if (tags.includes(id)) return
+  patchSelection({ tags: [...tags, id].slice(-MAX_SELECTED_TAGS) })
+}
+
+let pickBridged = false
+
+/**
+ * Arm the `comfy:pick-hashtag` listener. It lives on the module, not in a component: the chips sit
+ * in the trending strip above the centre tabs and can be clicked while the Feed tab is up, where
+ * the whole Studio is unmounted (`CenterTabs` keys the panel on the tab). So the tag is applied to
+ * the shared form first and the Studio is brought forward second.
+ *
+ * Idempotent, and the listener is never removed: there is one form and one week's trio per page.
+ */
+export function ensurePickHashtagBridge(): void {
+  if (pickBridged || typeof window === 'undefined') return
+  pickBridged = true
+  window.addEventListener(PICK_HASHTAG_EVENT, (e: Event) => {
+    const id = (e as CustomEvent<unknown>).detail
+    if (typeof id !== 'string' || id === '') return
+    if (!buildIndex(getGameStore().catalog).hashtagById[id]) return
+    selectHashtag(id)
+    openCenterTab('studio')
+  })
+}
+
 function firstSetupModel(state: GameState, catalog: Catalog): string {
   for (const model of catalog.models) if (state.models[model.id]?.setup) return model.id
   return ''
@@ -231,6 +278,64 @@ export function useStudioSelection(): StudioSelectionApi {
 }
 
 // ---------------------------------------------------------------------------
+// "More tags" disclosure (collapsed by default so the Generate button stays above the fold)
+// ---------------------------------------------------------------------------
+const MORE_TAGS_KEY = 'comfy-clicker:studio-more-tags'
+
+let moreTags = false
+let moreTagsHydrated = false
+const moreTagsListeners = new Set<() => void>()
+
+function hydrateMoreTags(): void {
+  if (moreTagsHydrated || typeof window === 'undefined') return
+  moreTagsHydrated = true
+  try {
+    moreTags = window.localStorage.getItem(MORE_TAGS_KEY) === '1'
+  } catch {
+    /* storage unavailable, the row stays collapsed for this session */
+  }
+}
+
+function subscribeMoreTags(listener: () => void): () => void {
+  moreTagsListeners.add(listener)
+  // First subscriber runs in an effect, never during render or SSR, so this is the safe moment to
+  // read storage; React re-checks the snapshot right after subscribing and picks the change up.
+  hydrateMoreTags()
+  return () => {
+    moreTagsListeners.delete(listener)
+  }
+}
+
+export interface Disclosure {
+  open: boolean
+  toggle: () => void
+}
+
+function toggleMoreTags(): void {
+  moreTags = !moreTags
+  try {
+    window.localStorage.setItem(MORE_TAGS_KEY, moreTags ? '1' : '0')
+  } catch {
+    /* storage unavailable, the disclosure still works for this session */
+  }
+  for (const l of moreTagsListeners) l()
+}
+
+/**
+ * Whether the full hashtag list is expanded, remembered across sessions. Same module-store shape as
+ * the studio form above: the server and the first paint both render it closed, so the markup
+ * matches, and the saved value arrives with the first subscription.
+ */
+export function useMoreTags(): Disclosure {
+  const open = useSyncExternalStore(
+    subscribeMoreTags,
+    () => moreTags,
+    () => false,
+  )
+  return { open, toggle: toggleMoreTags }
+}
+
+// ---------------------------------------------------------------------------
 // Model roster (Studio chips + Models store tab)
 // ---------------------------------------------------------------------------
 export interface QuantInfo {
@@ -254,6 +359,8 @@ export interface ModelRosterEntry {
   hardwareName: Partial<Record<Precision, string>>
   /** Set up and runnable at some unlocked precision, selectable in the Studio. */
   ready: boolean
+  /** The engine's level gate: `{ need, have }` while the player is under it, null once cleared. */
+  levelLock: { need: number; have: number } | null
   lockReasons: Record<Precision, string | null>
   setupFee: number
   /** Why "Set up" is refused, credits aside. */
@@ -274,7 +381,7 @@ function rosterSignature(s: GameState, d: Derived, store: GameStore): string {
   }
   sig += '|'
   for (const id in s.hardware) if ((s.hardware[id] ?? 0) > 0) sig += `${id},`
-  sig += `|z${d.zluda ? 1 : 0}a${d.apiNodes ? 1 : 0}v${d.bestVram}s${d.speedMult}f${d.unlockedFamilies.length}m${s.mapNodes.length}u${s.upgrades.length}|`
+  sig += `|z${d.zluda ? 1 : 0}a${d.apiNodes ? 1 : 0}v${d.bestVram}s${d.speedMult}f${d.unlockedFamilies.length}m${s.mapNodes.length}u${s.upgrades.length}l${playerLevel(s)}|`
   for (const model of catalog.models) sig += isUnlocked(model.unlock, s, d, catalog) ? '1' : '0'
   return sig
 }
@@ -329,6 +436,7 @@ function buildRoster(s: GameState, d: Derived, catalog: Catalog): ModelRosterEnt
       runnable,
       hardwareName,
       ready: setup && precisions.some((p) => runnable[p]),
+      levelLock: modelLevelLock(model, s),
       lockReasons,
       setupFee: setupFee(model, d, catalog),
       setupBlocker: setupBlocker(model, s, d, catalog),
@@ -401,6 +509,12 @@ export interface CostPreview {
   trending: string[]
   /** Hashtags the post would carry: keyword hits, literal #tags and the selected ids. */
   matched: string[]
+  /** The subset the player chose on purpose: selected chips plus literal `#tag` tokens. */
+  explicit: string[]
+  /** Explicit type tags naming a kind this model is not. Non-empty means the post gets ratioed. */
+  mismatched: string[]
+  /** The mismatched ids that are literals in the prompt, so the Remove button cannot drop them. */
+  mismatchedInPrompt: string[]
   keywordHits: number
   trend: number
   /** More trending tags matched than the algorithm tolerates: trend bonus voided. */
@@ -411,7 +525,7 @@ export interface CostPreview {
   queueFull: boolean
   /** Why `queueJob` would refuse right now (null = it would go through). */
   blocker: string | null
-  /** Expected return minus one at this precision (`0.35` → "+35%"). */
+  /** Expected return minus one at this precision (`0.35` → "+35%"), -145% on a ratio. */
   evPct: number
 }
 
@@ -474,10 +588,14 @@ export function useComputeCostPreview(): CostPreview {
     const { catalog } = store
     const trending = base.trendingKey ? base.trendingKey.split(',') : []
     const selected = tagsKey ? tagsKey.split(',') : []
-    const { matched, keywordHits } = matchTags(prompt, selected, catalog)
+    const { matched, keywordHits, explicit } = matchTags(prompt, selected, catalog)
     const { hashtagById } = buildIndex(catalog)
     const trendingSet = new Set(trending)
     const slots = matched.filter((id) => trendingSet.has(id) && !isTypeTag(hashtagById[id])).length
+    // Only a tag the player put there on purpose can ratio a post; a keyword hit never does.
+    const mismatched = mismatchedTypeTags(explicit, base.kind, catalog)
+    const selectedSet = new Set(selected)
+    const mismatchedInPrompt = mismatched.filter((id) => !selectedSet.has(id))
     return {
       modelId,
       modelName: base.modelName,
@@ -492,14 +610,17 @@ export function useComputeCostPreview(): CostPreview {
       genSec: base.genMs >= 0 ? base.genMs / 1000 : null,
       trending,
       matched,
+      explicit,
+      mismatched,
+      mismatchedInPrompt,
       keywordHits,
-      trend: trendMult(matched, trending, keywordHits, base.kind, catalog),
+      trend: mismatched.length > 0 ? 1 : trendMult(matched, trending, keywordHits, base.kind, catalog),
       spam: slots > MAX_MATCHED_TRENDING,
       repost: modelId !== '' && base.lastPostKey !== '' && base.lastPostKey === repostKey(modelId, matched, prompt),
       queueLen: base.queueLen,
       queueFull: base.queueLen >= MAX_QUEUE,
       blocker: base.blocker,
-      evPct: base.evPct,
+      evPct: mismatched.length > 0 ? ratioedReturn() : base.evPct,
     }
   }, [base, modelId, precision, prompt, tagsKey, store])
 }
@@ -694,3 +815,7 @@ export function useContractRows(): ContractRowState[] {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` encodes every field read from the store
   }, [key, store])
 }
+
+// The trending chips are always on screen, the Studio is not: arm the bridge as soon as anything
+// on the page imports the studio form.
+ensurePickHashtagBridge()

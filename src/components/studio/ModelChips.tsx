@@ -1,10 +1,14 @@
 'use client'
-import { memo, useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import { motion } from 'motion/react'
 import { ChevronRight, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatNum } from '@/game/format'
+import { explainRun, explainSetup, setupCause, type LockCause } from '@/game/guidance'
 import type { Precision } from '@/game/types'
+import { guideCauses } from '@/components/guidance/GuidanceHost'
+import type { GameStore } from '@/state/store'
+import { useGameStore } from '@/state/useGame'
 import {
   FOCUS_RING,
   KIND_LABELS,
@@ -48,6 +52,18 @@ function lockedReason(entry: ModelRosterEntry): string {
     return reason ? `Not set up · ${fee} · ${reason}` : `Not set up · ${fee}`
   }
   return entry.lockReasons.native ?? 'Nothing you own can run this'
+}
+
+/**
+ * What stands between the player and this chip, straight from the engine: the level gate and the
+ * unlock condition before it is installed, then whatever stops it running. `explainSetup` returns
+ * null when a setup would go through, and then the step to show is the setup itself.
+ */
+function lockedCause(entry: ModelRosterEntry, store: GameStore): LockCause | null {
+  const { state, derived, catalog } = store
+  if (!entry.setup) return explainSetup(entry.model, state, derived, catalog) ?? setupCause(entry.model, derived, catalog)
+  const precision = entry.precisions.includes('native') ? 'native' : (entry.precisions[0] ?? 'native')
+  return explainRun(entry.model, precision, state, derived, catalog)
 }
 
 interface ReadyChipProps {
@@ -103,14 +119,15 @@ const ReadyChip = memo(function ReadyChip({ entry, selected, motionOk, onSelect 
   )
 })
 
-const LockedChip = memo(function LockedChip({ entry }: { entry: ModelRosterEntry }) {
+const LockedChip = memo(function LockedChip({ entry, onGuide }: { entry: ModelRosterEntry; onGuide: LockedClick }) {
   const reason = lockedReason(entry)
+  const level = entry.levelLock
   return (
     <button
       type="button"
       title={reason}
-      aria-label={`${entry.model.name}: locked. ${reason}. Open the Models store`}
-      onClick={() => openStoreTab('models')}
+      aria-label={`${entry.model.name}: locked. ${reason}`}
+      onClick={(e) => onGuide(e.currentTarget, entry)}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-lg border border-dashed border-charcoal-300 bg-charcoal-600 px-2.5 py-1.5 text-xs font-semibold text-slot-vae/70 transition-colors hover:border-smoke-800',
         FOCUS_RING,
@@ -118,16 +135,31 @@ const LockedChip = memo(function LockedChip({ entry }: { entry: ModelRosterEntry
     >
       <Lock size={12} aria-hidden="true" />
       <span className="truncate">{entry.model.name}</span>
-      <span className="text-electric-400">Get</span>
+      <span className={cn('tabular-nums', level ? 'text-slot-vae' : 'text-electric-400')}>
+        {level ? `LV ${level.need}` : 'Get'}
+      </span>
     </button>
   )
 })
+
+type LockedClick = (anchor: Element, entry: ModelRosterEntry) => void
 
 /** Owned-and-set-up models as selectable chips; the nearest locked ones point at the store. */
 export function ModelChips() {
   const roster = useModelRoster()
   const { modelId, setModel } = useStudioSelection()
   const motionOk = useMotionOK()
+  const store = useGameStore()
+
+  // A locked chip explains itself where it was clicked instead of silently swapping the store tab.
+  const onGuide = useCallback<LockedClick>(
+    (anchor, entry) => {
+      const cause = lockedCause(entry, store)
+      if (cause) guideCauses(anchor, [cause], store, entry.model.name)
+      else openStoreTab({ tab: 'models', focusId: entry.model.id })
+    },
+    [store],
+  )
 
   const { ready, locked, more } = useMemo(() => {
     const visible = roster.filter((e) => e.visible)
@@ -155,7 +187,7 @@ export function ModelChips() {
           />
         ))}
         {locked.map((entry) => (
-          <LockedChip key={entry.model.id} entry={entry} />
+          <LockedChip key={entry.model.id} entry={entry} onGuide={onGuide} />
         ))}
         {more > 0 && (
           <button

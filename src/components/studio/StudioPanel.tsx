@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, Sparkles, TriangleAlert, Upload, Workflow, X } from "lucide-react";
 import { useGameStore } from "@/state/useGame";
@@ -16,6 +16,11 @@ import {
   type StudioLoadDetail,
 } from "@/components/hub/useHub";
 import { formatNum } from "@/game/format";
+import type { Precision } from "@/game/types";
+import type { GameStore } from "@/state/store";
+import { buildIndex } from "@/game/catalog";
+import { explainRun, explainSetup, setupCause, type LockCause } from "@/game/guidance";
+import { guideCauses } from "@/components/guidance/GuidanceHost";
 import { cn } from "@/lib/utils";
 import { ModelChips } from "./ModelChips";
 import { PrecisionToggle } from "./PrecisionToggle";
@@ -35,6 +40,29 @@ import {
 
 type Flash =
   { kind: "ok"; text: string } | { kind: "err"; text: string } | null;
+
+/**
+ * Why `queueJob` would refuse, as a cause the guidance popover can turn into steps: the model has
+ * to exist and be installed, something has to be able to run it, and the credits have to be there.
+ */
+function blockedCause(
+  store: GameStore,
+  modelId: string,
+  precision: Precision,
+  affordable: boolean,
+  cost: number,
+): LockCause | null {
+  const { state, derived, catalog } = store;
+  const model = buildIndex(catalog).modelById[modelId];
+  if (!model) return null;
+  if (!state.models[model.id]?.setup) {
+    return explainSetup(model, state, derived, catalog) ?? setupCause(model, derived, catalog);
+  }
+  const run = explainRun(model, precision, state, derived, catalog);
+  if (run) return run;
+  if (!affordable) return { kind: "credits", need: cost, have: state.credits };
+  return null;
+}
 
 /** The Studio: pick a checkpoint and precision, write a prompt, tag it, queue the render. */
 export function StudioPanel() {
@@ -61,12 +89,19 @@ export function StudioPanel() {
   );
 
   // A ComfyHub recipe handed to the Studio: parked in sessionStorage across the /hub → / route
-  // change (read here, cleared once adopted) or delivered live by `comfy:studio-load`. It tags
-  // the next queued job with `hubWorkflowId` so the author's royalty is recorded when the post
-  // resolves, as long as the form still matches the recipe's model and precision.
+  // change, or delivered live by `comfy:studio-load`. It tags the next queued job with
+  // `hubWorkflowId` so the author's royalty is recorded when the post resolves, as long as the
+  // form still matches the recipe's model and precision.
+  //
+  // The parked copy is cleared when the recipe is *consumed*, never on mount: `CenterTabs` keys
+  // the panel on the tab, so one trip through the Feed unmounts this component, and a mount-time
+  // clear used to throw the hand-off away and silently cost the workflow author their royalty.
   const [hubJob, setHubJob] = useState<StudioLoadDetail | null>(peekPendingStudioLoad);
-  useEffect(() => {
+  const dropHubJob = useCallback(() => {
     clearPendingStudioLoad();
+    setHubJob(null);
+  }, []);
+  useEffect(() => {
     ensureHubRoyaltyBridge();
     const onLoad = (e: Event) => {
       const detail = (e as CustomEvent<unknown>).detail;
@@ -88,13 +123,15 @@ export function StudioPanel() {
     hubJob.precision === precision;
 
   const disabled = preview.blocker !== null;
-  const generate = useCallback(() => {
+
+  /** Queue the post. Returns true when the job is in the queue, so Ctrl+Enter knows it landed. */
+  const generate = useCallback((): boolean => {
     if (disabled) {
       showFlash({
         kind: "err",
         text: preview.blocker ?? "Cannot queue right now",
       });
-      return;
+      return false;
     }
     const result = store.queueJob({
       modelId,
@@ -103,21 +140,24 @@ export function StudioPanel() {
       tags,
       ...(hubMatches && hubJob ? { hubWorkflowId: hubJob.hubWorkflowId } : {}),
     });
-    if (result.error) showFlash({ kind: "err", text: result.error });
-    else {
-      if (hubMatches) setHubJob(null);
-      showFlash({
-        kind: "ok",
-        text:
-          preview.queueLen === 0
-            ? hubMatches
-              ? "Queued from ComfyHub · rendering now"
-              : "Queued · rendering now"
-            : `Queued · #${preview.queueLen + 1} in line`,
-      });
+    if (result.error) {
+      showFlash({ kind: "err", text: result.error });
+      return false;
     }
+    if (hubMatches) dropHubJob();
+    showFlash({
+      kind: "ok",
+      text:
+        preview.queueLen === 0
+          ? hubMatches
+            ? "Queued from ComfyHub · rendering now"
+            : "Queued · rendering now"
+          : `Queued · #${preview.queueLen + 1} in line`,
+    });
+    return true;
   }, [
     disabled,
+    dropHubJob,
     hubJob,
     hubMatches,
     modelId,
@@ -129,6 +169,23 @@ export function StudioPanel() {
     store,
     tags,
   ]);
+
+  /**
+   * A refused Generate explains itself where the player clicked. A full queue is not a lock (it
+   * clears on its own in a few seconds), so that one stays a flash.
+   */
+  const onGenerate = useCallback(
+    (e: ReactMouseEvent<HTMLButtonElement>) => {
+      if (!disabled || preview.queueFull) {
+        generate();
+        return;
+      }
+      const cause = blockedCause(store, modelId, precision, preview.affordable, preview.cost);
+      if (cause) guideCauses(e.currentTarget, [cause], store, preview.modelName || "This post");
+      else generate();
+    },
+    [disabled, generate, modelId, precision, preview.affordable, preview.cost, preview.modelName, preview.queueFull, store],
+  );
 
   const publish = useCallback(
     () => openHubPublish({ modelId, precision, hashtags: tags }),
@@ -150,7 +207,7 @@ export function StudioPanel() {
       >
         <ModelChips />
         <PrecisionToggle />
-        <PromptInput />
+        <PromptInput onSubmit={generate} />
         <HashtagPicker />
 
         <AnimatePresence initial={false}>
@@ -200,7 +257,7 @@ export function StudioPanel() {
               </span>
               <button
                 type="button"
-                onClick={() => setHubJob(null)}
+                onClick={dropHubJob}
                 aria-label="Drop the ComfyHub workflow"
                 title="Drop the workflow · the next post is just yours"
                 className={cn(
@@ -214,113 +271,122 @@ export function StudioPanel() {
           ) : null}
         </AnimatePresence>
 
-        <div className="flex flex-col gap-2 rounded-xl border-2 border-charcoal-400 bg-charcoal-700/60 p-3">
-          <CostLine />
-          <div className="flex flex-wrap items-center gap-3">
-            <motion.button
-              type="button"
-              onClick={generate}
-              aria-disabled={disabled}
-              aria-label={
-                disabled
-                  ? `Generate post (${preview.blocker})`
-                  : "Generate post"
-              }
-              title={disabled ? (preview.blocker ?? undefined) : "Queue Prompt"}
-              whileTap={
-                motionOk && !disabled ? { scale: 0.96, y: 2 } : undefined
-              }
-              whileHover={motionOk && !disabled ? { scale: 1.02 } : undefined}
-              transition={{ type: "spring", stiffness: 500, damping: 28 }}
-              className={cn(
-                "inline-flex h-11 items-center gap-2 rounded-xl border-2 px-5 text-base font-extrabold tracking-tight",
-                FOCUS_RING,
-                disabled
-                  ? "cursor-not-allowed border-charcoal-300 bg-charcoal-500 text-smoke-800 shadow-none"
-                  : "border-electric-400 bg-electric-400 text-charcoal-800 shadow-[0_4px_0_#0e0e0f] hover:brightness-105",
-              )}
-            >
-              <Sparkles size={18} aria-hidden="true" />
-              Generate post
-              <span
+        {/* The CTA never goes below the fold: the cost line and the buttons stick to the bottom of
+            the centre column, with a fade so the content scrolling under them reads as content. */}
+        <div className="sticky bottom-0 z-10 -mx-4 mt-auto px-4 pb-0">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 -top-4 h-4 bg-linear-to-t from-charcoal-600 to-transparent"
+          />
+          <div className="relative flex flex-col gap-2 rounded-xl border-2 border-charcoal-400 bg-charcoal-700 p-3">
+            <CostLine />
+            <div className="flex flex-wrap items-center gap-3">
+              <motion.button
+                type="button"
+                data-tour="studio-generate"
+                onClick={onGenerate}
+                aria-disabled={disabled}
+                aria-label={
+                  disabled
+                    ? `Generate post (${preview.blocker})`
+                    : "Generate post"
+                }
+                title={disabled ? (preview.blocker ?? undefined) : "Queue Prompt · Ctrl+Enter"}
+                whileTap={
+                  motionOk && !disabled ? { scale: 0.96, y: 2 } : undefined
+                }
+                whileHover={motionOk && !disabled ? { scale: 1.02 } : undefined}
+                transition={{ type: "spring", stiffness: 500, damping: 28 }}
                 className={cn(
-                  "ml-1 inline-flex items-center gap-0.5 text-sm font-bold tabular-nums",
-                  disabled ? "text-smoke-800" : "text-charcoal-800/80",
+                  "inline-flex h-11 items-center gap-2 rounded-xl border-2 px-5 text-base font-extrabold tracking-tight",
+                  FOCUS_RING,
+                  disabled
+                    ? "cursor-not-allowed border-charcoal-300 bg-charcoal-500 text-smoke-800 shadow-none"
+                    : "border-electric-400 bg-electric-400 text-charcoal-800 shadow-[0_4px_0_#0e0e0f] hover:brightness-105",
                 )}
               >
-                <CreditsIcon size={12} aria-hidden="true" />
-                {formatNum(preview.cost)}
-              </span>
-            </motion.button>
-            <motion.button
-              type="button"
-              onClick={publish}
-              whileTap={motionOk ? { scale: 0.96, y: 2 } : undefined}
-              transition={{ type: "spring", stiffness: 500, damping: 28 }}
-              title="Publish this model, precision and tags to ComfyHub · every run pays you 5%"
-              aria-label="Publish to ComfyHub"
-              className={cn(
-                "inline-flex h-11 items-center gap-2 rounded-xl border-2 border-charcoal-400 bg-charcoal-600 px-4 text-sm font-bold text-smoke-100 shadow-[0_4px_0_#0e0e0f] transition-colors hover:border-sapphire-700 hover:text-[#7f8dff]",
-                FOCUS_RING,
-              )}
-            >
-              <Upload size={16} aria-hidden="true" />
-              <span className="hidden sm:inline">Publish to ComfyHub</span>
-              <span className="sm:hidden">Publish</span>
-            </motion.button>
-            <div
-              className="min-w-0 flex-1 text-xs"
-              role="status"
-              aria-live="polite"
-            >
-              <AnimatePresence mode="wait" initial={false}>
-                {flash ? (
-                  <motion.span
-                    key={`${flash.kind}:${flash.text}`}
-                    initial={motionOk ? { opacity: 0, x: -6 } : false}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={motionOk ? { opacity: 0 } : undefined}
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 font-semibold",
-                      flash.kind === "ok"
-                        ? "text-electric-400"
-                        : "text-slot-vae",
-                    )}
-                  >
-                    {flash.kind === "ok" ? (
-                      <Check size={14} aria-hidden="true" />
-                    ) : (
-                      <TriangleAlert size={14} aria-hidden="true" />
-                    )}
-                    {flash.text}
-                  </motion.span>
-                ) : disabled ? (
-                  <motion.span
-                    key={`blocker:${preview.blocker}`}
-                    initial={false}
-                    animate={{ opacity: 1 }}
-                    className="inline-flex items-center gap-1.5 text-smoke-700"
-                  >
-                    <TriangleAlert
-                      size={14}
-                      className="text-slot-vae/70"
-                      aria-hidden="true"
-                    />
-                    {preview.blocker}
-                  </motion.span>
-                ) : (
-                  <motion.span
-                    key="ready"
-                    initial={false}
-                    animate={{ opacity: 1 }}
-                    className="text-smoke-800"
-                  >
-                    Ready on {preview.hardwareName}. Trending tags move likes;
-                    credits follow the roll.
-                  </motion.span>
+                <Sparkles size={18} aria-hidden="true" />
+                Generate post
+                <span
+                  className={cn(
+                    "ml-1 inline-flex items-center gap-0.5 text-sm font-bold tabular-nums",
+                    disabled ? "text-smoke-800" : "text-charcoal-800/80",
+                  )}
+                >
+                  <CreditsIcon size={12} aria-hidden="true" />
+                  {formatNum(preview.cost)}
+                </span>
+              </motion.button>
+              <motion.button
+                type="button"
+                onClick={publish}
+                whileTap={motionOk ? { scale: 0.96, y: 2 } : undefined}
+                transition={{ type: "spring", stiffness: 500, damping: 28 }}
+                title="Publish this model, precision and tags to ComfyHub · every run pays you 5%"
+                aria-label="Publish to ComfyHub"
+                className={cn(
+                  "inline-flex h-11 items-center gap-2 rounded-xl border-2 border-charcoal-400 bg-charcoal-600 px-4 text-sm font-bold text-smoke-100 shadow-[0_4px_0_#0e0e0f] transition-colors hover:border-sapphire-700 hover:text-[#7f8dff]",
+                  FOCUS_RING,
                 )}
-              </AnimatePresence>
+              >
+                <Upload size={16} aria-hidden="true" />
+                <span className="hidden sm:inline">Publish to ComfyHub</span>
+                <span className="sm:hidden">Publish</span>
+              </motion.button>
+              <div
+                className="min-w-0 flex-1 text-xs"
+                role="status"
+                aria-live="polite"
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  {flash ? (
+                    <motion.span
+                      key={`${flash.kind}:${flash.text}`}
+                      initial={motionOk ? { opacity: 0, x: -6 } : false}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={motionOk ? { opacity: 0 } : undefined}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 font-semibold",
+                        flash.kind === "ok"
+                          ? "text-electric-400"
+                          : "text-slot-vae",
+                      )}
+                    >
+                      {flash.kind === "ok" ? (
+                        <Check size={14} aria-hidden="true" />
+                      ) : (
+                        <TriangleAlert size={14} aria-hidden="true" />
+                      )}
+                      {flash.text}
+                    </motion.span>
+                  ) : disabled ? (
+                    <motion.span
+                      key={`blocker:${preview.blocker}`}
+                      initial={false}
+                      animate={{ opacity: 1 }}
+                      className="inline-flex items-center gap-1.5 text-smoke-700"
+                    >
+                      <TriangleAlert
+                        size={14}
+                        className="text-slot-vae/70"
+                        aria-hidden="true"
+                      />
+                      {preview.blocker}
+                    </motion.span>
+                  ) : (
+                    <motion.span
+                      key="ready"
+                      initial={false}
+                      animate={{ opacity: 1 }}
+                      className="text-smoke-800"
+                    >
+                      Ready on {preview.hardwareName}. Trending tags move likes;
+                      credits follow the roll.
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
         </div>

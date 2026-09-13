@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Dices, Flame, Shuffle, X } from 'lucide-react'
 import { PROMPT_CHIPS, type PromptChip } from '@/data/flavor'
@@ -23,6 +23,7 @@ const MAX_KEYWORD_BONUS = 3
 /** Discovery flags the prompt box can raise (see `UI_FLAGS` in src/game/actions.ts). */
 export const RICKROLL_FLAG = 'rickroll'
 export const SEED_42_FLAG = 'seed42'
+export const CTRL_ENTER_FLAG = 'ctrl-enter'
 /** "seed 42", "seed:42", "seed=42", "seed42", but not seed 420. */
 const SEED_42_RE = /\bseed\s*[:=]?\s*42(?!\d)/
 const SEED_MAX_DIGITS = 10
@@ -33,8 +34,13 @@ function raiseFlag(store: GameStore, key: string): void {
   store.setFlag(key)
 }
 
+export interface PromptInputProps {
+  /** Queue the post. Returns true when the job actually went into the queue. */
+  onSubmit?: () => boolean
+}
+
 /** Prompt textarea with one-tap idea chips and a live preview of the hashtags the words already hit. */
-export function PromptInput() {
+export function PromptInput({ onSubmit }: PromptInputProps) {
   const store = useGameStore()
   const { prompt, setPrompt } = useStudioSelection()
   // Two of the hidden flags live in the prompt text itself: the classic link, and the answer.
@@ -48,6 +54,16 @@ export function PromptInput() {
       if (seed === '42') raiseFlag(store, SEED_42_FLAG)
     },
     [store],
+  )
+  // Ctrl/Cmd+Enter queues from the box. Everyone who has ever used the real ComfyUI tries it, and
+  // the first one to land also raises the hidden flag.
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+      e.preventDefault()
+      if (onSubmit?.() === true) raiseFlag(store, CTRL_ENTER_FLAG)
+    },
+    [onSubmit, store],
   )
   const { matched, keywordHits, trending } = useCostPreview()
   const motionOk = useMotionOK()
@@ -74,6 +90,12 @@ export function PromptInput() {
           Prompt
         </label>
         <div className="flex items-center gap-2">
+          <kbd
+            className="hidden rounded-[0.354em] border border-charcoal-300 bg-charcoal-600 px-1.5 py-px font-sans text-[10px] font-bold uppercase tracking-[0.04em] text-smoke-700 sm:inline"
+            title="Queue the post without leaving the box"
+          >
+            Ctrl+Enter
+          </kbd>
           <SeedChip onSeed={onSeed} />
           <span className={cn('text-[11px] tabular-nums', remaining <= 20 ? 'text-slot-cond' : 'text-smoke-800')}>
             {prompt.length}/{MAX_PROMPT_UI_CHARS}
@@ -85,6 +107,7 @@ export function PromptInput() {
           id="studio-prompt"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={onKeyDown}
           maxLength={MAX_PROMPT_UI_CHARS}
           rows={3}
           spellCheck={false}

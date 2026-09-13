@@ -1,7 +1,7 @@
 'use client'
 import { memo, useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { Heart } from 'lucide-react'
+import { Heart, ThumbsDown } from 'lucide-react'
 import { likesAt } from '@/game/virality'
 import { formatNum } from '@/game/format'
 import type { Post } from '@/game/types'
@@ -16,25 +16,40 @@ interface Props {
   /** True while likes are still arriving; the counter then eases with `likesAt` at 4 Hz. */
   active: boolean
   viral?: boolean
+  /** A ratioed post counts the same number the other way: thumbs down, no heartbeat, no joy. */
+  dislike?: boolean
   className?: string
 }
 
 /** Heart + like count. The heart beats on every increment; the number rolls with a ticker. */
-export const LikesCounter = memo(function LikesCounter({ post, likes, active, viral = false, className }: Props) {
+export const LikesCounter = memo(function LikesCounter({
+  post,
+  likes,
+  active,
+  viral = false,
+  dislike = false,
+  className,
+}: Props) {
   return active ? (
-    <LiveLikes post={post} viral={viral} className={className} />
+    <LiveLikes post={post} viral={viral} dislike={dislike} className={className} />
   ) : (
-    <LikesRow value={likes} viral={viral} className={className} />
+    <LikesRow value={likes} viral={viral} dislike={dislike} className={className} />
   )
 })
 
-function LiveLikes({ post, viral, className }: { post: Post; viral: boolean; className?: string }) {
-  const now = useFeedNow()
-  const value = Math.max(post.likes, likesAt(post, now))
-  return <LikesRow value={value} viral={viral} className={className} />
+interface RowProps {
+  viral: boolean
+  dislike: boolean
+  className?: string
 }
 
-function LikesRow({ value, viral, className }: { value: number; viral: boolean; className?: string }) {
+function LiveLikes({ post, viral, dislike, className }: { post: Post } & RowProps) {
+  const now = useFeedNow()
+  const value = Math.max(post.likes, likesAt(post, now))
+  return <LikesRow value={value} viral={viral} dislike={dislike} className={className} />
+}
+
+function LikesRow({ value, viral, dislike, className }: { value: number } & RowProps) {
   const reduced = useReducedMotionPref()
   const prev = useRef(value)
   const [beat, setBeat] = useState(0)
@@ -42,6 +57,19 @@ function LikesRow({ value, viral, className }: { value: number; viral: boolean; 
     if (value > prev.current) setBeat((b) => b + 1)
     prev.current = value
   }, [value])
+
+  if (dislike) {
+    return (
+      <span
+        className={cn('inline-flex items-center gap-1.5 text-sm font-semibold tabular-nums text-slot-vae', className)}
+        aria-label={`${formatNum(value)} dislikes`}
+      >
+        <ThumbsDown size={14} className="shrink-0 fill-slot-vae/30 text-slot-vae" aria-hidden="true" />
+        <NumberTicker value={value} speed={0.35} />
+        <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-slot-vae/70">dislikes</span>
+      </span>
+    )
+  }
 
   const heart = (
     <Heart

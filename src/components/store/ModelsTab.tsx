@@ -1,11 +1,12 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { Box, Clapperboard, Cloud, Image as ImageIcon, Music } from 'lucide-react'
 import { useGame } from '@/state/useGame'
 import { isUnlocked } from '@/game/unlock'
 import { API_COST_MULT } from '@/game/constants'
 import type { ModelKind } from '@/game/types'
 import { ModelCard } from './ModelCard'
+import { useHighlight } from './storeHooks'
 
 type Section = ModelKind | 'api'
 
@@ -39,11 +40,14 @@ function useVisibleModels(): Record<Section, string[]> {
 
 /** Store › Models: every model as a card with vendor art, VRAM fit, setup and quantization. */
 export function ModelsTab() {
+  const listRef = useRef<HTMLDivElement>(null)
+  // A guidance step can hand this tab a `focusId`: scroll that card in and ring it electric.
+  useHighlight(listRef)
   const groups = useVisibleModels()
   const setupCount = useGame((s) => Object.values(s.models).filter((m) => m.setup).length)
   const total = useGame((_s, _d, store) => store.catalog.models.length)
   return (
-    <div className="flex flex-col gap-4 px-3 pt-3 pb-3">
+    <div ref={listRef} className="flex flex-col gap-4 px-3 pt-3 pb-3">
       <div className="flex items-center justify-between text-[11px]">
         <span className="font-semibold uppercase tracking-[0.08em] text-smoke-700">Checkpoints</span>
         <span className="tabular-nums text-smoke-800">
@@ -65,7 +69,8 @@ export function ModelsTab() {
             </header>
             <ul className="flex flex-col gap-2">
               {ids.map((modelId) => (
-                <li key={modelId} className="cv-auto">
+                // `data-id` is what a guidance step scrolls to and rings (`useHighlight`).
+                <li key={modelId} data-id={modelId} className="cv-auto">
                   <ModelCard id={modelId} />
                 </li>
               ))}

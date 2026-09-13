@@ -1,14 +1,15 @@
 'use client'
-import { Clock, Cpu, Flame, Repeat } from 'lucide-react'
+import { Clock, Cpu, Flame, Repeat, ThumbsDown } from 'lucide-react'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { REPOST_PENALTY } from '@/game/constants'
-import { formatNum } from '@/game/format'
+import { formatNum, formatPct } from '@/game/format'
 import { cn } from '@/lib/utils'
 import { formatShortSecs, useCostPreview } from './studioHooks'
 
 /** "1,240 credits · 12 s of income · ~8 s on RTX 4090 · ×1.8 trend" */
 export function CostLine() {
-  const { cost, incomeSec, genSec, hardwareName, affordable, trend, spam, repost } = useCostPreview()
+  const { cost, incomeSec, genSec, hardwareName, affordable, trend, spam, repost, mismatched, evPct } = useCostPreview()
+  const ratioed = mismatched.length > 0
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-smoke-600" aria-live="off">
       <span className={cn('inline-flex items-center gap-1 font-bold tabular-nums', affordable ? 'text-credits' : 'text-slot-vae')}>
@@ -32,15 +33,25 @@ export function CostLine() {
         </span>
       )}
       <Sep />
-      <span
-        className={cn(
-          'inline-flex items-center gap-1 font-semibold tabular-nums',
-          spam ? 'text-slot-vae' : trend > 1 ? 'text-electric-400' : 'text-smoke-700',
-        )}
-        title="Reach multiplier from trending hashtags and keywords (moves likes, not credits)"
-      >
-        {trend > 1 && !spam ? <Flame size={12} aria-hidden="true" /> : null}×{trend.toFixed(1)} trend
-      </span>
+      {ratioed ? (
+        <span
+          className="inline-flex items-center gap-1 font-bold tabular-nums text-slot-vae"
+          title="A type tag naming a kind this model is not: the post collects dislikes and charges you for them"
+        >
+          <ThumbsDown size={12} aria-hidden="true" />
+          ratioed · about {formatPct(evPct)} expected
+        </span>
+      ) : (
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 font-semibold tabular-nums',
+            spam ? 'text-slot-vae' : trend > 1 ? 'text-electric-400' : 'text-smoke-700',
+          )}
+          title="Reach multiplier from trending hashtags and keywords (moves likes, not credits)"
+        >
+          {trend > 1 && !spam ? <Flame size={12} aria-hidden="true" /> : null}×{trend.toFixed(1)} trend
+        </span>
+      )}
       {repost ? (
         <>
           <Sep />
