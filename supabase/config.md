@@ -9,8 +9,11 @@ maintained by hand and must be updated alongside.
 
 `0001_init.sql` is the schema; `0003_hub_integrity.sql` (required by the ComfyHub run and
 royalty routes and the daily route's writes) moves `hub_runs` / `daily_logins` writes behind
-the service role, adds the royalty ledger and `claim_hub_royalties()`. `0002_feed_cron.sql`
-is optional (pg_cron for the feed) and needs its placeholders replaced. Apply in order.
+the service role, adds the royalty ledger and `claim_hub_royalties()`; `0004_profiles.sql`
+(required by the username picker) adds `profiles.handle_changed_at`, teaches
+`handle_new_user()` to honour the handle the create-account form asked for, and adds the
+`profiles_guard_handle()` rename gate. `0002_feed_cron.sql` is optional (pg_cron for the
+feed) and needs its placeholders replaced. Apply in order: 0001, 0003, 0004.
 
 ### Option A: Supabase MCP (recommended from Claude Code)
 
@@ -48,10 +51,16 @@ supabase db push        # applies supabase/migrations/*.sql in order
   sheet; guests never need an account: the local save keeps working without one).
 - **Confirm email** may stay on: sign-up then shows "check your inbox" and the confirmation
   link lands on `/auth/callback`, which exchanges the code and bounces back signed in.
-- **Redirect URLs**: add `<site>/auth/callback` and `http://localhost:3000/auth/callback`
-  (or the `/**` wildcards). Anonymous sign-ins are not used.
-- Every new `auth.users` row triggers `public.handle_new_user()` which creates the
-  `profiles` row with `handle = 'comfy-' || left(id::text, 6)`.
+- **Site URL**: `https://comfy-clicker.vercel.app`. **Redirect URLs**: add
+  `https://comfy-clicker.vercel.app/auth/callback`, `https://comfy-clicker.vercel.app/**`
+  and `http://localhost:3000/**`. Supabase falls back to the Site URL whenever the redirect
+  the app asked for is not on the allow-list, which is what makes a confirmation link point
+  at localhost. Anonymous sign-ins are not used. Full walkthrough in `docs/DEPLOY.md`.
+- Every new `auth.users` row triggers `public.handle_new_user()`. Since `0004_profiles.sql`
+  it takes `raw_user_meta_data.handle` (the optional username on the create-account form)
+  when that value is lowercase, matches `^[a-z0-9][a-z0-9_-]{2,31}$`, is not reserved and is
+  free; otherwise it falls back to `handle = 'comfy-' || left(id::text, 6)` with the same
+  collision retry. A sign-up never fails because the wanted username was taken.
 
 ## 3. Environment
 
@@ -84,7 +93,7 @@ with the admin client on its own cron.
 
 | Table | anon / authenticated read | writes |
 | --- | --- | --- |
-| `profiles` | everyone | owner (insert/update) |
+| `profiles` | everyone | owner (insert/update); `profiles_guard_handle()` refuses the reserved names, holds a user JWT to one rename a day, stamps `handle_changed_at` and pins `created_at` (since 0004) |
 | `saves` | owner only | owner |
 | `daily_logins` | owner only | service role only (`/api/daily`, since 0003) |
 | `hub_workflows` | everyone | author (insert/update/delete); run counters, `rep` and `royalties_total` are server-owned |
@@ -99,5 +108,14 @@ pnpm vitest run src/server/supabase/__tests__/schema.test.ts
 ```
 
 checks the SQL text of `0001` (RLS on every table, policies present, no destructive
-statements, leaderboard view exists); `0003` intentionally drops two policies. After applying, the Dashboard's **Database → Policies** page
-should list every table above with RLS enabled.
+statements, leaderboard view exists) and of `0004` (additive, `search_path = ''` on both
+functions, the handle regex identical to the column check, the rename cooldown, the reserved
+list); `0003` intentionally drops two policies. After applying, the Dashboard's
+**Database → Policies** page should list every table above with RLS enabled.
+
+The rename rules themselves are worth a live check after applying `0004`:
+
+```sql
+select handle, handle_changed_at from public.profiles limit 5;   -- null = still the signup handle
+```
+

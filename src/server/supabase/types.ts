@@ -19,6 +19,8 @@ export type ProfileRow = {
   handle: string
   avatar_seed: number
   created_at: string
+  /** Last rename; null means the handle is still the one sign-up assigned (0004). */
+  handle_changed_at: string | null
 }
 
 export type SaveRow = {

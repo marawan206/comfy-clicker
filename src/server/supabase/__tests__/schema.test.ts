@@ -154,3 +154,111 @@ describe('0001_init.sql', () => {
     expect(sql).toMatch(/precision\s+text not null check \(precision in \('native', 'fp8', 'q4'\)\)/i)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 0004_profiles.sql: player-chosen usernames
+// ---------------------------------------------------------------------------
+const PROFILES_MIGRATION_PATH = fileURLToPath(
+  new URL('../../../../supabase/migrations/0004_profiles.sql', import.meta.url),
+)
+const rawProfiles = readFileSync(PROFILES_MIGRATION_PATH, 'utf8')
+const sqlProfiles = rawProfiles
+  .split('\n')
+  .map((line) => line.replace(/--.*$/, ''))
+  .join('\n')
+
+/** The two functions 0004 ships, sliced out of the file by their $$ body. */
+function profilesFunctions(): { name: string; body: string }[] {
+  return [...sqlProfiles.matchAll(/create (?:or replace )?function public\.(\w+)\([\s\S]*?\$\$;/gi)].map((m) => ({
+    name: m[1],
+    body: m[0],
+  }))
+}
+
+const RESERVED_HANDLES = [
+  'admin',
+  'comfy',
+  'comfyui',
+  'comfyanonymous',
+  'comfyorg',
+  'comfy-org',
+  'moderator',
+  'support',
+  'system',
+] as const
+
+describe('0004_profiles.sql', () => {
+  it('adds handle_changed_at to profiles without touching the rest of the table', () => {
+    expect(sqlProfiles).toMatch(/alter table public\.profiles\s+add column if not exists handle_changed_at timestamptz null/i)
+    expect(rawProfiles).toMatch(/comment on column public\.profiles\.handle_changed_at is/i)
+    expect(sqlProfiles).not.toMatch(/create table/i)
+    expect(sqlProfiles).not.toMatch(/alter column/i)
+  })
+
+  it('contains no destructive statements', () => {
+    expect(sqlProfiles).not.toMatch(/\bdrop\b/i)
+    expect(sqlProfiles).not.toMatch(/\btruncate\b/i)
+    expect(sqlProfiles).not.toMatch(/\bdelete from\b/i)
+    expect(sqlProfiles).not.toMatch(/\brevoke [^;]*\bon public\.profiles\b/i)
+  })
+
+  it('ships exactly handle_new_user and profiles_guard_handle, both with a pinned search_path', () => {
+    const fns = profilesFunctions()
+    expect(fns.map((f) => f.name).sort()).toEqual(['handle_new_user', 'profiles_guard_handle'])
+    for (const fn of fns) {
+      expect(fn.body, `${fn.name} lacks a pinned search_path`).toMatch(/set search_path = ''/i)
+      expect(sqlProfiles, `${fn.name} is still executable by user roles`).toMatch(
+        new RegExp(`revoke all on function public\\.${fn.name}\\(\\) from public, anon, authenticated`, 'i'),
+      )
+    }
+    // security definer stays where 0001 had it: the signup trigger writes profiles
+    // for a brand new user; the rename guard only inspects OLD/NEW.
+    expect(fns.find((f) => f.name === 'handle_new_user')?.body).toMatch(/security definer/i)
+    expect(fns.find((f) => f.name === 'profiles_guard_handle')?.body).not.toMatch(/security definer/i)
+  })
+
+  it('reuses the exact handle regex from 0001 so the trigger and the check constraint agree', () => {
+    const literal = sql.match(/'\^\[a-z0-9\]\[a-z0-9_-\]\{2,31\}\$'/)?.[0]
+    expect(literal).toBe("'^[a-z0-9][a-z0-9_-]{2,31}$'")
+    expect(sqlProfiles).toContain(literal!)
+  })
+
+  it('honours a wanted handle at signup and still falls back to the generated one', () => {
+    const fn = profilesFunctions().find((f) => f.name === 'handle_new_user')!.body
+    expect(fn).toMatch(/new\.raw_user_meta_data ->> 'handle'/)
+    expect(fn).toMatch(/lower\(btrim\(/i)
+    // the 0001 fallback and its collision retry loop survive
+    expect(fn).toMatch(/'comfy-' \|\| left\(new\.id::text, 6\)/)
+    expect(fn).toMatch(/exception when unique_violation then/i)
+    expect(fn).toMatch(/'comfy-' \|\| left\(replace\(new\.id::text, '-', ''\), n\)/)
+    expect(sqlProfiles).toMatch(/create (?:or replace )?trigger on_auth_user_created\s+after insert on auth\.users/i)
+  })
+
+  it('guards renames with a before update trigger on profiles', () => {
+    expect(sqlProfiles).toMatch(
+      /create (?:or replace )?trigger profiles_guard_handle\s+before update on public\.profiles\s+for each row execute function public\.profiles_guard_handle\(\)/i,
+    )
+    const fn = profilesFunctions().find((f) => f.name === 'profiles_guard_handle')!.body
+    expect(fn).toMatch(/new\.handle is distinct from old\.handle/i)
+    expect(fn).toMatch(/raise exception 'handle_reserved' using errcode = 'P0001'/i)
+    expect(fn).toMatch(/raise exception 'handle_cooldown' using errcode = 'P0001'/i)
+    expect(fn).toMatch(/new\.handle_changed_at := now\(\)/i)
+    // cooldown: one rename a day, for user JWTs only
+    expect(fn).toMatch(/interval '1 day'/i)
+    expect(fn).toMatch(/auth\.role\(\)[\s\S]*?in \('authenticated', 'anon'\)/i)
+    // created_at is server-owned for user JWTs
+    expect(fn).toMatch(/new\.created_at := old\.created_at/i)
+  })
+
+  it('reserves the comfy-org names in both functions', () => {
+    for (const name of RESERVED_HANDLES) {
+      expect(sqlProfiles, `${name} is not reserved`).toContain(`'${name}'`)
+    }
+    const arrays = [...sqlProfiles.matchAll(/reserved\s+text\[\]\s*:=\s*array\[([^\]]+)\]/gi)]
+    expect(arrays.length).toBe(2)
+    for (const arr of arrays) {
+      const names = arr[1].split(',').map((s) => s.trim().replace(/^'|'$/g, ''))
+      expect(names.sort()).toEqual([...RESERVED_HANDLES].sort())
+    }
+  })
+})

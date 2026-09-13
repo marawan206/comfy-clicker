@@ -18,9 +18,24 @@
 
 ## 2. Supabase
 
-- Schema: `supabase/migrations/0001_init.sql` and `0003_hub_integrity.sql` (both applied; 0003 makes hub runs and daily claims server-only and adds the royalty ledger). Apply `0002_feed_cron.sql` after replacing `__DEPLOY_URL__` and `__CRON_SECRET__`. It makes Postgres call the refresh route every 15 minutes with `pg_cron` + `pg_net`.
-- Auth → Providers → Email: enable email + password. For a frictionless demo, turn **Confirm email** off (otherwise new accounts must click the confirmation link before cloud saves sync).
-- Auth → URL configuration: set **Site URL** to `https://comfy-clicker.vercel.app` and add these to **Redirect URLs**: `https://comfy-clicker.vercel.app/auth/callback`, `https://comfy-clicker.vercel.app/**`, `http://localhost:3000/**`. If a confirmation email links to `localhost:3000`, this is the setting that is wrong: Supabase falls back to the Site URL whenever the redirect the app asked for is not on the allow-list.
+### Schema
+
+Apply in order: `0001_init.sql`, `0003_hub_integrity.sql`, `0004_profiles.sql` (all three applied on the live project). 0003 makes hub runs and daily claims server-only and adds the royalty ledger. 0004 is the username migration: it adds `profiles.handle_changed_at`, rewrites `handle_new_user()` so a sign-up can ask for its own handle (`raw_user_meta_data.handle`, taken when it is lowercase, matches `^[a-z0-9][a-z0-9_-]{2,31}$`, is not reserved and is free, otherwise the generated `comfy-xxxxxx` as before), and adds the `profiles_guard_handle()` before-update trigger that refuses reserved names, holds a user JWT to one rename a day, stamps `handle_changed_at` and pins `created_at`. It is additive: no drops, no data loss. `0002_feed_cron.sql` is optional; apply it after replacing `__DEPLOY_URL__` and `__CRON_SECRET__` and Postgres calls the refresh route every 15 minutes with `pg_cron` + `pg_net`. Details and the MCP / psql / CLI commands: `supabase/config.md`.
+
+### Auth → Providers → Email
+
+Enable email + password. For a frictionless demo, turn **Confirm email** off (otherwise new accounts must click the confirmation link before cloud saves sync).
+
+### Auth → URL configuration (this is the confirmation-email fix)
+
+| Field | Value |
+|---|---|
+| **Site URL** | `https://comfy-clicker.vercel.app` |
+| **Redirect URLs** | `https://comfy-clicker.vercel.app/auth/callback` |
+| | `https://comfy-clicker.vercel.app/**` |
+| | `http://localhost:3000/**` |
+
+All three redirect entries, exactly as written, and the Site URL with no trailing slash. Supabase falls back to the Site URL whenever the redirect the app asked for is not on the allow-list, which is why a link generated from a local dev server points at `localhost:3000`. So a confirmation email pointing at localhost means one of two things: the sign-up happened on `http://localhost:3000` (expected, and the link works there), or the Vercel redirect entries are missing and Supabase fell back to a Site URL that is still the default. Set `NEXT_PUBLIC_SITE_URL` in Vercel (section 1) so the app always asks for the production callback, and re-test by signing up from `https://comfy-clicker.vercel.app`.
 
 ## 3. Smoke test after deploy
 
