@@ -131,6 +131,18 @@ export function QueueMini() {
   const reduced = Boolean(useReducedMotion()) || reducedSetting
   const idleLine = LOADING_LINES[idleSeed % LOADING_LINES.length] ?? LOADING_LINES[0]
 
+  // Nothing running and nothing waiting: one line, not a whole panel of empty.
+  if (jobs.length === 0 && pending === 0) {
+    return (
+      <div className="flex shrink-0 items-center gap-2 rounded-2xl border-2 border-charcoal-400 border-l-4 border-l-slot-model bg-charcoal-600 px-3 py-1.5 shadow-[0_4px_0_#0e0e0f]">
+        <Clock3 size={14} className="shrink-0 text-smoke-800" aria-hidden="true" />
+        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-smoke-600">Queue idle</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] italic text-smoke-700">{idleLine}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-smoke-600">0/{concurrency}</span>
+      </div>
+    )
+  }
+
   return (
     <Panel
       stripe="model"
@@ -154,7 +166,7 @@ export function QueueMini() {
         <div className="flex items-center gap-2.5 text-xs text-smoke-600">
           <Clock3 size={16} className="shrink-0 text-smoke-800" aria-hidden="true" />
           <p className="min-w-0">
-            <span className="font-semibold text-smoke-100">Queue idle.</span> <span className="italic">{idleLine}</span>
+            <span className="font-semibold text-smoke-100">Waiting for a slot.</span> <span className="italic">{idleLine}</span>
           </p>
         </div>
       )}

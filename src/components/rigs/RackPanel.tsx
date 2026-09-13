@@ -9,7 +9,7 @@ import { buildIndex } from '@/game/catalog'
 import { formatCps } from '@/game/format'
 import { Panel } from '@/components/common/Panel'
 import { cn } from '@/lib/utils'
-import { useLocalState, useOwnedHardware, useReducedMotionPref } from '@/components/store/storeHooks'
+import { useFamilyDraw, useLocalState, useOwnedHardware, useReducedMotionPref } from '@/components/store/storeHooks'
 import { RigRow } from './RigRow'
 
 const COLLAPSED_KEY = 'comfy-clicker:rack-collapsed'
@@ -24,7 +24,7 @@ interface Group {
 /** Below this many units the rack starts collapsed so the Studio gets the first screen. */
 const AUTO_OPEN_UNITS = 4
 
-/** Owned hardware grouped by family; collapsible, scrolls inside 28vh. */
+/** Owned hardware grouped by family; collapsible, scrolls inside 22vh, one-line shelf when closed. */
 export function RackPanel() {
   const store = useGameStore()
   const owned = useOwnedHardware()
@@ -42,6 +42,15 @@ export function RackPanel() {
   const reduced = useReducedMotionPref()
   const cps = useGame((_s, d) => Math.round(d.cps * 10) / 10)
   const throttled = useGame((_s, d) => d.throttled)
+  const draw = useFamilyDraw()
+
+  // Closed, the rack still has to read as a rack: one chip per family, in catalog order.
+  const shelf = useMemo(() => {
+    const label = new Map(HARDWARE_FAMILIES.map((f) => [f.id, f.label]))
+    return HARDWARE_FAMILIES.map((f) => draw.find((d) => d.family === f.id))
+      .filter((d): d is NonNullable<typeof d> => d !== undefined)
+      .map((d) => ({ family: d.family, label: label.get(d.family) ?? d.family, units: d.units, cps: d.cps }))
+  }, [draw])
 
   const groups = useMemo((): Group[] => {
     const { hardwareById } = buildIndex(store.catalog)
@@ -82,8 +91,33 @@ export function RackPanel() {
         </span>
       }
       className="shrink-0"
-      bodyClassName={cn('p-0', collapsed && 'hidden')}
+      bodyClassName="p-0"
     >
+      {collapsed &&
+        (shelf.length === 0 ? (
+          <p id="rack-body" className="px-4 py-2 text-xs text-smoke-700">The rack is empty. Even the office PC left.</p>
+        ) : (
+          <ul
+            id="rack-body"
+            aria-label="Rack summary"
+            className="flex items-center gap-1.5 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {shelf.map((f) => (
+              <li key={f.family} className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setState('open')}
+                  title={`${f.label}: ${f.units} unit${f.units === 1 ? '' : 's'} making ${formatCps(f.cps)}. Open the rack.`}
+                  className="flex items-center gap-1.5 rounded-[0.354em] border border-charcoal-400/70 bg-charcoal-500/60 px-1.5 py-0.5 text-[11px] transition-colors hover:border-charcoal-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
+                >
+                  <span className="font-semibold text-smoke-100">{f.label}</span>
+                  <span className="font-extrabold tabular-nums text-smoke-100">×{f.units}</span>
+                  <span className="tabular-nums text-smoke-600">{formatCps(f.cps)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ))}
       <AnimatePresence initial={false}>
         {!collapsed && (
           <motion.div
@@ -93,7 +127,7 @@ export function RackPanel() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: reduced ? 0 : 0.15 }}
-            className="max-h-[28vh] overflow-y-auto px-2 pb-2"
+            className="max-h-[22vh] overflow-y-auto px-2 pb-2"
           >
             {groups.map((group) => (
               <section key={group.family} aria-label={group.label}>

@@ -131,6 +131,29 @@ export function useWeekPinned(): boolean {
   return useGame((s) => s.weekOverride !== null)
 }
 
+export type TrendingTone = 'live' | 'seeded' | 'pinned'
+
+export interface TrendingMarker {
+  tone: TrendingTone
+  /** One word for the pill, and the accessible name of the dot it collapses into. */
+  word: string
+  /** Full sentence, shown as the tooltip once the pill is a 6 px dot. */
+  title: string
+}
+
+/** Where the trio came from. A pin (demo mode) outranks a live fetch. */
+export function trendingMarker(live: boolean, pinned: boolean): TrendingMarker {
+  if (pinned) return { tone: 'pinned', word: 'pinned', title: 'Week pinned for the demo' }
+  if (live) return { tone: 'live', word: 'live', title: 'From the real wire' }
+  return { tone: 'seeded', word: 'seeded', title: 'Seeded from the week index' }
+}
+
+/** `AI weeks are 10 minutes`, for the countdown tooltip. */
+export function weekLengthHint(periodMs: number): string {
+  const minutes = Math.max(1, Math.round(periodMs / 60_000))
+  return `AI weeks are ${minutes} minute${minutes === 1 ? '' : 's'}`
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers (catalog lookups and formatting the cards share)
 // ---------------------------------------------------------------------------

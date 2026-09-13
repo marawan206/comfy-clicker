@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, UIEvent } from 'react'
 import { ClipboardList, Newspaper, Sparkles, type LucideIcon } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FeedPanel } from '@/components/feed/FeedPanel'
@@ -52,6 +52,17 @@ function storeTab(id: CenterTabId): void {
   } catch {
     /* private mode / quota, the choice just does not persist */
   }
+}
+
+/**
+ * Fades the top 14 px of the panel while it is scrolled, so content slides under the trending
+ * strip instead of hitting a hard edge. Written straight to the DOM node: no state, no re-render
+ * on a scroll frame, and an unscrolled panel keeps its crisp border.
+ */
+function markScrolled(e: UIEvent<HTMLElement>): void {
+  const el = e.currentTarget
+  const next = el.scrollTop > 0 ? 'true' : 'false'
+  if (el.dataset.scrolled !== next) el.dataset.scrolled = next
 }
 
 function useMotionOff(): boolean {
@@ -126,11 +137,14 @@ export function CenterTabs() {
         ))}
       </div>
 
+      {/* `@container` here, not on the viewport: the strip answers to the centre column's real
+          width, so it stays one line whatever the window does. `pb-1` keeps its 4 px hard shadow
+          off the panel border below it. */}
       <AnimatePresence initial={false}>
         {showTrending ? (
           <motion.div
             key="trending"
-            className="shrink-0"
+            className="@container shrink-0 pb-1"
             initial={off ? false : { opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={off ? undefined : { opacity: 0, y: -4 }}
@@ -150,10 +164,12 @@ export function CenterTabs() {
           id={`center-panel-${tab}`}
           aria-labelledby={`center-tab-${tab}`}
           tabIndex={-1}
+          data-scrolled="false"
+          onScroll={markScrolled}
           initial={off ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16, ease: 'easeOut' }}
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-0.5 pb-1 focus-visible:outline-none"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-0.5 pb-1 focus-visible:outline-none data-[scrolled=true]:[mask-image:linear-gradient(to_bottom,transparent,black_14px)]"
         >
           {tab === 'studio' ? <StudioPanel /> : tab === 'feed' ? <FeedPanel /> : <ContractsPanel />}
         </motion.div>

@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { UIEvent } from 'react'
 import { motion } from 'motion/react'
 import { Panel, type Stripe } from '@/components/common/Panel'
 import { ModelsTab } from '@/components/store/ModelsTab'
@@ -24,6 +25,16 @@ const TAB_META: Record<StoreTab, { label: string; stripe: Stripe; accent: string
   upgrades: { label: 'Upgrades', stripe: 'cond', accent: 'text-slot-cond' },
   models: { label: 'Models', stripe: 'latent', accent: 'text-slot-latent' },
   power: { label: 'Power', stripe: 'vae', accent: 'text-slot-vae' },
+}
+
+/**
+ * Fades the top 14 px of the list while it is scrolled, so rows slide under the tab row instead of
+ * being chopped by a hard edge. Written straight to the DOM node: no state, no re-render per frame.
+ */
+function markScrolled(e: UIEvent<HTMLElement>): void {
+  const el = e.currentTarget
+  const next = el.scrollTop > 0 ? 'true' : 'false'
+  if (el.dataset.scrolled !== next) el.dataset.scrolled = next
 }
 
 function isStoreTab(x: unknown): x is StoreTab {
@@ -124,7 +135,11 @@ export function StorePanel() {
         })}
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-color:#3c3d42_transparent] [scrollbar-width:thin]">
+      <div
+        data-scrolled="false"
+        onScroll={markScrolled}
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-color:#3c3d42_transparent] [scrollbar-width:thin] data-[scrolled=true]:[mask-image:linear-gradient(to_bottom,transparent,black_14px)]"
+      >
         {/* Swap synchronously and only fade in (like CenterTabs): no exit animation to wait on, so a
             hidden or rAF-throttled tab can never leave the old panel stuck under the new tab. */}
         <motion.div
