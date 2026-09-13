@@ -3,6 +3,14 @@
  * blob is always written first, the cloud row is a copy of it, and nothing here ever blocks the
  * loop on the network.
  *
+ * Only the tab holding the writer lock syncs. A follower tab owns neither the local save nor the
+ * cloud row, and two tabs each holding their own `cloudSavedAt` refuse each other's conditional
+ * updates roughly once a minute, which surfaces as the destructive merge question.
+ *
+ * The local blob is stamped with the account it belongs to (`GameStore.saveOwner`). A stamp naming
+ * someone else is the previous player's run on a shared browser: it is already in that account's
+ * row, so it is never offered to the new account as "this device".
+ *
  * On sign-in:
  *   - no cloud row            → upload the local save (guest → account keeps the guest run)
  *   - cloud row this device wrote last (same `saved_at` as our receipt) → local is newer, upload
@@ -188,13 +196,27 @@ export function startCloudSync(store: GameStore, supabase: CloudClient): () => v
 }
 
 let ensured = false
-/** Starts cloud sync once per page for the singleton store and browser client (no-op without Supabase). */
+let awaitingLock: (() => void) | null = null
+/**
+ * Starts cloud sync once per page for the singleton store and browser client (no-op without
+ * Supabase). A follower tab starts nothing: the tab that owns the local save owns the cloud row
+ * too. If this tab later takes the lock over (the other one closed), sync starts then.
+ */
 export function ensureCloudSync(): void {
   if (ensured || typeof window === 'undefined') return
+  const store = getGameStore()
+  if (!store.leader) {
+    awaitingLock ??= store.onLeaderChange((leader) => {
+      if (leader) ensureCloudSync()
+    })
+    return
+  }
   const supabase = getSupabaseBrowserClient()
   if (!supabase) return
   ensured = true
-  startCloudSync(getGameStore(), supabase)
+  awaitingLock?.()
+  awaitingLock = null
+  startCloudSync(store, supabase)
 }
 
 /**
@@ -211,8 +233,13 @@ export async function saveToCloudNow(): Promise<boolean> {
 // ---------------------------------------------------------------------------
 // Session lifecycle
 // ---------------------------------------------------------------------------
+/**
+ * `ctx.store.leader` is in here because a tab that lost the writer lock is a mirror of another
+ * tab's state: uploading from it would push a stale or duplicated run and then lose the
+ * conditional update to the real writer, which is what raises the merge question every minute.
+ */
 function ready(ctx: Ctx, session: SyncSession): boolean {
-  return ctx.session === session && session.decided && !session.merging
+  return ctx.session === session && session.decided && !session.merging && ctx.store.leader
 }
 
 function endSession(ctx: Ctx): void {
@@ -265,8 +292,20 @@ async function beginSession(ctx: Ctx, userId: string): Promise<void> {
 
   const receipt = readReceipt()
   const local = summarize(ctx.store.state, ctx.store.derived.cps, 'local')
+  // The stamp is written only after a successful upload or adopt, so the run it names is already
+  // in that account's row. Claiming it for this account would hand one player another's progress
+  // and, with `suggested` picked on lifetime credits alone, let one Enter overwrite a real save.
+  const foreign = ctx.store.saveOwner !== null && ctx.store.saveOwner !== userId
 
-  if (!row) {
+  if (foreign) {
+    if (row) adoptCloud(ctx, session, row)
+    else {
+      // A brand new account on a browser the previous player left signed out: start it clean
+      // rather than adopting their run.
+      ctx.store.hardReset()
+      await upload(ctx, session)
+    }
+  } else if (!row) {
     await upload(ctx, session)
   } else if (receipt && receipt.userId === userId && sameInstant(receipt.savedAt, row.saved_at)) {
     // The row is our own last upload; this device has only moved forward since.
@@ -366,6 +405,7 @@ async function runUpload(ctx: Ctx, session: SyncSession): Promise<boolean> {
 
     session.cloudSavedAt = written
     session.lastFingerprint = print
+    store.setSaveOwner(session.userId)
     writeReceipt({ userId: session.userId, savedAt: written })
     if (ctx.session === session) setStatus('synced')
     return true
@@ -422,10 +462,17 @@ function adoptCloud(ctx: Ctx, session: SyncSession, row: SaveRow): void {
   const derived = computeDerived(state, store.catalog)
   const report = applyOffline(state, derived, store.catalog, now)
   store.replaceState(state)
-  if (report.elapsedSec >= 60 && report.gain > 0) {
-    store.offlineReport = { elapsedSec: report.elapsedSec, gain: report.gain }
-    store.recompute()
+  store.setSaveOwner(session.userId)
+  // Emit after `replaceState`, so a subscriber that looks the settled post up by id (the ComfyHub
+  // royalty bridge) finds it. These events are the only report the gap produces: without them an
+  // adopted save settles its posts without paying the workflow author, and every achievement,
+  // level-up and milestone the gap crossed happens in silence.
+  store.emitEvents(report.events)
+  const offline = report.events.find((e) => e.type === 'offline')
+  if (offline && offline.gain > 0) {
+    store.offlineReport = { elapsedSec: offline.elapsedSec, gain: offline.gain }
   }
+  store.recompute()
   session.lastFingerprint = fingerprint(store.state)
   writeReceipt({ userId: session.userId, savedAt: row.saved_at })
   setStatus('synced')

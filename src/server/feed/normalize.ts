@@ -168,14 +168,23 @@ function httpUrl(url: string | undefined): string | undefined {
 
 /**
  * Clean, tag, dedupe (by id, first wins; callers put live items before seed fallbacks) and sort newest first.
- * Items with no id/url/text or with adult-content text are dropped; unparsable dates fall back to `now`.
+ * Items with no id/text, no http(s) url or with adult-content text are dropped; unparsable dates
+ * fall back to `now`.
+ *
+ * `url` gets the same scheme check as the two decorative URLs because it is the one value the
+ * player clicks: `RealPostCard` renders it straight into an anchor, and several sources hand it
+ * over verbatim from third-party markup (any Atom `<link href>`, Algolia's `url`, fxtwitter's
+ * `url`), so a spoofed or compromised upstream could put a `javascript:` or protocol-relative
+ * href into the feed.
  */
 export function normalizeItems(items: FeedItem[], vocab: FeedVocabEntry[], now = Date.now()): FeedItem[] {
   const fallbackDate = new Date(now).toISOString()
   const seen = new Set<string>()
   const out: FeedItem[] = []
   for (const raw of items) {
-    if (!raw || !raw.id || !raw.url) continue
+    if (!raw || !raw.id) continue
+    const url = httpUrl(raw.url)
+    if (!url) continue
     const key = raw.id.toLowerCase()
     if (seen.has(key)) continue
     const text = clampText(collapseWhitespace(raw.text ?? ''), MAX_TEXT_CHARS)
@@ -185,6 +194,7 @@ export function normalizeItems(items: FeedItem[], vocab: FeedVocabEntry[], now =
     const likes = typeof raw.likes === 'number' && Number.isFinite(raw.likes) ? Math.max(0, Math.round(raw.likes)) : null
     const item: FeedItem = {
       ...raw,
+      url,
       author: collapseWhitespace(raw.author || handle || 'unknown'),
       handle,
       text,

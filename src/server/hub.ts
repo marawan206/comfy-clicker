@@ -5,8 +5,12 @@
  * Reads and the publish go through the cookie-bound server client so RLS applies (public read,
  * author insert). Runs are recorded with the service role only: `/api/hub/run` clamps
  * `creditsPaid` to the job the workflow could actually cost the runner, rate-limits per runner
- * and inserts the `hub_runs` row itself (0003 dropped the runner-insert policy), and the insert
- * trigger bumps `runs_24h` / `runs_total` / `royalties_total` / `rep` in one atomic UPDATE.
+ * and per runner-and-workflow, and inserts the `hub_runs` row itself (0003 dropped the
+ * runner-insert policy), and the insert trigger bumps `runs_24h` / `runs_total` /
+ * `royalties_total` / `rep` in one atomic UPDATE.
+ *
+ * The clamp rests on `profiles.created_at`, which the server writes, and only ever tightens with
+ * the runner's own uploaded `cps`. Anything the runner can write cannot raise their own cap.
  * Royalties reach the author's game through `claim_hub_royalties` (see `claimRoyalties`).
  */
 import { z } from 'zod'
@@ -33,10 +37,32 @@ export const HUB_LIST_LIMIT = 60
 /** Runs one player may record per minute; a queue of MAX_QUEUE jobs at GEN_TIME_MIN_S needs far fewer. */
 export const HUB_RUNS_PER_MINUTE = 40
 /**
- * Headroom on the runner's last uploaded cps when capping `creditsPaid`: the cloud row is at
- * most a minute old and income can jump a few times over in that minute early on.
+ * Runs one player may record against one workflow per hour. The per-minute limit bounds how fast a
+ * player records runs but not where they point them, so without this one account can pump a single
+ * workflow's `runs_24h` (the whole trending sort key) and its royalty stream on its own.
+ */
+export const HUB_RUNS_PER_WORKFLOW_HOUR = 12
+/**
+ * Headroom on the runner's cps when capping `creditsPaid`: the cloud row is at most a minute old
+ * and income can jump a few times over in that minute early on.
  */
 export const HUB_CPS_HEADROOM = 4
+
+/**
+ * Income ceiling the server will believe from an account of a given age, as
+ * `HUB_CPS_SEED × (1 + age / HUB_CPS_TAU_S) ^ HUB_CPS_EXP`, hard-stopped at HUB_CPS_CEILING.
+ *
+ * `profiles.created_at` is the only scalar about a player the server writes itself, so it is the
+ * only one a cap may rest on. The shape is fitted loosely to the pacing sim (scripts/balance.ts,
+ * `climb` at 3 clicks/s: about 4.9e5 cps at 15 min, 4.4e7 at an hour, 1.7e8 at a day, 2.6e8 at a
+ * week) with one to two orders of magnitude of headroom for prestige and achievement multipliers,
+ * so an honest run is never clipped and the ceiling binds only far past anything the game
+ * produces.
+ */
+export const HUB_CPS_SEED = 10_000
+export const HUB_CPS_TAU_S = 60
+export const HUB_CPS_EXP = 3
+export const HUB_CPS_CEILING = 1e10
 
 export type HubSort = 'trending' | 'new'
 
@@ -85,6 +111,18 @@ export const hubListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(HUB_LIST_LIMIT).default(HUB_LIST_LIMIT),
 })
 export type HubListInput = z.input<typeof hubListSchema>
+
+/** The most income an account `accountAgeSec` old could honestly have reached. */
+export function plausibleCps(accountAgeSec: number): number {
+  const age = Number.isFinite(accountAgeSec) ? Math.max(0, accountAgeSec) : 0
+  return Math.min(HUB_CPS_CEILING, HUB_CPS_SEED * (1 + age / HUB_CPS_TAU_S) ** HUB_CPS_EXP)
+}
+
+/** Account age in seconds from a `created_at` timestamp; 0 for a missing or unparsable one. */
+export function accountAgeSec(createdAt: string | null | undefined, now: number): number {
+  const t = createdAt ? Date.parse(createdAt) : NaN
+  return Number.isFinite(t) ? Math.max(0, (now - t) / 1000) : 0
+}
 
 /** Whole-credit royalty on a run; the author of their own workflow earns nothing from it. */
 export function royaltyFor(creditsPaid: number, selfRun: boolean): number {
@@ -247,9 +285,13 @@ export interface HubRunReceipt {
 }
 
 /**
- * The most a run of `modelId` at `precision` can have cost a player whose last uploaded income
- * was `cps`: the game's own `jobCost` with headroom for the minute since that upload. `jobCost`
- * reads only `derived.cps`, so a one-field Derived is enough here.
+ * The most a run of `modelId` at `precision` can have cost a player whose income was `cps`: the
+ * game's own `jobCost` with headroom for the minute since the last upload. `jobCost` reads only
+ * `derived.cps`, so a one-field Derived is enough here.
+ *
+ * Callers must pass a `cps` the runner cannot choose. `saves.cps` alone is not one: RLS lets the
+ * owner write their own save row, so capping a run against it lets the person being capped pick
+ * the cap, and a single PATCH setting `cps` to 1e12 turns royalties into minted credits.
  */
 export function runCostCap(modelId: string, precision: Precision, cps: number): number {
   const model = buildIndex(CATALOG).modelById[modelId]
@@ -293,8 +335,25 @@ export async function recordRun(input: unknown): Promise<HubResult<HubRunReceipt
     return err(429, `The hub records at most ${HUB_RUNS_PER_MINUTE} runs a minute per player. Even the queue is not that fast.`)
   }
 
-  const { data: save } = await admin.from('saves').select('cps').eq('user_id', user.id).maybeSingle()
-  const cap = runCostCap(workflow.model_id, workflow.precision, Number(save?.cps) || 0)
+  const sinceHour = new Date(Date.now() - 3_600_000).toISOString()
+  const { count: onWorkflow } = await admin
+    .from('hub_runs')
+    .select('id', { count: 'exact', head: true })
+    .eq('runner_id', user.id)
+    .eq('workflow_id', workflowId)
+    .gte('created_at', sinceHour)
+  if ((onWorkflow ?? 0) >= HUB_RUNS_PER_WORKFLOW_HOUR) {
+    return err(429, `One workflow takes at most ${HUB_RUNS_PER_WORKFLOW_HOUR} of your runs an hour. Go run somebody else's.`)
+  }
+
+  const [{ data: save }, { data: profile }] = await Promise.all([
+    admin.from('saves').select('cps').eq('user_id', user.id).maybeSingle(),
+    admin.from('profiles').select('created_at').eq('id', user.id).maybeSingle(),
+  ])
+  // The runner writes their own `saves.cps`, so it can only ever lower the cap, never raise it
+  // past what an account of this age could have earned.
+  const cps = Math.min(Number(save?.cps) || 0, plausibleCps(accountAgeSec(profile?.created_at, Date.now())))
+  const cap = runCostCap(workflow.model_id, workflow.precision, cps)
   const paid = Math.min(Math.max(0, Math.round(creditsPaid)), cap)
 
   const selfRun = workflow.author_id === user.id

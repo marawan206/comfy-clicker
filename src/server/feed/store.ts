@@ -7,7 +7,6 @@ import { collectFeed } from '@/server/feed'
 import { seedFeedItems } from '@/server/feed/seed'
 import type { FeedItem, FeedResult } from '@/server/feed/types'
 import { getSupabaseAdminClient } from '@/server/supabase/admin'
-import { HASHTAGS } from '@/data/hashtags'
 
 export const FEED_TTL_MS = 15 * 60_000
 export const FEED_LIMIT = 120
@@ -32,10 +31,20 @@ function isStale(updatedAt: string | null, now = Date.now()): boolean {
   return !updatedAt || now - new Date(updatedAt).getTime() > FEED_TTL_MS
 }
 
-function withSeed(items: FeedItem[]): FeedItem[] {
+const byDateDesc = (a: FeedItem, b: FeedItem): number => Date.parse(b.date) - Date.parse(a.date)
+
+/**
+ * Top the live rows up with the curated founder posts, reserving their slots before the cut.
+ * Merging first and slicing afterwards dropped every one of them as soon as the table held
+ * FEED_LIMIT newer rows, which the cron reaches within a day: the founder posts are all dated
+ * 2026-06-04 or earlier, and `prune` deletes their rows on every refresh because they sit outside
+ * the retention window, so this read-time top-up is the only thing keeping them in the feed.
+ */
+export function withSeed(items: FeedItem[]): FeedItem[] {
   const seen = new Set(items.map(i => i.id))
-  const merged = [...items, ...seedFeedItems().filter(s => !seen.has(s.id))]
-  return merged.sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, FEED_LIMIT)
+  const extra = seedFeedItems().filter(s => !seen.has(s.id))
+  const live = [...items].sort(byDateDesc).slice(0, Math.max(0, FEED_LIMIT - extra.length))
+  return [...live, ...extra].sort(byDateDesc)
 }
 
 /** Current feed without triggering network work (fast path for GET /api/feed). */
@@ -69,7 +78,11 @@ export async function readFeed(): Promise<FeedSnapshot> {
 export async function refreshFeed(): Promise<FeedResult> {
   if (inflight) return inflight
   inflight = (async () => {
-    const result = await collectFeed({ hashtags: HASHTAGS, now: Date.now() })
+    // No `hashtags` option: `collectFeed` falls back to FEED_VOCAB, the merge of the catalog ids
+    // with the feed-tuned keyword lists. Handing it the raw catalog instead bypasses that merge,
+    // and the game's keywords are written for player prompts ('dev', 'app', '1024', 'pack'), so
+    // ordinary release notes get tagged with model hashtags and those false hits reach trending.
+    const result = await collectFeed({ now: Date.now() })
     await persist(result)
     return result
   })().finally(() => {

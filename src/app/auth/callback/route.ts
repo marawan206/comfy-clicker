@@ -12,14 +12,29 @@ export const dynamic = 'force-dynamic'
 
 const OTP_TYPES: ReadonlySet<string> = new Set<EmailOtpType>(['signup', 'email', 'recovery', 'invite', 'magiclink', 'email_change'])
 
-function safeNext(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/'
-  return raw
+/**
+ * `next` is attacker-controlled: it arrives on the query string of a link that looks like a
+ * first-party auth URL, and the error branch below bounces before any auth work, so no session is
+ * needed to fire it. A prefix test on the raw string is not enough, because the WHATWG URL parser
+ * strips TAB, LF and CR from its input before parsing: `/%09/evil.com` decodes to "/\t/evil.com",
+ * passes a `startsWith('//')` check, and then parses as the protocol-relative `//evil.com`.
+ *
+ * So: no control characters at all, and the verdict comes from the parsed URL's origin rather than
+ * from the shape of the string. Only the path, query and fragment survive.
+ */
+function safeNext(raw: string | null, origin: string): string {
+  if (!raw || raw[0] !== '/' || /[\u0000-\u001f\u007f]/.test(raw)) return '/'
+  try {
+    const url = new URL(raw, origin)
+    return url.origin === origin ? `${url.pathname}${url.search}${url.hash}` : '/'
+  } catch {
+    return '/'
+  }
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const url = request.nextUrl
-  const next = safeNext(url.searchParams.get('next'))
+  const next = safeNext(url.searchParams.get('next'), url.origin)
   const code = url.searchParams.get('code')
   const tokenHash = url.searchParams.get('token_hash')
   const type = url.searchParams.get('type')

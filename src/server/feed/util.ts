@@ -34,11 +34,30 @@ export async function fetchWithTimeout(
   }
 }
 
-/** GET a text body; throws on non-2xx so callers can record the status. */
-export async function fetchText(url: string, init: RequestInit = {}, timeoutMs?: number): Promise<string> {
-  const res = await fetchWithTimeout(url, init, timeoutMs)
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`)
-  return res.text()
+/**
+ * GET a text body; throws on non-2xx so callers can record the status.
+ *
+ * The timeout covers the body, not only the headers. `fetchWithTimeout` clears its timer the
+ * moment `fetch` resolves, which is when the response headers arrive, so a host that sends
+ * headers and then stalls the body left `res.text()` with no deadline and no live signal: the
+ * read never settled, the `mapLimit` worker awaiting it froze, and the source's whole 25 s
+ * deadline expired, discarding every item that source had already fetched.
+ */
+export async function fetchText(url: string, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<string> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const headers = new Headers(init.headers)
+  if (!headers.has('user-agent')) headers.set('user-agent', FEED_USER_AGENT)
+  try {
+    const res = await fetch(url, { redirect: 'follow', ...init, headers, signal: controller.signal })
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`)
+    return await res.text()
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error(`timeout after ${timeoutMs} ms: ${url}`)
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /** GET + JSON.parse; the parse error names the URL instead of "Unexpected token". */

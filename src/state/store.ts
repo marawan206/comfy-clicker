@@ -39,9 +39,81 @@ export interface OfflineReport {
 
 type Listener = () => void
 type EventListener = (event: GameEvent) => void
+type LeaderListener = (leader: boolean) => void
 
 /** Shared literal so every action binding below reads the same. */
 const SAVE: RunOptions = { save: true }
+
+// ---- cross-tab leadership ---------------------------------------------------
+/**
+ * One tab per origin owns `SAVE_KEY`. The owner holds a heartbeat lock in localStorage and every
+ * other tab is a follower: it plays normally but never writes the save, never starts cloud sync,
+ * and mirrors the leader's blob through the `storage` event. Without a lock the last writer wins
+ * unconditionally, so a hidden tab waking up stamps its hour-old state over the tab that was
+ * actually being played, and for a signed-in player the two tabs fight over the cloud row.
+ */
+export const LEADER_KEY = 'comfy-clicker:leader'
+/** The leader restamps the lock this often, from the tick: a frozen tab stops restamping by itself. */
+export const LEADER_HEARTBEAT_MS = 2_000
+/** A lock older than this belongs to a tab that is gone or frozen, so another tab may take it. */
+export const LEADER_STALE_MS = 6_000
+/** localStorage key naming the account the local save belongs to; absent for a guest run. */
+export const SAVE_OWNER_KEY = 'comfy-clicker:save-owner'
+
+interface Lock {
+  id: string
+  at: number
+}
+
+function readLock(): Lock | null {
+  const raw = safeStorageGet(LEADER_KEY)
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const { id, at } = parsed as Partial<Lock>
+    return typeof id === 'string' && typeof at === 'number' && Number.isFinite(at) ? { id, at } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Stamp the lock and confirm we still hold it. localStorage has no compare-and-swap, so two tabs
+ * claiming in the same millisecond both write; re-reading tells each of them who landed last, and
+ * the loser steps back on its next heartbeat. A storage that refuses the write is a storage no
+ * other tab can be sharing either (private mode, full quota), so the tab keeps playing as leader
+ * and the refused save surfaces through `saveError`.
+ */
+function stampLock(id: string, at: number): boolean {
+  if (!safeStorageSet(LEADER_KEY, JSON.stringify({ id, at }))) return true
+  const after = readLock()
+  return after === null || after.id === id
+}
+
+/** Take the lock unless a live one belongs to another tab. */
+function takeLock(id: string, now: number): boolean {
+  const lock = readLock()
+  if (lock && lock.id !== id && now - lock.at < LEADER_STALE_MS) return false
+  return stampLock(id, now)
+}
+
+function newTabId(): string {
+  return `t_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`
+}
+
+/**
+ * The engine decides what counts as an absence: `applyOffline` emits an `offline` event only past
+ * `SHORT_GAP_S`, which is also the only band paid at the idle rate. A shorter gap was a silent
+ * full-rate catch-up, so reporting it would tell the player they earned at 50% up to 8 h when
+ * they were in fact paid 100% with no cap.
+ */
+function offlineReportOf(events: GameEvent[]): OfflineReport | null {
+  for (const e of events) {
+    if (e.type === 'offline') return e.gain > 0 ? { elapsedSec: e.elapsedSec, gain: e.gain } : null
+  }
+  return null
+}
 
 export class GameStore {
   state: GameState
@@ -57,14 +129,32 @@ export class GameStore {
   saveReason: SaveReason | null = null
   /** True when the browser refused the last write (quota, private mode). Cleared by the next success. */
   saveError = false
+  /**
+   * True while this tab holds the writer lock. A follower plays normally but writes nothing and
+   * runs no cloud sync; it mirrors the leader instead (see `onStorage`). Defaults to true so a
+   * store that never calls `start()` (tests, SSR) behaves exactly as it did before the lock.
+   */
+  leader = true
+  /** The account this save belongs to; null for a guest run. Set by cloud sync, cleared by `replaceState`. */
+  saveOwner: string | null = null
 
   private listeners = new Set<Listener>()
   private eventListeners = new Set<EventListener>()
+  private leaderListeners = new Set<LeaderListener>()
   private stopLoop: (() => void) | null = null
   private lastSaveAt = 0
   /** When the state first became unsaved since the last write; null when nothing is pending. */
   private dirtyAt: number | null = null
   private notifyScheduled = false
+  /** Identity this tab writes into the lock. */
+  private readonly tabId = newTabId()
+  private leaderCheckedAt = 0
+  /**
+   * The tab is going away: keep writing (the cloud flush on `pagehide` asks for one more save)
+   * but stop re-stamping the lock we just handed back. Cleared by the next tick, so a page that
+   * comes back from the bfcache takes the lock again as soon as it resumes.
+   */
+  private closing = false
 
   constructor(catalog: Catalog = CATALOG) {
     this.catalog = catalog
@@ -82,6 +172,11 @@ export class GameStore {
     return () => this.eventListeners.delete(listener)
   }
   getVersion = (): number => this.version
+  /** Notified whenever this tab takes or loses the writer lock. */
+  onLeaderChange = (listener: LeaderListener): (() => void) => {
+    this.leaderListeners.add(listener)
+    return () => this.leaderListeners.delete(listener)
+  }
 
   private notify(): void {
     if (this.notifyScheduled) return
@@ -97,12 +192,25 @@ export class GameStore {
     for (const e of events) for (const l of this.eventListeners) l(e)
   }
 
+  /**
+   * Fan out a settlement produced outside the store. `adoptCloud` runs `applyOffline` on the cloud
+   * state before handing it over, and those events are the only trigger for work that lives outside
+   * the store: the ComfyHub bridge pays the workflow author on `postResolved`, and every
+   * achievement, level-up and milestone toast rides on them.
+   */
+  emitEvents(events: GameEvent[]): void {
+    if (events.length) this.emit(events)
+  }
+
   // ---- lifecycle ----------------------------------------------------------
   /** Load the local save, apply offline progress and start the loop. Browser only. */
   start(): void {
     if (this.started || typeof window === 'undefined') return
     this.started = true
     const now = Date.now()
+    this.setLeader(takeLock(this.tabId, now))
+    this.leaderCheckedAt = now
+    this.saveOwner = safeStorageGet(SAVE_OWNER_KEY)
     const raw = safeStorageGet(SAVE_KEY)
     if (raw) {
       const { state, corrupt } = loadSave(raw, now, guestId())
@@ -111,7 +219,7 @@ export class GameStore {
     }
     this.derived = computeDerived(this.state, this.catalog)
     const report = applyOffline(this.state, this.derived, this.catalog, now)
-    if (report.elapsedSec >= 60 && report.gain > 0) this.offlineReport = { elapsedSec: report.elapsedSec, gain: report.gain }
+    this.offlineReport = offlineReportOf(report.events) ?? this.offlineReport
     this.emit(report.events)
     this.recompute()
 
@@ -119,14 +227,17 @@ export class GameStore {
       tick: (dt, now) => this.tick(dt, now),
       render: () => {},
       onLongGap: (_elapsed, now) => {
+        // A frozen tab stopped restamping its lock, so settle who owns the save before paying out.
+        this.refreshLeader(now)
         const r = applyOffline(this.state, this.derived, this.catalog, now)
-        if (r.elapsedSec >= 60 && r.gain > 0) this.offlineReport = { elapsedSec: r.elapsedSec, gain: r.gain }
+        this.offlineReport = offlineReportOf(r.events) ?? this.offlineReport
         this.emit(r.events)
         this.recompute()
       },
     })
     window.addEventListener('visibilitychange', this.onVisibility)
     window.addEventListener('pagehide', this.onHide)
+    window.addEventListener('storage', this.onStorage)
     this.notify()
   }
 
@@ -136,8 +247,61 @@ export class GameStore {
     if (typeof window !== 'undefined') {
       window.removeEventListener('visibilitychange', this.onVisibility)
       window.removeEventListener('pagehide', this.onHide)
+      window.removeEventListener('storage', this.onStorage)
+      this.releaseLock()
     }
     this.started = false
+  }
+
+  // ---- cross-tab leadership -----------------------------------------------
+  private setLeader(next: boolean): boolean {
+    if (this.leader !== next) {
+      this.leader = next
+      for (const l of this.leaderListeners) l(next)
+      this.notify()
+    }
+    return next
+  }
+
+  /** Re-take or re-stamp the lock. Called from the tick and before every write. */
+  private refreshLeader(now: number): boolean {
+    this.closing = false
+    this.leaderCheckedAt = now
+    return this.setLeader(takeLock(this.tabId, now))
+  }
+
+  /** Hand the lock back so the next tab does not have to wait out LEADER_STALE_MS. */
+  private releaseLock(): void {
+    const lock = readLock()
+    if (lock && lock.id === this.tabId) safeStorageRemove(LEADER_KEY)
+  }
+
+  /**
+   * Another tab wrote the shared save. A follower adopts it rather than drifting: the leader's
+   * blob is the run, and a follower that kept its own copy would be telling the player they had
+   * progress that is about to be overwritten.
+   */
+  private onStorage = (e: StorageEvent): void => {
+    if (e.key === SAVE_OWNER_KEY) {
+      this.saveOwner = e.newValue ?? safeStorageGet(SAVE_OWNER_KEY)
+      return
+    }
+    if (e.key !== SAVE_KEY || this.leader) return
+    const raw = e.newValue ?? safeStorageGet(SAVE_KEY)
+    if (raw) this.adoptLocal(raw)
+  }
+
+  /** Replace this tab's state with the leader's newer blob. No-op for anything not newer. */
+  private adoptLocal(raw: string): void {
+    const now = Date.now()
+    const { state, corrupt } = loadSave(raw, now, this.state.meta.guestId, this.catalog)
+    if (corrupt || state.meta.lastSavedAt <= this.state.meta.lastSavedAt) return
+    this.state = state
+    this.dirtyAt = null
+    this.lastSaveAt = state.meta.lastSavedAt
+    this.savedAt = state.meta.lastSavedAt
+    this.saveError = false
+    this.recompute()
   }
 
   private onVisibility = (): void => {
@@ -150,6 +314,8 @@ export class GameStore {
    */
   private onHide = (): void => {
     this.save('hide')
+    this.releaseLock()
+    this.closing = true
   }
 
   private tick(dt: number, now: number): void {
@@ -158,7 +324,9 @@ export class GameStore {
       this.emit(events)
       if (needsDerived(events)) this.derived = computeDerived(this.state, this.catalog)
     }
-    // The 20 Hz tick is the only clock: no timers, no per-action setTimeout to cancel.
+    // The 20 Hz tick is the only clock: no timers, no per-action setTimeout to cancel. The lock
+    // rides on it too, so a tab whose frames are throttled stops claiming to be the writer.
+    if (now - this.leaderCheckedAt >= LEADER_HEARTBEAT_MS) this.refreshLeader(now)
     const due = autosaveDue(now, this.lastSaveAt, this.dirtyAt, this.state.settings.autosave)
     if (due) this.save(due)
     this.notify()
@@ -173,6 +341,14 @@ export class GameStore {
    */
   save = (reason: SaveReason = 'manual'): void => {
     const now = Date.now()
+    if (!this.claimWrite(reason, now)) {
+      // A follower never writes the shared save. Clearing the pending marks keeps the tick from
+      // asking again every 50 ms; the leader's next write arrives through `onStorage`.
+      this.lastSaveAt = now
+      this.dirtyAt = null
+      this.notify()
+      return
+    }
     this.state.meta.lastSavedAt = now
     const written = safeStorageSet(SAVE_KEY, serialize(this.state))
     this.lastSaveAt = now
@@ -185,12 +361,42 @@ export class GameStore {
     this.notify()
   }
 
-  /** Replace the whole state (import / cloud load / hard reset). */
+  /**
+   * May this tab write the save right now? Background writes need the lock. `manual` and `import`
+   * are the player asking this tab specifically (Save now, a pasted code, a hard reset), so they
+   * take the lock over; the other tab notices within a heartbeat and mirrors the new blob.
+   */
+  private claimWrite(reason: SaveReason, now: number): boolean {
+    if (typeof window === 'undefined') return true
+    // The lock is already handed back; the cloud flush's last save must not take it again.
+    if (this.closing) return this.leader
+    if (reason === 'manual' || reason === 'import') {
+      this.leaderCheckedAt = now
+      return this.setLeader(stampLock(this.tabId, now))
+    }
+    return this.refreshLeader(now)
+  }
+
+  /**
+   * Replace the whole state (import / cloud load / hard reset). The owner stamp is dropped: a
+   * pasted code or a fresh run is nobody's account run until it is uploaded, and leaving a stale
+   * stamp on it would make the next sign-in treat it as another player's save.
+   */
   replaceState(next: GameState): void {
     this.state = next
     this.dirtyAt = null
+    this.setSaveOwner(null)
     this.recompute()
     this.save('import')
+  }
+
+  /** Record which account the local save belongs to, next to the save itself. */
+  setSaveOwner(userId: string | null): void {
+    if (this.saveOwner === userId) return
+    this.saveOwner = userId
+    if (typeof window === 'undefined') return
+    if (userId) safeStorageSet(SAVE_OWNER_KEY, userId)
+    else safeStorageRemove(SAVE_OWNER_KEY)
   }
 
   hardReset(): void {
@@ -291,6 +497,14 @@ function safeStorageSet(key: string, value: string): boolean {
     return true
   } catch {
     return false
+  }
+}
+
+function safeStorageRemove(key: string): void {
+  try {
+    window.localStorage.removeItem(key)
+  } catch {
+    /* nothing to do: the key is unreachable, so nobody can read it either */
   }
 }
 

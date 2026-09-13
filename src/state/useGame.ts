@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import { toast } from '@/components/overlays/useToasts'
 import type { Derived, GameEvent, GameState } from '@/game/types'
 import { getGameStore, type GameStore } from './store'
 
@@ -26,23 +27,31 @@ export function shallowEqual<T>(a: T, b: T): boolean {
  * The snapshot cache lives in refs that are read and written inside `getSnapshot`, which React
  * invokes during render: this is the same memoisation pattern as `use-sync-external-store/with-selector`
  * and is required so `getSnapshot` returns a referentially stable value while the slice is unchanged.
+ *
+ * The selector is part of the cache key, not just the store version. A selector that closes over a
+ * prop (`useHardwareRow(id, amount)`, `useJobRow`, `useStudioSelection`) is a new function as soon
+ * as that prop changes, and keying on the version alone would hand the render the value computed
+ * from the previous props until the loop next bumped the version, which is a wrong render at 20 Hz
+ * and a permanently wrong one whenever the loop is not running (hidden tab, no rAF).
  */
 export function useGame<T>(selector: Selector<T>, equals: Equals<T> = refEquals): T {
   const store = getGameStore()
-  const cache = useRef<{ version: number; value: T } | null>(null)
+  const cache = useRef<{ version: number; selector: Selector<T>; value: T } | null>(null)
   const selectorRef = useRef(selector)
   // eslint-disable-next-line react-hooks/refs -- keep the latest selector without re-subscribing
   selectorRef.current = selector
   const getSnapshot = useCallback((): T => {
     const version = store.version
+    const sel = selectorRef.current
     const cached = cache.current
-    if (cached && cached.version === version) return cached.value
-    const next = selectorRef.current(store.state, store.derived, store)
+    if (cached && cached.version === version && cached.selector === sel) return cached.value
+    const next = sel(store.state, store.derived, store)
     if (cached && equals(cached.value, next)) {
       cached.version = version
+      cached.selector = sel
       return cached.value
     }
-    cache.current = { version, value: next }
+    cache.current = { version, selector: sel, value: next }
     return next
   }, [store, equals])
   return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot)
@@ -57,12 +66,37 @@ export function useGameStore(): GameStore {
   return getGameStore()
 }
 
-/** Starts the loop on mount (client only). Place once near the root. */
+/**
+ * Starts the loop on mount (client only). Place once near the root.
+ *
+ * Also says out loud which tab owns the run. Only the tab holding the writer lock saves, so a
+ * second tab is a live mirror: it plays, but its own progress is replaced by the writer's next
+ * save. Telling the player beats letting them build an hour on a copy that is about to vanish.
+ */
 export function useGameLifecycle(): void {
   useEffect(() => {
     const store = getGameStore()
     store.start()
-    return () => store.stop()
+    const announce = (leader: boolean): void => {
+      toast(
+        leader
+          ? 'This tab is saving again. The other one closed.'
+          : 'Another tab has this run open and is doing the saving. Play here if you like, it mirrors that tab.',
+        {
+          title: leader ? 'Save handed over' : 'Second tab',
+          tone: leader ? 'default' : 'credits',
+          key: 'tab-leader',
+          durationMs: 8000,
+          sound: false,
+        },
+      )
+    }
+    if (!store.leader) announce(false)
+    const off = store.onLeaderChange(announce)
+    return () => {
+      off()
+      store.stop()
+    }
   }, [])
 }
 

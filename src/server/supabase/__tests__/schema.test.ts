@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
+import { RESERVED_HANDLES as RESERVED_CLIENT_HANDLES } from '@/lib/handle'
+
 const MIGRATION_PATH = fileURLToPath(new URL('../../../../supabase/migrations/0001_init.sql', import.meta.url))
 const raw = readFileSync(MIGRATION_PATH, 'utf8')
 
@@ -260,5 +262,97 @@ describe('0004_profiles.sql', () => {
       const names = arr[1].split(',').map((s) => s.trim().replace(/^'|'$/g, ''))
       expect(names.sort()).toEqual([...RESERVED_HANDLES].sort())
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 0005_hardening.sql: server-owned counters on insert, an unclearable rename
+// stamp, and the full reserved-name list
+// ---------------------------------------------------------------------------
+const HARDENING_MIGRATION_PATH = fileURLToPath(
+  new URL('../../../../supabase/migrations/0005_hardening.sql', import.meta.url),
+)
+const rawHardening = readFileSync(HARDENING_MIGRATION_PATH, 'utf8')
+const sqlHardening = rawHardening
+  .split('\n')
+  .map((line) => line.replace(/--.*$/, ''))
+  .join('\n')
+
+function hardeningFunctions(): { name: string; body: string }[] {
+  return [...sqlHardening.matchAll(/create (?:or replace )?function public\.(\w+)\([\s\S]*?\$\$;/gi)].map((m) => ({
+    name: m[1],
+    body: m[0],
+  }))
+}
+
+/** 0004 reserved two comfy-org spellings the client list does not carry; 0005 keeps them. */
+const EXTRA_RESERVED = ['comfyorg', 'comfy-org'] as const
+
+describe('0005_hardening.sql', () => {
+  it('is additive: functions and triggers only', () => {
+    expect(sqlHardening).not.toMatch(/\bdrop\b/i)
+    expect(sqlHardening).not.toMatch(/\btruncate\b/i)
+    expect(sqlHardening).not.toMatch(/\bdelete from\b/i)
+    expect(sqlHardening).not.toMatch(/create table/i)
+    expect(sqlHardening).not.toMatch(/alter table/i)
+    expect(sqlHardening).not.toMatch(/create policy/i)
+  })
+
+  it('ships the three functions 0001 and 0004 already own, with pinned search_paths', () => {
+    const fns = hardeningFunctions()
+    expect(fns.map((f) => f.name).sort()).toEqual([
+      'handle_new_user',
+      'hub_workflows_protect_counters',
+      'profiles_guard_handle',
+    ])
+    for (const fn of fns) {
+      expect(fn.body, `${fn.name} lacks a pinned search_path`).toMatch(/set search_path = ''/i)
+      expect(sqlHardening, `${fn.name} is still executable by user roles`).toMatch(
+        new RegExp(`revoke all on function public\\.${fn.name}\\(\\) from public, anon, authenticated`, 'i'),
+      )
+    }
+  })
+
+  it('guards hub_workflows counters on insert as well as update', () => {
+    expect(sqlHardening).toMatch(
+      /create (?:or replace )?trigger hub_workflows_protect_counters\s+before insert or update on public\.hub_workflows/i,
+    )
+    const fn = hardeningFunctions().find((f) => f.name === 'hub_workflows_protect_counters')!.body
+    expect(fn).toMatch(/pg_trigger_depth\(\) > 1/i)
+    expect(fn).toMatch(/auth\.role\(\)[\s\S]*?not in \('authenticated', 'anon'\)/i)
+    expect(fn).toMatch(/tg_op = 'INSERT'/i)
+    // Zeroed on insert, held on update: all four counters, both ways.
+    for (const col of ['runs_24h', 'runs_total', 'rep', 'royalties_total']) {
+      expect(fn, `${col} is not zeroed on insert`).toMatch(new RegExp(`new\\.${col}\\s*:=\\s*0;`))
+      expect(fn, `${col} is not pinned on update`).toMatch(new RegExp(`new\\.${col}\\s*:=\\s*old\\.${col};`))
+    }
+  })
+
+  it('pins handle_changed_at for user JWTs whenever the handle is not changing', () => {
+    const fn = hardeningFunctions().find((f) => f.name === 'profiles_guard_handle')!.body
+    // The rename branch still stamps it, so a legitimate rename is unaffected.
+    expect(fn).toMatch(/new\.handle is distinct from old\.handle[\s\S]*?new\.handle_changed_at := now\(\)/i)
+    expect(fn).toMatch(/if is_user then[\s\S]*?new\.created_at := old\.created_at/i)
+    expect(fn).toMatch(
+      /if new\.handle is not distinct from old\.handle then\s+new\.handle_changed_at := old\.handle_changed_at;/i,
+    )
+    expect(fn).toMatch(/raise exception 'handle_cooldown' using errcode = 'P0001'/i)
+  })
+
+  it('reserves every name the client reserves, in both functions', () => {
+    const arrays = [...sqlHardening.matchAll(/reserved\s+text\[\]\s*:=\s*array\[([^\]]+)\]/gi)]
+    expect(arrays.length).toBe(2)
+    const lists = arrays.map((a) => a[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).sort())
+    expect(lists[0]).toEqual(lists[1])
+    const expected = [...RESERVED_CLIENT_HANDLES, ...EXTRA_RESERVED].sort()
+    expect(lists[0]).toEqual(expected)
+    // The names the audit found claimable are in there now.
+    for (const name of ['root', 'staff', 'administrator', 'hub', 'leaderboard']) {
+      expect(lists[0], `${name} is still claimable`).toContain(name)
+    }
+  })
+
+  it('keeps the sign-up handle regex identical to 0001', () => {
+    expect(sqlHardening).toContain("'^[a-z0-9][a-z0-9_-]{2,31}$'")
   })
 })
