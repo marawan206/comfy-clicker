@@ -13,7 +13,7 @@
 
 ## What it is
 
-Comfy Clicker is a Cookie-Clicker-style idle game built for the ComfyUI hackathon. You start with a 4-core office PC
+Comfy Clicker is an idle game. You start with a 4-core office PC
 that can barely run SD 1.5. Every click on **Generate** earns a credit. Credits buy real hardware — a used RTX 3060,
 a 4090 with a sagging connector, an RTX PRO 6000, then 8x H100 nodes, hyperscaler clusters and finally Comfy Cloud
 regions — and every card you own earns credits per second and unlocks bigger models.
