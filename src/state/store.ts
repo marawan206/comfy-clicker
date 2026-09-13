@@ -4,7 +4,7 @@
  * React binds to it through the hooks in `./useGame.ts`.
  */
 import { CATALOG } from '@/data'
-import type { Catalog, Derived, GameEvent, GameState } from '@/game/types'
+import type { Catalog, Derived, GameEvent, GameState, GiftKind } from '@/game/types'
 import { computeDerived } from '@/game/derived'
 import { needsDerived, tick } from '@/game/engine'
 import * as actions from '@/game/actions'
@@ -13,12 +13,24 @@ import { createInitialState } from '@/game/state'
 import { loadSave, serialize, SAVE_CORRUPT_KEY } from '@/game/save'
 import { applyOffline } from '@/game/offline'
 import { startLoop } from '@/game/loop'
-import { AUTOSAVE_MS, SAVE_KEY } from '@/game/constants'
+import { SAVE_KEY } from '@/game/constants'
+import { autosaveDue, type SaveReason } from '@/state/autosave'
 import * as cloud from '@/state/cloudActions'
 
 export type { ActionResult } from '@/game/actions'
+export type { SaveReason } from '@/state/autosave'
 /** An action bound to a context snapshot; see `GameStore.run`. */
 type ActionFn = (ctx: ActionContext) => ActionResult
+
+/**
+ * Per-action options. `save: true` means "this action is worth writing to disk", which is every
+ * action except the two that fire many times a second: `click` (the interval write covers it, and
+ * a click that is only worth a few credits is not worth a serialize) and `resolveEvent` (a click
+ * on a broken node in disguise). The interval write still catches both within ten seconds.
+ */
+interface RunOptions {
+  save?: boolean
+}
 
 export interface OfflineReport {
   elapsedSec: number
@@ -28,6 +40,9 @@ export interface OfflineReport {
 type Listener = () => void
 type EventListener = (event: GameEvent) => void
 
+/** Shared literal so every action binding below reads the same. */
+const SAVE: RunOptions = { save: true }
+
 export class GameStore {
   state: GameState
   derived: Derived
@@ -36,11 +51,19 @@ export class GameStore {
   version = 0
   offlineReport: OfflineReport | null = null
   started = false
+  /** Epoch ms of the last successful write; 0 before the first one. */
+  savedAt = 0
+  /** Why that write happened, for the save-status chip. */
+  saveReason: SaveReason | null = null
+  /** True when the browser refused the last write (quota, private mode). Cleared by the next success. */
+  saveError = false
 
   private listeners = new Set<Listener>()
   private eventListeners = new Set<EventListener>()
   private stopLoop: (() => void) | null = null
   private lastSaveAt = 0
+  /** When the state first became unsaved since the last write; null when nothing is pending. */
+  private dirtyAt: number | null = null
   private notifyScheduled = false
 
   constructor(catalog: Catalog = CATALOG) {
@@ -103,7 +126,7 @@ export class GameStore {
       },
     })
     window.addEventListener('visibilitychange', this.onVisibility)
-    window.addEventListener('pagehide', this.save)
+    window.addEventListener('pagehide', this.onHide)
     this.notify()
   }
 
@@ -112,13 +135,21 @@ export class GameStore {
     this.stopLoop = null
     if (typeof window !== 'undefined') {
       window.removeEventListener('visibilitychange', this.onVisibility)
-      window.removeEventListener('pagehide', this.save)
+      window.removeEventListener('pagehide', this.onHide)
     }
     this.started = false
   }
 
   private onVisibility = (): void => {
-    if (document.visibilityState === 'hidden') this.save()
+    if (document.visibilityState === 'hidden') this.save('hide')
+  }
+
+  /**
+   * The tab is going away. This write ignores `settings.autosave`: the setting is about background
+   * cadence, and losing a whole session to it would be a bug, not a preference.
+   */
+  private onHide = (): void => {
+    this.save('hide')
   }
 
   private tick(dt: number, now: number): void {
@@ -127,22 +158,39 @@ export class GameStore {
       this.emit(events)
       if (needsDerived(events)) this.derived = computeDerived(this.state, this.catalog)
     }
-    if (now - this.lastSaveAt > AUTOSAVE_MS) this.save()
+    // The 20 Hz tick is the only clock: no timers, no per-action setTimeout to cancel.
+    const due = autosaveDue(now, this.lastSaveAt, this.dirtyAt, this.state.settings.autosave)
+    if (due) this.save(due)
     this.notify()
   }
 
   // ---- persistence --------------------------------------------------------
-  save = (): void => {
-    this.state.meta.lastSavedAt = Date.now()
-    this.lastSaveAt = this.state.meta.lastSavedAt
-    safeStorageSet(SAVE_KEY, serialize(this.state))
+  /**
+   * Write the save. Always writes, whatever `settings.autosave` says: the setting decides when the
+   * tick asks (see `autosaveDue`), not whether an explicit write is allowed. A refused write is
+   * surfaced through `saveError` rather than swallowed, because a player whose browser is quietly
+   * dropping every save deserves to be told before they close the tab.
+   */
+  save = (reason: SaveReason = 'manual'): void => {
+    const now = Date.now()
+    this.state.meta.lastSavedAt = now
+    const written = safeStorageSet(SAVE_KEY, serialize(this.state))
+    this.lastSaveAt = now
+    this.dirtyAt = null
+    this.saveError = !written
+    if (written) {
+      this.savedAt = now
+      this.saveReason = reason
+    }
+    this.notify()
   }
 
   /** Replace the whole state (import / cloud load / hard reset). */
   replaceState(next: GameState): void {
     this.state = next
+    this.dirtyAt = null
     this.recompute()
-    this.save()
+    this.save('import')
   }
 
   hardReset(): void {
@@ -165,35 +213,47 @@ export class GameStore {
     return { state: this.state, derived: this.derived, catalog: this.catalog, now: Date.now(), rng: Math.random }
   }
 
-  run(fn: ActionFn): ActionResult {
+  /**
+   * Run an action against a fresh context. `opts.save` marks the state unsaved so the next tick
+   * writes it `SAVE_DEBOUNCE_MS` later; a burst of purchases therefore costs one write, not ten.
+   * A validation failure changed nothing, so it never schedules one.
+   */
+  run(fn: ActionFn, opts: RunOptions = {}): ActionResult {
     const result = fn(this.context())
     if (result.events.length) this.emit(result.events)
     if (result.dirty) this.derived = computeDerived(this.state, this.catalog)
+    if (opts.save && result.error === undefined) this.dirtyAt ??= Date.now()
     this.notify()
     return result
   }
 
+  // `click` and `resolveEvent` are the two that fire many times a second, so they do not schedule
+  // a write; the ten-second interval save covers them.
   click = (): ActionResult => this.run((ctx) => actions.click(ctx))
-  buyHardware = (id: string, n: BuyCount = 1): ActionResult => this.run((ctx) => actions.buyHardware(ctx, id, n))
-  buyUpgrade = (id: string): ActionResult => this.run((ctx) => actions.buyUpgrade(ctx, id))
-  unlockMapNode = (id: string): ActionResult => this.run((ctx) => actions.unlockMapNode(ctx, id))
-  quantize = (modelId: string, precision: 'fp8' | 'q4'): ActionResult => this.run((ctx) => actions.quantize(ctx, modelId, precision))
-  setupModel = (modelId: string): ActionResult => this.run((ctx) => actions.setupModel(ctx, modelId))
-  trainLora = (tagId: string): ActionResult => this.run((ctx) => actions.trainLora(ctx, tagId))
-  queueJob = (input: QueueJobInput): ActionResult => this.run((ctx) => actions.queueJob(ctx, input))
-  claimContract = (index: number): ActionResult => this.run((ctx) => actions.claimContract(ctx, index))
-  claimDaily = (): ActionResult => this.run((ctx) => actions.claimDaily(ctx))
-  rebrand = (): ActionResult => this.run((ctx) => actions.rebrand(ctx))
   resolveEvent = (defId: string): ActionResult => this.run((ctx) => actions.resolveEvent(ctx, defId))
-  upscalePost = (postId: string): ActionResult => this.run((ctx) => actions.upscalePost(ctx, postId))
+  buyHardware = (id: string, n: BuyCount = 1): ActionResult => this.run((ctx) => actions.buyHardware(ctx, id, n), SAVE)
+  buyUpgrade = (id: string): ActionResult => this.run((ctx) => actions.buyUpgrade(ctx, id), SAVE)
+  unlockMapNode = (id: string): ActionResult => this.run((ctx) => actions.unlockMapNode(ctx, id), SAVE)
+  quantize = (modelId: string, precision: 'fp8' | 'q4'): ActionResult => this.run((ctx) => actions.quantize(ctx, modelId, precision), SAVE)
+  setupModel = (modelId: string): ActionResult => this.run((ctx) => actions.setupModel(ctx, modelId), SAVE)
+  trainLora = (tagId: string): ActionResult => this.run((ctx) => actions.trainLora(ctx, tagId), SAVE)
+  queueJob = (input: QueueJobInput): ActionResult => this.run((ctx) => actions.queueJob(ctx, input), SAVE)
+  claimContract = (index: number): ActionResult => this.run((ctx) => actions.claimContract(ctx, index), SAVE)
+  claimDaily = (): ActionResult => this.run((ctx) => actions.claimDaily(ctx), SAVE)
+  rebrand = (): ActionResult => this.run((ctx) => actions.rebrand(ctx), SAVE)
+  spin = (wager: number | 'free'): ActionResult => this.run((ctx) => actions.spin(ctx, wager), SAVE)
+  upscalePost = (postId: string): ActionResult => this.run((ctx) => actions.upscalePost(ctx, postId), SAVE)
   toggleSetting = (key: keyof GameState['settings'], value?: boolean): ActionResult =>
-    this.run((ctx) => actions.toggleSetting(ctx, key, value))
-  setFlag = (key: string): ActionResult => this.run((ctx) => actions.setFlag(ctx, key))
+    this.run((ctx) => actions.toggleSetting(ctx, key, value), SAVE)
+  setFlag = (key: string): ActionResult => this.run((ctx) => actions.setFlag(ctx, key), SAVE)
+  completeTutorial = (): ActionResult => this.run((ctx) => actions.completeTutorial(ctx), SAVE)
+  grantGift = (kind: GiftKind): ActionResult => this.run((ctx) => actions.grantGift(ctx, kind), SAVE)
+  declineGift = (kind: GiftKind): ActionResult => this.run((ctx) => actions.declineGift(ctx, kind), SAVE)
   // Server-driven actions (src/state/cloudActions.ts): the daily calendar on the server clock and ComfyHub bookkeeping.
-  claimDailyFromServer = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.claimDailyFromServer(ctx, claim))
-  markDailyClaimed = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.markDailyClaimed(ctx, claim))
-  recordHubPublish = (): ActionResult => this.run((ctx) => cloud.recordHubPublish(ctx))
-  applyHubRoyalties = (grant: cloud.HubRoyaltyGrant): ActionResult => this.run((ctx) => cloud.applyHubRoyalties(ctx, grant))
+  claimDailyFromServer = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.claimDailyFromServer(ctx, claim), SAVE)
+  markDailyClaimed = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.markDailyClaimed(ctx, claim), SAVE)
+  recordHubPublish = (): ActionResult => this.run((ctx) => cloud.recordHubPublish(ctx), SAVE)
+  applyHubRoyalties = (grant: cloud.HubRoyaltyGrant): ActionResult => this.run((ctx) => cloud.applyHubRoyalties(ctx, grant), SAVE)
   setWeekOverride = (week: number | null): void => {
     this.state.weekOverride = week
     this.recompute()
@@ -224,11 +284,13 @@ function safeStorageGet(key: string): string | null {
   }
 }
 
-function safeStorageSet(key: string, value: string): void {
+/** True when the write landed. False means private mode or a full quota; the caller surfaces it. */
+function safeStorageSet(key: string, value: string): boolean {
   try {
     window.localStorage.setItem(key, value)
+    return true
   } catch {
-    /* storage unavailable (private mode, quota), keep playing in memory */
+    return false
   }
 }
 

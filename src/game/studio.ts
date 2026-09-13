@@ -19,6 +19,29 @@ export const MAX_PROMPT_CHARS = 280
 export const MAX_JOB_TAGS = 8
 /** Flag set the first time a prompt mentions spaghetti (hidden achievement). */
 export const SPAGHETTI_FLAG = 'spaghetti'
+/** Flag set the first time a prompt asks for bad hands (hidden achievement). */
+export const BAD_HANDS_FLAG = 'bad-hands'
+/** Flag set the first time a prompt opens with the 2022 quality incantation (hidden achievement). */
+export const MASTERPIECE_FLAG = 'masterpiece'
+/** Flag set the first time SD 1.5 is rendered from a region-class rig (hidden achievement). */
+export const SD15_FOREVER_FLAG = 'sd15-forever'
+/** The model and the rig tier that raise `SD15_FOREVER_FLAG` together. */
+export const SD15_MODEL_ID = 'sd15'
+export const SD15_FOREVER_TIER = 12
+/** Prompt phrases, normalised the way `normalizePromptText` normalises the prompt. */
+const BAD_HANDS_PHRASE = ' bad hands '
+const MASTERPIECE_PHRASE = ' masterpiece best quality '
+
+/**
+ * Every flag `createJob` can raise, so `queueJob` can diff the whole set before and after the call
+ * and announce each newly raised one exactly once. Keep this in step with `promptEggs` below.
+ */
+export const CREATE_JOB_FLAGS: readonly string[] = [
+  SPAGHETTI_FLAG,
+  BAD_HANDS_FLAG,
+  MASTERPIECE_FLAG,
+  SD15_FOREVER_FLAG,
+]
 
 export interface JobInput {
   modelId: string
@@ -69,6 +92,21 @@ function newJobId(state: GameState, now: number, rng: Rng): string {
 }
 
 /**
+ * Hidden easter-egg flags raised by a queued job. Setting a flag is all that happens here; the
+ * announcement is `queueJob`'s job, which diffs `CREATE_JOB_FLAGS` around this call so each one
+ * emits its `easterEgg` exactly once.
+ */
+function promptEggs(state: GameState, derived: Derived, prompt: string, model: ModelDef): void {
+  const text = normalizePromptText(prompt)
+  if (text.includes(' spaghetti ')) state.flags[SPAGHETTI_FLAG] = true
+  if (text.includes(BAD_HANDS_PHRASE)) state.flags[BAD_HANDS_FLAG] = true
+  if (text.startsWith(MASTERPIECE_PHRASE)) state.flags[MASTERPIECE_FLAG] = true
+  if (model.id === SD15_MODEL_ID && derived.bestTier >= SD15_FOREVER_TIER) {
+    state.flags[SD15_FOREVER_FLAG] = true
+  }
+}
+
+/**
  * Validate, charge and enqueue a job. Rejections carry a short reason for the button tooltip.
  * The job waits (`startedAt: null`) until `advanceQueue` finds a free slot.
  */
@@ -105,7 +143,7 @@ export function createJob(
 
   state.credits -= cost
   state.stats.lastPrompt = prompt
-  if (normalizePromptText(prompt).includes(' spaghetti ')) state.flags[SPAGHETTI_FLAG] = true
+  promptEggs(state, derived, prompt, model)
 
   const job: Job = {
     id: newJobId(state, now, rng),

@@ -376,6 +376,8 @@ describe('actions', () => {
   })
 
   it('setupModel installs for free when it fits, else charges the setup fee', () => {
+    // The level gate is its own test (actions-new.test.ts); stand above it so the fee is the subject.
+    state.stats.levelSeen = 4
     // sd15 is preinstalled; sdxl (8 GB) fits the 8 GB office PC → free.
     expect(setupModel(ctxFor(state), 'sdxl').error).toBeUndefined()
     expect(state.models.sdxl).toEqual({ precisions: ['native'], setup: true })
@@ -435,7 +437,15 @@ describe('actions', () => {
   })
 
   it('setFlag raises a UI discovery flag once and announces it', () => {
-    expect(setFlag(ctxFor(state), 'konami')).toEqual({ events: [{ type: 'easterEgg', id: 'konami' }], dirty: false })
+    // The flag, the achievement it unlocks and its credits all land on the same call, so `dirty`
+    // is true: an achievement moves the global multiplier.
+    expect(setFlag(ctxFor(state), 'konami')).toEqual({
+      events: [
+        { type: 'easterEgg', id: 'konami' },
+        { type: 'achievement', id: 'konami', reward: 0 },
+      ],
+      dirty: true,
+    })
     expect(state.flags.konami).toBe(true)
     expect(setFlag(ctxFor(state), 'konami').error).toMatch(/Already/)
     expect(setFlag(ctxFor(state), '').error).toBeDefined()

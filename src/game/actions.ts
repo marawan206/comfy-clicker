@@ -7,24 +7,31 @@
  * `click({ state, derived, catalog, now, rng })`, `buyHardware(ctx, 'rtx-4090', 10)`, …
  */
 import type { Catalog } from '@/data'
+import { GIFTS } from '@/data/gifts'
+import { checkAchievements } from '@/game/achievements'
 import { buildIndex } from '@/game/catalog'
-import { POST_WINDOW_MS } from '@/game/constants'
+import { evaluateClick } from '@/game/clickGuard'
+import { LUCKY_CLICK_CHANCE, LUCKY_CLICK_MULT, POST_WINDOW_MS } from '@/game/constants'
 import { claimContract as payContract, progressContracts } from '@/game/contracts'
 import { canClaim, claimDaily as payDaily } from '@/game/daily'
 import { maxAffordable } from '@/game/economy'
 import { addCredits, pushEvents } from '@/game/engine'
 import { RESOLVABLE_KINDS, resolveEvent as resolveActiveEvent } from '@/game/events'
+import { applySpin, canSpin } from '@/game/gamble'
 import { applyPurchase, canBuy } from '@/game/hardware'
+import { modelLevelLock } from '@/game/level'
 import { canAffordNode, currencyBalance, isNodeUnlocked, mapNodeAvailable, unlockNode } from '@/game/map'
 import { canRebrand, rebrand as applyRebrand } from '@/game/prestige'
 import { applyQuantize, canQuantize, quantFee, setupFee } from '@/game/quantize'
-import { SPAGHETTI_FLAG, advanceQueue, applyClickToJobs, createJob, jobCost, type JobInput } from '@/game/studio'
+import { chance } from '@/game/rng'
+import { CREATE_JOB_FLAGS, advanceQueue, applyClickToJobs, createJob, jobCost, type JobInput } from '@/game/studio'
 import type {
   Currency,
   Derived,
   GameEvent,
   GameSettings,
   GameState,
+  GiftKind,
   Post,
   Precision,
   Rng,
@@ -73,13 +80,30 @@ const CLICK_WINDOW_MAX = 64
 /** Hidden-achievement flags raised here (see src/data/achievements.ts). */
 export const SPEEDRUN_FLAG = 'speedrun'
 export const BROKE_AT_ZERO_FLAG = 'brokeAtZero'
+/** Raised by the first lucky click. Drives the visible achievement "Lucky Seed". */
+export const LUCKY_SEED_FLAG = 'luckySeed'
+/** "Has been taught". Set by `completeTutorial`, never by `setFlag`: the tour is not a discovery. */
+export const TUTORIAL_FLAG = 'tutorial-done'
+/** Suffix on a gift's flag when the offer was turned down, so it is never offered twice. */
+export const GIFT_DECLINED_SUFFIX = ':declined'
 /**
  * Flags only the UI can discover (a ticker line clicked seven times, the Konami code, seed 42
- * typed into the seed box, the rickroll). The UI raises them through `setFlag`, which announces
- * the `easterEgg` event; src/data/mapNodes.ts (hidden lane) and achievements.ts key off them.
- * Other flag keys are still accepted; this list documents the ones nothing in src/game sets.
+ * typed into the seed box, the rickroll, the wordmark clicked 25 times, every panel opened in one
+ * session, a 3 a.m. click, Ctrl+Enter in the prompt box). The UI raises them through `setFlag`,
+ * which announces the `easterEgg` event; src/data/mapNodes.ts (hidden lane) and achievements.ts
+ * key off them. Other flag keys are still accepted; this list documents the ones nothing in
+ * src/game sets.
  */
-export const UI_FLAGS = ['konami', 'ticker-seven', 'seed42', 'rickroll'] as const
+export const UI_FLAGS = [
+  'konami',
+  'ticker-seven',
+  'seed42',
+  'rickroll',
+  'title-25',
+  'grand-tour',
+  'night-shift',
+  'ctrl-enter',
+] as const
 /** "Speedrun": the first cloud node bought inside this much play time. */
 export const SPEEDRUN_SECS = 25 * 60
 /** Float slack for "exactly zero" credits after a purchase. */
@@ -175,15 +199,38 @@ export function upscaleCost(post: Post, ctx: Pick<ActionContext, 'derived' | 'ca
 // Actions
 // ---------------------------------------------------------------------------
 
-/** Generate: earn `clickValue`, shave time off the running job, count the click. */
+/**
+ * Generate: earn `clickValue`, shave time off the running job, count the click.
+ *
+ * One click in `1 / LUCKY_CLICK_CHANCE` pays `LUCKY_CLICK_MULT` times over and raises
+ * `LUCKY_SEED_FLAG` (the "Lucky Seed" achievement keys off it). The roll happens on accepted
+ * clicks only, so a refused one cannot burn the lucky seed.
+ *
+ * **Deliberate deviation from the contract.** Every other action answers a validation failure with
+ * `{ events: [], dirty: false, error }`. A click refused by the auto-clicker guard instead returns
+ * a single `clickBlocked` event and no error: the button has to be able to say why it went quiet,
+ * and a toast is the only place to say it. What it must never do is move anything. No credits, no
+ * `totalClicks`, no `recordClick`, no `applyClickToJobs` and above all no `click` event, so
+ * contracts, the combo meter and the click-frenzy egg all see a click that never happened.
+ */
 export function click(ctx: ActionContext): ActionResult {
-  const { state, derived, catalog, now } = ctx
-  const value = Math.max(0, derived.clickValue)
+  const { state, derived, catalog, now, rng } = ctx
+  const verdict = evaluateClick(state, now)
+  if (!verdict.ok) {
+    return { events: [{ type: 'clickBlocked', reason: verdict.reason, until: verdict.until }], dirty: false }
+  }
+
+  const lucky = chance(rng, LUCKY_CLICK_CHANCE)
+  const value = Math.max(0, derived.clickValue) * (lucky ? LUCKY_CLICK_MULT : 1)
   addCredits(state, value)
   state.totalClicks += 1
+  if (lucky) {
+    state.stats.luckyClicks += 1
+    state.flags[LUCKY_SEED_FLAG] = true
+  }
   recordClick(state, now)
   applyClickToJobs(state, now)
-  const events: GameEvent[] = [{ type: 'click', value }]
+  const events: GameEvent[] = [lucky ? { type: 'click', value, lucky: true } : { type: 'click', value }]
   pushEvents(events, progressContracts(state, events, catalog))
   return ok(events, false)
 }
@@ -282,6 +329,10 @@ export function quantize(ctx: ActionContext, modelId: string, precision: Precisi
 /**
  * Install a model. Free when it fits your best card; otherwise `setupFee` (the "download it
  * anyway and quantize later" path). API models need the API Nodes map node.
+ *
+ * The player level is the first gate after "already set up", and it is the only place the level is
+ * checked: `createJob` deliberately does not, so a model that is already installed stays usable
+ * even if the `minLevel` table moves under it. The wording matches `lockReason` in hardware.ts.
  */
 export function setupModel(ctx: ActionContext, modelId: string): ActionResult {
   const { state, derived, catalog } = ctx
@@ -289,6 +340,8 @@ export function setupModel(ctx: ActionContext, modelId: string): ActionResult {
   if (!model) return fail(`Unknown model: ${modelId}`)
   const existing = state.models[modelId]
   if (existing?.setup) return fail(`${model.name} is already set up`)
+  const levelLock = modelLevelLock(model, state)
+  if (levelLock) return fail(`Needs level ${levelLock.need} · you are level ${levelLock.have}`)
   if (!isUnlocked(model.unlock, state, derived, catalog)) {
     return fail(describeUnlock(model.unlock, catalog) || `${model.name} is locked`)
   }
@@ -321,13 +374,16 @@ export function trainLora(ctx: ActionContext, tagId: string): ActionResult {
 /** Queue a generation. Starts it immediately when a slot is free. */
 export function queueJob(ctx: ActionContext, input: JobInput): ActionResult {
   const { state, derived, catalog, now, rng } = ctx
-  const hadSpaghetti = state.flags[SPAGHETTI_FLAG] === true
+  const had = CREATE_JOB_FLAGS.filter((flag) => state.flags[flag] === true)
   const result = createJob(state, derived, catalog, input, now, rng)
   if (!result.ok) return fail(result.reason)
   noteSpend(state)
   const events: GameEvent[] = []
-  // createJob raises the flag when the prompt mentions spaghetti; announce it the first time.
-  if (!hadSpaghetti && state.flags[SPAGHETTI_FLAG] === true) events.push({ type: 'easterEgg', id: SPAGHETTI_FLAG })
+  // createJob raises a hidden flag for every egg the prompt (or the rig) tripped: spaghetti, bad
+  // hands, the masterpiece incantation, SD 1.5 on a region. Announce each one the first time only.
+  for (const flag of CREATE_JOB_FLAGS) {
+    if (state.flags[flag] === true && !had.includes(flag)) events.push({ type: 'easterEgg', id: flag })
+  }
   pushEvents(events, advanceQueue(state, derived, catalog, now, rng))
   // advanceQueue may also have finished a job that came due since the last tick; the tick never
   // sees that `postCreated`, so contracts must be progressed here (as `click` does).
@@ -356,6 +412,27 @@ export function claimDaily(ctx: ActionContext): ActionResult {
   const events: GameEvent[] = []
   pushEvents(events, payDaily(state, derived, now))
   return ok(events, state.rp !== rp || state.cp !== cp)
+}
+
+/**
+ * Seed Roulette: wager credits (or take the daily house spin with `'free'`) on the KSampler.
+ *
+ * `canSpin` owns every rule and every rejection string (the level gate, the cooldown, the wager
+ * bounds, the daily free spin); `applySpin` owns the roll, the pity meter, the hot streak and the
+ * pot. `dirty` is false: a spin moves the spendable balance and some counters, and nothing in
+ * `Derived` reads any of them.
+ *
+ * Two things this must never become. It is not reachable from the click path or a hotkey, so a
+ * wager is always a deliberate press. And it does not call `noteSpend`: a bank that lands on zero
+ * because a seed ate the wager is not "Out Of Credits, Not Ideas".
+ */
+export function spin(ctx: ActionContext, wager: number | 'free'): ActionResult {
+  const { state, derived, catalog, now, rng } = ctx
+  const check = canSpin(state, derived, now, wager)
+  if (!check.ok) return fail(check.reason)
+  const events = applySpin(state, derived, catalog, now, rng, wager)
+  if (events.length === 0) return fail('The sampler has no seeds to give')
+  return ok(events, false)
 }
 
 /** Prestige: reset the season for CP. */
@@ -389,15 +466,24 @@ export function toggleSetting(ctx: ActionContext, key: keyof GameSettings, value
 /**
  * Raise a discovery flag from the UI (see `UI_FLAGS`). Idempotent: the first call sets the flag
  * and announces an `easterEgg`; a repeat is a validation failure so nothing is announced twice.
- * `dirty` is false: flags gate hidden map nodes and achievements, which the tick re-checks on
- * its own; nothing in `Derived` reads them.
+ *
+ * Achievements are checked right here rather than left to the tick, so the egg, the achievement it
+ * unlocks and the credits that achievement pays all land on the same click instead of up to a
+ * second later. A grant moves the global multiplier (and may have paid credits), so `dirty` is
+ * true exactly when something was granted.
+ *
+ * This is for discovery flags only. `tutorial-done` and the gift flags are bookkeeping and have
+ * their own actions; sending them through here would announce an easter egg that is not one.
  */
 export function setFlag(ctx: ActionContext, key: string): ActionResult {
-  const { state } = ctx
+  const { state, derived, catalog } = ctx
   if (typeof key !== 'string' || key.trim() === '') return fail('Unknown flag')
   if (state.flags[key] === true) return fail('Already discovered')
   state.flags[key] = true
-  return ok([{ type: 'easterEgg', id: key }], false)
+  const events: GameEvent[] = [{ type: 'easterEgg', id: key }]
+  const granted = checkAchievements(state, derived, catalog)
+  pushEvents(events, granted)
+  return ok(events, granted.length > 0)
 }
 
 /**
@@ -414,6 +500,8 @@ export function upscalePost(ctx: ActionContext, postId: string): ActionResult {
   const post = state.posts.find((p) => p.id === postId)
   if (!post) return fail('No such post')
   if (post.upscaled) return fail('Already upscaled')
+  // A ratio is checked before the flop it also is: the specific reason is the useful one.
+  if (post.ratioed) return fail('Nobody upscales a ratio · tag the kind you actually posted')
   if (post.flop) return fail('Nobody upscales a flop · pick a post that landed')
   const extra = Math.round(post.targetLikes * UPSCALE_LIKES_FRACTION)
   if (extra < 1) return fail('Not enough likes to upscale')
@@ -432,5 +520,75 @@ export function upscalePost(ctx: ActionContext, postId: string): ActionResult {
   post.windowMs = windowMs
   post.createdAt = now - p * windowMs
   post.upscaled = true
+  return ok([], false)
+}
+
+/**
+ * Hand over a welcome gift (`src/data/gifts.ts`). Everything in it is free: the card lands in the
+ * rack without `applyPurchase` touching the bank, the PSU that keeps it off the breaker is pushed
+ * straight onto `upgrades`, and credits go through `addCredits` so they count as earned.
+ *
+ * The gift's flag is what makes the offer happen exactly once, so a second call is a refusal.
+ * Every id is resolved before anything is written: a gift naming hardware the catalog dropped must
+ * leave the state exactly as it found it.
+ *
+ * It emits a `purchase` as well as its `reward` so contracts see the hardware arrive, the same way
+ * a bought unit would.
+ */
+export function grantGift(ctx: ActionContext, kind: GiftKind): ActionResult {
+  const { state, catalog } = ctx
+  const def = GIFTS[kind]
+  if (!def) return fail(`Unknown gift: ${String(kind)}`)
+  if (state.flags[def.flag] === true) return fail('That gift has already been claimed')
+
+  const { hardwareById, upgradeById } = buildIndex(catalog)
+  const wanted = def.hardware
+  const hardware = wanted ? hardwareById[wanted.id] : undefined
+  if (wanted && !hardware) return fail(`Unknown hardware: ${wanted.id}`)
+  const upgrades = def.upgrades ?? []
+  for (const id of upgrades) if (!upgradeById[id]) return fail(`Unknown upgrade: ${id}`)
+
+  const events: GameEvent[] = []
+  if (wanted && hardware) {
+    const owned = state.hardware[hardware.id] ?? 0
+    const room = hardware.max === undefined ? Infinity : Math.max(0, hardware.max - owned)
+    const count = Math.min(room, Math.max(0, Math.floor(wanted.count)))
+    if (count > 0) {
+      state.hardware[hardware.id] = owned + count
+      events.push({ type: 'purchase', hardwareId: hardware.id, count })
+    }
+  }
+  for (const id of upgrades) if (!hasUpgrade(state, id)) state.upgrades.push(id)
+  const credits = Math.max(0, Math.floor(def.credits ?? 0))
+  if (credits > 0) addCredits(state, credits)
+
+  state.flags[def.flag] = true
+  events.push({ type: 'reward', id: kind, credits })
+  pushEvents(events, progressContracts(state, events, catalog))
+  return ok(events, true)
+}
+
+/**
+ * Turn a welcome gift down. Sets `gift:<kind>:declined` so the modal never asks again, and that is
+ * all: no events, nothing to recompute. Idempotent, because Esc, the backdrop and the ghost button
+ * all count as the same answer.
+ */
+export function declineGift(ctx: ActionContext, kind: GiftKind): ActionResult {
+  const { state } = ctx
+  const def = GIFTS[kind]
+  if (!def) return fail(`Unknown gift: ${String(kind)}`)
+  state.flags[`${def.flag}${GIFT_DECLINED_SUFFIX}`] = true
+  return ok([], false)
+}
+
+/**
+ * Mark the tutorial as taught. Idempotent, silent and not dirty: it emits nothing because finishing
+ * (or skipping) a tour is not a discovery, and a veteran save that never saw it gets the flag set
+ * quietly on boot, which must not fire a toast.
+ *
+ * Deliberately not `setFlag`: that one is for discovery flags and announces an `easterEgg`.
+ */
+export function completeTutorial(ctx: ActionContext): ActionResult {
+  ctx.state.flags[TUTORIAL_FLAG] = true
   return ok([], false)
 }
