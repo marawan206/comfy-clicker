@@ -9,9 +9,8 @@
  * of truth for backend rules (CPU / MPS / ROCm) and hardware.ts builds `runsOn` on top of it.
  */
 import type { Catalog } from '@/data'
-import { buildIndex } from '@/game/catalog'
 import { SETUP_FEE_MULT } from '@/game/constants'
-import { formatNum } from '@/game/format'
+import { describeCause, explainQuantize } from '@/game/guidance'
 import type { Derived, GameState, HardwareDef, ModelDef, Precision } from '@/game/types'
 
 /** Map nodes that gate each quantization tier. Only enforced when the catalog ships the node. */
@@ -93,17 +92,13 @@ export function canQuantize(
   const label = catalog.precisions[precision]?.label ?? precision
   if (model.api) return { ok: false, reason: `${model.name} runs on someone else's GPU · nothing to quantize` }
   if (model.quantizable === false) return { ok: false, reason: `${model.name} can't be quantized` }
-  if (!(model.id in state.models)) return { ok: false, reason: `Set up ${model.name} first` }
   if (hasPrecision(state, model.id, precision)) return { ok: false, reason: `Already quantized to ${label}` }
-  const gate = buildIndex(catalog).mapNodeById[QUANT_NODE_IDS[precision]]
-  if (gate && !state.mapNodes.includes(gate.id)) {
-    return { ok: false, reason: `Unlock ${gate.title} on the Graph` }
-  }
-  const fee = quantFee(model, precision, catalog)
-  if (state.credits < fee) {
-    return { ok: false, reason: `Need ${formatNum(fee)} credits · have ${formatNum(state.credits)}` }
-  }
-  return { ok: true }
+  // Everything left (not installed, the tier's Graph node, the fee) is a lock the guidance layer
+  // can act on, so it comes back as a cause and this only writes it down.
+  const cause = explainQuantize(model, precision, state, catalog)
+  if (!cause) return { ok: true }
+  if (cause.kind === 'setup') return { ok: false, reason: `${describeCause(cause, catalog)} first` }
+  return { ok: false, reason: describeCause(cause, catalog) }
 }
 
 /**

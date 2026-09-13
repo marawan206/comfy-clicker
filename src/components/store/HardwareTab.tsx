@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Lock } from 'lucide-react'
 import { HARDWARE_FAMILIES } from '@/data/hardware'
@@ -7,11 +7,13 @@ import type { HardwareFamily } from '@/game/types'
 import type { BuyCount } from '@/game/actions'
 import { useGameStore } from '@/state/useGame'
 import { buildIndex } from '@/game/catalog'
+import { guideCauses } from '@/components/guidance/GuidanceHost'
+import { explainBuy } from '@/game/guidance'
 import { cn } from '@/lib/utils'
 import { BuyAmount, BUY_AMOUNTS } from './BuyAmount'
 import { HardwareRow } from './HardwareRow'
 import { SaveForBar } from './SaveForBar'
-import { useFamilyUnlocked, useLocalState, useNewIds, useReducedMotionPref, useVisibleFamilies, useVisibleHardware } from './storeHooks'
+import { useFamilyUnlocked, useHighlight, useLocalState, useNewIds, useReducedMotionPref, useVisibleFamilies, useVisibleHardware } from './storeHooks'
 
 /** A request from outside (save-for bar, power meter, header) to show a family; `nonce` re-fires a repeat request. */
 export interface HardwareFocus {
@@ -45,6 +47,9 @@ export function HardwareTab({ focus = null }: Props) {
   const [storedAmount, setStoredAmount] = useLocalState<string>(AMOUNT_STORAGE_KEY, '1', AMOUNT_VALUES)
   const amount = parseAmount(storedAmount)
   const reduced = useReducedMotionPref()
+  const listRef = useRef<HTMLDivElement>(null)
+  // A `focusId` on `comfy:store-tab` scrolls that row into view and rings it (guidance, Next up).
+  useHighlight(listRef)
 
   const family: HardwareFamily = (families as readonly string[]).includes(storedFamily)
     ? (storedFamily as HardwareFamily)
@@ -93,7 +98,7 @@ export function HardwareTab({ focus = null }: Props) {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2" role="tabpanel" aria-label={`${meta?.label ?? 'Hardware'} units`}>
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-2" role="tabpanel" aria-label={`${meta?.label ?? 'Hardware'} units`}>
         <AnimatePresence initial={false}>
           {rows.map((id) => (
             <motion.div
@@ -125,11 +130,27 @@ interface ChipProps {
 }
 
 function FamilyChip({ id, active, isNew, reduced, onPick }: ChipProps) {
+  const store = useGameStore()
   const unlocked = useFamilyUnlocked(id)
   const meta = HARDWARE_FAMILIES.find((f) => f.id === id)
   const label = meta?.label ?? id
   const locked = !unlocked
   const tip = locked ? 'Needs ROCm setup (Upgrades)' : meta?.blurb
+
+  // The AMD shelf is the one chip that can be locked. Clicking it still shows the cards (so the
+  // player can see what ROCm buys them) and explains the one upgrade in the way.
+  const onClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      onPick(id)
+      if (unlocked) return
+      const def = store.catalog.hardware.find((h) => h.family === id)
+      if (!def) return
+      const causes = explainBuy(def, store.state, store.derived, store.catalog).filter((c) => c.kind !== 'credits')
+      guideCauses(e.currentTarget, causes, store, `${label} cards`)
+    },
+    [id, label, onPick, store, unlocked],
+  )
+
   return (
     <motion.button
       type="button"
@@ -137,7 +158,7 @@ function FamilyChip({ id, active, isNew, reduced, onPick }: ChipProps) {
       aria-selected={active}
       aria-label={locked ? `${label} (locked: needs ROCm setup)` : label}
       title={tip}
-      onClick={() => onPick(id)}
+      onClick={onClick}
       whileTap={reduced ? undefined : { scale: 0.95 }}
       className={cn(
         'relative flex h-7 shrink-0 items-center gap-1 rounded-md border px-2.5 text-[11px] font-semibold tracking-tight whitespace-nowrap transition-colors',

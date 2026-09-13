@@ -4,12 +4,15 @@
  * here selects either a primitive or a short "key" string and derives the array/objects with
  * `useMemo` only when that key changes. Rows subscribe to their own tiny slice by id.
  */
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useSyncExternalStore, type RefObject } from 'react'
 import { useReducedMotion } from 'motion/react'
 import { useGame, useGameStore } from '@/state/useGame'
 import type { GameStore } from '@/state/store'
 import { buildIndex } from '@/game/catalog'
 import { bulkCost, maxAffordable, unitCost } from '@/game/economy'
+import { saveTarget } from '@/game/goals'
+import { explainBuy } from '@/game/guidance'
+import { canBuy } from '@/game/hardware'
 import { currencyBalance } from '@/game/map'
 import { hasUpgrade, isUnlocked } from '@/game/unlock'
 import type { Derived, Effect, GameState, HardwareDef, HardwareFamily, UpgradeCategory, UpgradeDef } from '@/game/types'
@@ -25,17 +28,83 @@ export type StoreTab = 'hardware' | 'upgrades' | 'models' | 'power'
 export const STORE_TABS: readonly StoreTab[] = ['hardware', 'upgrades', 'models', 'power']
 export const ROCM_UPGRADE_ID = 'rocm-setup'
 
-/** Payload of the `comfy:store-tab` CustomEvent: a tab id, optionally with a hardware family to focus. */
+/**
+ * Payload of the `comfy:store-tab` CustomEvent: a tab id, optionally a hardware family to show and
+ * the id of a row to scroll to and ring (`focusId`, matched against a row's `data-id`).
+ */
 export interface StoreTabEventDetail {
   tab: StoreTab
   family?: HardwareFamily
+  focusId?: string
 }
 
-/** Ask the store panel to switch tabs (and optionally focus a hardware family). */
-export function openStoreTab(tab: StoreTab, family?: HardwareFamily): void {
+/**
+ * Ask the store panel to switch tabs. Takes either form:
+ *   `openStoreTab('upgrades')`
+ *   `openStoreTab({ tab: 'hardware', family: 'nvidia-consumer', focusId: 'rtx-3090' })`
+ */
+export function openStoreTab(target: StoreTab | StoreTabEventDetail, family?: HardwareFamily): void {
   if (typeof window === 'undefined') return
-  const detail: StoreTabEventDetail = family ? { tab, family } : { tab }
+  const detail: StoreTabEventDetail = typeof target === 'string' ? { tab: target } : { ...target }
+  if (family) detail.family = family
   window.dispatchEvent(new CustomEvent<StoreTabEventDetail>(STORE_TAB_EVENT, { detail }))
+}
+
+/** How long a highlighted row keeps its electric ring. */
+const HIGHLIGHT_MS = 1200
+/** The row may not exist for a few frames: the tab, the family chip and the list all swap first. */
+const HIGHLIGHT_RETRY_MS = 40
+const HIGHLIGHT_TRIES = 25
+const HIGHLIGHT_CLASSES = ['ring-2', 'ring-electric-400', 'ring-offset-2', 'ring-offset-charcoal-600', 'z-10'] as const
+
+/**
+ * Ring an element electric for about a second. Written straight to the DOM: the row that is being
+ * pointed at is usually a memoised child that must not re-render for a decoration.
+ */
+export function highlightElement(el: HTMLElement | null, ms = HIGHLIGHT_MS): void {
+  if (!el) return
+  el.classList.add(...HIGHLIGHT_CLASSES)
+  window.setTimeout(() => el.classList.remove(...HIGHLIGHT_CLASSES), ms)
+}
+
+/**
+ * Watches `comfy:store-tab` for a `focusId` and, once the tab has rendered, scrolls that row into
+ * view and rings it. Mount it on the scroller that holds the rows; rows carry `data-id`.
+ *
+ * The row may not exist on the first frame (the tab, the family chip and the list all swap first),
+ * so it retries for a few frames before giving up.
+ */
+export function useHighlight(scope: RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    let timer = 0
+    let tries = 0
+    // A timer, not rAF: a store tab can be asked to focus a row while the tab is in the background
+    // (a cross-route hand-off lands before the page is looked at), and rAF does not run there.
+    const find = (id: string) => {
+      const root = scope.current ?? document
+      const el = root.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        highlightElement(el)
+        return
+      }
+      if (tries++ > HIGHLIGHT_TRIES) return
+      timer = window.setTimeout(() => find(id), HIGHLIGHT_RETRY_MS)
+    }
+    const onTab = (e: Event) => {
+      const detail = (e as CustomEvent<StoreTabEventDetail | string>).detail
+      const id = typeof detail === 'object' && detail ? detail.focusId : undefined
+      if (!id) return
+      tries = 0
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => find(id), 0)
+    }
+    window.addEventListener(STORE_TAB_EVENT, onTab)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener(STORE_TAB_EVENT, onTab)
+    }
+  }, [scope])
 }
 
 /** True when either the OS or the in-game setting asks for calmer motion. */
@@ -128,17 +197,17 @@ export function unitRate(def: HardwareDef, derived: Derived): number {
   return def.baseCps * (derived.rigMult[def.id] ?? 1) * (derived.familyMult[def.family] ?? 1) * derived.globalMult
 }
 
-/** Why a unit cannot be bought regardless of credits, or null. Mirrors the order in `canBuy`. */
+/**
+ * Why a unit cannot be bought regardless of credits, or null. The engine's own words (`canBuy`
+ * minus the credits check), so the row, the tooltip and the guidance popover all say the same
+ * thing: `Locked · own an 8-core PC` rather than a bare `Locked`.
+ */
 export function nonCreditLock(def: HardwareDef, state: GameState, derived: Derived, catalog: Catalog): string | null {
-  if (!derived.unlockedFamilies.includes(def.family)) {
-    return def.family === 'amd-consumer'
-      ? 'Locked · install ROCm Setup (Upgrades) to buy AMD cards'
-      : `Locked · ${FAMILY_LABELS[def.family]} hardware is not available yet`
-  }
-  if (!isUnlocked(def.unlock, state, derived, catalog)) return 'Locked'
-  const owned = state.hardware[def.id] ?? 0
-  if (def.max !== undefined && owned >= def.max) return `Maxed out · ${def.max} owned`
-  return null
+  // Credits are always the last cause, so a first cause of anything else is a real lock. The
+  // unlocked rows (the common case, run per row per frame) stop after that one pass.
+  const cause = explainBuy(def, state, derived, catalog)[0]
+  if (!cause || cause.kind === 'credits') return null
+  return canBuy(def, state, derived, catalog).reason ?? 'Locked'
 }
 
 /** Everything a hardware row renders, selected as a small flat object so it only re-renders on change. */
@@ -206,24 +275,23 @@ export interface SaveTarget {
 /**
  * The cheapest visible, purchasable-but-unaffordable unit: what the player is implicitly saving for.
  * Null when everything visible is affordable (or locked).
+ *
+ * A thin wrapper over `saveTarget` in `@/game/goals`, which the Next up panel reads too, so the
+ * save-for bar and the goal row can never quote different numbers (a test pins that they match).
  */
 export function useSaveTarget(): SaveTarget | null {
   return useGame(
     (s, d, store): SaveTarget | null => {
-      let best: HardwareDef | null = null
-      let bestCost = Infinity
-      for (const def of visibleHardware(s, d, store.catalog)) {
-        if (nonCreditLock(def, s, d, store.catalog)) continue
-        const cost = unitCost(def, s.hardware[def.id] ?? 0)
-        if (cost > s.credits && cost < bestCost) {
-          best = def
-          bestCost = cost
-        }
+      const target = saveTarget(s, d, store.catalog)
+      if (!target) return null
+      return {
+        id: target.def.id,
+        name: target.def.name,
+        family: target.def.family,
+        cost: target.cost,
+        pct: target.pct,
+        etaSec: target.etaSec,
       }
-      if (!best) return null
-      const pct = Math.max(0, Math.min(100, Math.floor((s.credits / bestCost) * 100)))
-      const etaSec = d.cps > 0 ? Math.ceil((bestCost - s.credits) / d.cps) : Infinity
-      return { id: best.id, name: best.name, family: best.family, cost: bestCost, pct, etaSec }
     },
     (a, b) => (a === null && b === null) || (a !== null && b !== null && a.id === b.id && a.cost === b.cost && a.pct === b.pct && a.etaSec === b.etaSec),
   )

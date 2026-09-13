@@ -8,6 +8,8 @@ import { buildIndex } from '@/game/catalog'
 import { formatDuration, formatNum, formatWatts } from '@/game/format'
 import { Art } from '@/components/common/Art'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
+import { guideCauses } from '@/components/guidance/GuidanceHost'
+import { explainBuy } from '@/game/guidance'
 import { cn } from '@/lib/utils'
 import { formatEach, useHardwareRow, useReducedMotionPref } from './storeHooks'
 
@@ -43,11 +45,25 @@ function HardwareRowImpl({ id, amount, isNew, onSeen }: Props) {
   const disabled = locked || !row.affordable
   const buyLabel = row.count > 1 ? `${row.count}× ${def?.name ?? id}` : (def?.name ?? id)
 
-  const onClick = useCallback(() => {
-    onSeen(id)
-    const refused = disabled || Boolean(store.buyHardware(id, amount).error)
-    if (refused && !reduced && scope.current) animate(scope.current, SHAKE, { duration: 0.28 })
-  }, [store, id, amount, disabled, onSeen, reduced, animate, scope])
+  // A row you cannot buy explains itself instead of just refusing: the popover anchors to the row
+  // and its primary button goes wherever the missing thing lives.
+  const onClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      onSeen(id)
+      if (disabled) {
+        if (def) {
+          const n = row.count > 0 ? row.count : 1
+          guideCauses(e.currentTarget, explainBuy(def, store.state, store.derived, store.catalog, n), store, def.name)
+        }
+        if (!reduced && scope.current) animate(scope.current, SHAKE, { duration: 0.28 })
+        return
+      }
+      if (store.buyHardware(id, amount).error && !reduced && scope.current) {
+        animate(scope.current, SHAKE, { duration: 0.28 })
+      }
+    },
+    [store, id, amount, disabled, def, row.count, onSeen, reduced, animate, scope],
+  )
 
   if (!def) return null
 
@@ -60,6 +76,8 @@ function HardwareRowImpl({ id, amount, isNew, onSeen }: Props) {
     <motion.button
       ref={scope}
       type="button"
+      data-id={id}
+      data-tour={row.affordable ? 'store-buy' : undefined}
       onClick={onClick}
       onPointerEnter={() => isNew && onSeen(id)}
       aria-label={aria}

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { CATALOG, createCatalog } from '@/data'
-import { GEN_TIME_MAX_S, GEN_TIME_MIN_S } from '@/game/constants'
+import { GEN_TIME_MAX_S, GEN_TIME_MIN_S, MAX_LEVEL } from '@/game/constants'
 import { createEmptyDerived } from '@/game/derived'
 import { bulkCost } from '@/game/economy'
 import {
@@ -196,14 +196,22 @@ describe('nativeTier', () => {
 })
 
 describe('lockReason', () => {
+  // The player level is the first check, so every fixture below is past it: what these pin is the
+  // hardware wording. The level gate itself is the last case in this block.
+  const leveled = (mutate?: (s: GameState) => void): GameState =>
+    fresh((s) => {
+      s.stats.levelSeen = MAX_LEVEL
+      mutate?.(s)
+    })
+
   it('is null when something owned can run it', () => {
-    const state = fresh((s) => { s.hardware['rtx-3060'] = 1 })
+    const state = leveled((s) => { s.hardware['rtx-3060'] = 1 })
     expect(lockReason(model('sd15'), 'native', state, base, CATALOG)).toBeNull()
     expect(lockReason(model('flux-dev'), 'fp8', state, base, CATALOG)).toBeNull()
   })
 
   it('explains a VRAM shortfall with the quantize fee and the cheapest fitting card', () => {
-    const state = fresh((s) => { s.hardware['rtx-3060'] = 1 })
+    const state = leveled((s) => { s.hardware['rtx-3060'] = 1 })
     const reason = lockReason(model('flux-dev'), 'native', state, base, CATALOG)
     expect(reason).toBe(
       `Needs 20 GB · your best card has 12 GB · quantize FP8 for ${quantFee(model('flux-dev'), 'fp8', CATALOG)} or buy an RTX 3090`,
@@ -211,31 +219,40 @@ describe('lockReason', () => {
   })
 
   it('skips the quantize hint when no owned card fits even Q4, and reports GPU VRAM not RAM', () => {
-    const state = fresh((s) => { s.hardware['pc-8c16t'] = 1; s.hardware['rtx-3060'] = 1 })
+    const state = leveled((s) => { s.hardware['pc-8c16t'] = 1; s.hardware['rtx-3060'] = 1 })
     const reason = lockReason(model('minimax-h3'), 'native', state, base, CATALOG)
     expect(reason).toMatch(/^Needs 160 GB · your best card has 12 GB · buy /)
     expect(reason).not.toMatch(/quantize/)
   })
 
   it('asks for a GPU on a CPU-only rig', () => {
-    expect(lockReason(model('sdxl'), 'native', fresh(), base, CATALOG)).toMatch(/Needs a GPU/)
+    expect(lockReason(model('sdxl'), 'native', leveled(), base, CATALOG)).toMatch(/Needs a GPU/)
   })
 
   it('points at ZLUDA for needsZluda models on Radeon', () => {
-    const state = fresh((s) => { s.hardware['radeon-pro-w7900'] = 1 })
+    const state = leveled((s) => { s.hardware['radeon-pro-w7900'] = 1 })
     expect(lockReason(model('flux2'), 'native', state, base, CATALOG)).toMatch(/ZLUDA/)
     expect(lockReason(model('flux2'), 'native', state, derivedWith({ zluda: true }), CATALOG)).toBeNull()
   })
 
   it('explains Apple silicon limits', () => {
-    const state = fresh((s) => { s.hardware['mac-studio-m4-max'] = 1 })
+    const state = leveled((s) => { s.hardware['mac-studio-m4-max'] = 1 })
     expect(lockReason(model('wan22-5b'), 'native', state, base, CATALOG)).toMatch(/images only/)
     expect(lockReason(model('flux-dev'), 'native', state, base, CATALOG)).toMatch(/Apple silicon/)
   })
 
   it('gates API models on the API Nodes map node only', () => {
-    expect(lockReason(model('kling'), 'native', fresh(), base, CATALOG)).toMatch(/API Nodes/)
-    expect(lockReason(model('kling'), 'native', fresh(), derivedWith({ apiNodes: true }), CATALOG)).toBeNull()
+    expect(lockReason(model('kling'), 'native', leveled(), base, CATALOG)).toMatch(/API Nodes/)
+    expect(lockReason(model('kling'), 'native', leveled(), derivedWith({ apiNodes: true }), CATALOG)).toBeNull()
+  })
+
+  it('names the player level before anything about the hardware', () => {
+    const state = fresh((s) => { s.hardware['rtx-pro-6000'] = 1 })
+    expect(lockReason(model('flux-dev'), 'native', state, base, CATALOG)).toBe('Needs level 4 · you are level 1')
+    expect(lockReason(model('kling'), 'native', state, derivedWith({ apiNodes: true }), CATALOG)).toBe(
+      'Needs level 10 · you are level 1',
+    )
+    expect(lockReason(model('sd15'), 'native', state, base, CATALOG)).toBeNull()
   })
 
   it('cheapestPurchasable respects unlocked families', () => {

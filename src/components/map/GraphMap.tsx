@@ -31,6 +31,8 @@ import {
   type EdgeTypes,
   type NodeTypes,
 } from '@xyflow/react'
+import { consumeGoto, MAP_FOCUS_EVENT } from '@/components/guidance/navigate'
+import { toast } from '@/components/overlays/useToasts'
 import { MAP_BRANCHES } from '@/game/map'
 import type { MapBranch, MapNodeDef } from '@/game/types'
 import { cn } from '@/lib/utils'
@@ -220,15 +222,55 @@ function GraphMapInner({ className }: { className?: string }) {
 
   // ---- interaction context -------------------------------------------------
 
+  /**
+   * Unlock, then offer to look at it. The toast `useUnlockNode` raises is keyed by node id, so
+   * re-raising it with the same key replaces that card rather than stacking a second one.
+   */
+  const unlockAndOffer = useCallback(
+    (def: MapNodeDef, point?: { x: number; y: number }): boolean => {
+      if (!unlockNode(def, point)) return false
+      toast(def.title, {
+        title: `${BRANCH_META[def.branch].label} · unlocked`,
+        description: def.desc,
+        tone: def.branch === 'prestige' ? 'sapphire' : 'electric',
+        key: `map:${def.id}`,
+        durationMs: 3500,
+        sound: false,
+        action: { label: 'Show me', onClick: () => focusNode(def.id) },
+      })
+      return true
+    },
+    [focusNode, unlockNode],
+  )
+
   const interaction = useMemo<MapInteraction>(
     () => ({
       select: (id) => setSelectedId(id),
       unlock: (def, point) => {
-        unlockNode(def, point)
+        unlockAndOffer(def, point)
       },
     }),
-    [unlockNode],
+    [unlockAndOffer],
   )
+
+  // A guidance step that points at a node: the same route dispatches, a cross-route jump parks the
+  // request and it is replayed here once the canvas exists.
+  useEffect(() => {
+    const onFocus = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail
+      if (typeof id === 'string') focusNode(id)
+    }
+    window.addEventListener(MAP_FOCUS_EVENT, onFocus)
+    return () => window.removeEventListener(MAP_FOCUS_EVENT, onFocus)
+  }, [focusNode])
+
+  useEffect(() => {
+    if (!ready) return
+    const goto = consumeGoto(['map'])
+    if (!goto || goto.kind !== 'map') return
+    const timer = window.setTimeout(() => focusNode(goto.nodeId), 120)
+    return () => window.clearTimeout(timer)
+  }, [ready, focusNode])
 
   // ---- search ----------------------------------------------------------------
 
@@ -395,6 +437,7 @@ function GraphMapInner({ className }: { className?: string }) {
                 sets={sets}
                 onClose={() => setSelectedId(null)}
                 onSelect={focusNode}
+                onUnlock={unlockAndOffer}
               />
             ) : null}
           </AnimatePresence>

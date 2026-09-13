@@ -71,6 +71,33 @@ the orbital datacenter and the Dyson swarm carry `max: 1`. Tail families grow ×
 `nativeHardware(model, catalog): HardwareDef | null`: the cheapest CUDA unit (not cpuOnly, not mps, not rocm) that holds the native weights; null for API models.
 `quantFee(model, precision, catalog) = round(feeFraction × nativeHardware.baseCost)`; `canQuantize(model, precision, state, catalog)`; `applyQuantize(state, modelId, precision, fee)`; `setupFee(model, derived, catalog) = model.vram > derived.bestVram ? SETUP_FEE_MULT × model.baseCost : 0` with `SETUP_FEE_MULT = 1`, so `setupFee + quantFee(fp8) < nativeHardware.baseCost` for every quantizable model (models-data test).
 
+## guidance.ts
+The structured reason anything is locked, and the one place the wording lives. `LockCause` is a
+discriminated union (`credits`, `currency`, `ownHardware`, `ownFamily`, `ownModel`, `upgrade`,
+`mapNode`, `parent`, `stat`, `cps`, `level`, `vram`, `backend`, `apiNodes`, `setup`, `precision`,
+`family`, `max`, `flag`).
+`explainUnlock(cond, state, derived, catalog): LockCause[]` (`all` concatenates its unmet children,
+`any` returns the branch with the fewest unmet leaves, a met condition returns `[]`);
+`explainBuy(def, state, derived, catalog, n = 1): LockCause[]` in `canBuy`'s order (family, unlock,
+cap, credits); `explainRun(model, precision, state, derived, catalog): LockCause | null` in
+`lockReason`'s order (**player level**, API Nodes, backend, VRAM);
+`explainQuantize(model, precision, state, catalog)`; `explainSetup(model, state, derived, catalog)`;
+`setupCause(model, derived, catalog)`; `explainMapNode(def, state, derived, catalog): LockCause[]`
+(locked parents, then the node's own condition, then the price);
+`describeCause(cause, catalog): string`; `causeEta(cause, derived): number` (whole seconds for a
+`credits` cause at the current rate, `Infinity` for everything else).
+`lockReason`, `canBuy().reason` and `canQuantize().reason` are thin formatters over this layer and
+their strings are unchanged; the condition kinds delegate to `describeUnlock`, so a cause and the
+tooltip for the same requirement can never drift. Two `describeCause` outputs are tails rather than
+sentences, because that is how the store prints them: `family` follows `Locked · ` and `max` is the
+whole line. `hardware.ts` and `quantize.ts` import back into this module; every call is inside a
+function body, never at module scope, so the cycle resolves.
+`lockReason` checks `modelLevelLock(model, state)` first and returns
+`Needs level ${need} · you are level ${have}`, the same string `setupModel` refuses with, which is
+what makes every model surface explain the level gate.
+Test: `__tests__/guidance.test.ts` asserts `describeCause(explainRun(...)) === lockReason(...)` for
+every model, every precision and three fixture states, plus the exact strings per cause.
+
 ## hashtags.ts
 `weekIndex(now, weekSpeed = 1) = floor(now / (WEEK_MS / weekSpeed))`; `trendingForWeek(week, catalog): string[]` (TRENDING_COUNT distinct ids via mulberry32(week), at least one non-type tag); `currentTrending(state, now, catalog, weekSpeed: number)`: `weekSpeed` is **required** and must be `derived.weekSpeed` (the Fast Weeks node halves the week) = `liveTrending.tags` if `now − fetchedAt < 30 min` else `trendingForWeek(weekOverride ?? weekIndex(now, weekSpeed))`; `msUntilRollover(now, weekSpeed)`: the UI passes `derived.weekSpeed` here too.
 `matchTags(prompt, selected: string[], catalog): { matched: string[]; keywordHits: number }`: word-boundary keyword match (lowercase), literal `#tag`, plus explicitly selected ids; dedupe.

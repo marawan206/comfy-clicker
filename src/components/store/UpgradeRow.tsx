@@ -6,7 +6,11 @@ import { useGameStore } from '@/state/useGame'
 import { buildIndex } from '@/game/catalog'
 import { formatNum } from '@/game/format'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
+import { guide } from '@/components/guidance/GuidanceHost'
+import { stepsFor } from '@/components/guidance/lockGuide'
+import type { LockCause } from '@/game/guidance'
 import { cn } from '@/lib/utils'
+import { currencyBalance } from '@/game/map'
 import { parseTierId, summarizeEffects, useReducedMotionPref, useUpgradeRow } from './storeHooks'
 
 /** File stems under public/brand/nodes; upgrade `icon` strings that match render the brand glyph. */
@@ -82,10 +86,23 @@ function UpgradeRowImpl({ id }: Props) {
   const reduced = useReducedMotionPref()
   const [scope, animate] = useAnimate<HTMLButtonElement>()
 
-  const onClick = useCallback(() => {
-    const refused = !row.affordable || Boolean(store.buyUpgrade(id).error)
-    if (refused && !reduced && scope.current) animate(scope.current, SHAKE, { duration: 0.28 })
-  }, [store, id, row.affordable, reduced, animate, scope])
+  // Short on credits, RP or CP: say which, say where that currency comes from, and offer the jump.
+  const onClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!row.affordable) {
+        const have = currencyBalance(store.state, row.currency, store.catalog)
+        const cause: LockCause =
+          row.currency === 'credits'
+            ? { kind: 'credits', need: row.cost, have }
+            : { kind: 'currency', currency: row.currency, need: row.cost, have }
+        guide(e.currentTarget, stepsFor([cause], store, def?.name ?? id))
+        if (!reduced && scope.current) animate(scope.current, SHAKE, { duration: 0.28 })
+        return
+      }
+      if (store.buyUpgrade(id).error && !reduced && scope.current) animate(scope.current, SHAKE, { duration: 0.28 })
+    },
+    [store, id, def, row.affordable, row.cost, row.currency, reduced, animate, scope],
+  )
 
   if (!def) return null
 
@@ -100,6 +117,7 @@ function UpgradeRowImpl({ id }: Props) {
     <motion.button
       ref={scope}
       type="button"
+      data-id={id}
       onClick={onClick}
       aria-label={`Buy ${def.name} for ${currencyText}${row.affordable ? '' : ' (not enough)'}`}
       aria-disabled={!row.affordable || undefined}

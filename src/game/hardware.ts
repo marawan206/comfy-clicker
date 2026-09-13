@@ -8,11 +8,11 @@
 import type { Catalog } from '@/data'
 import { ABOVE_TIER_FACTOR, GEN_TIME_MAX_S, GEN_TIME_MIN_S, TIER_DELTA_FACTOR } from '@/game/constants'
 import { bulkCost } from '@/game/economy'
-import { formatNum } from '@/game/format'
-import { backendAllows, nativeHardware, quantFee, requiredVram } from '@/game/quantize'
+import { describeCause, explainBuy, explainRun } from '@/game/guidance'
+import { backendAllows, nativeHardware, requiredVram } from '@/game/quantize'
 import { FAMILY_LABELS } from '@/game/state'
 import type { Derived, GameState, HardwareDef, ModelDef, Precision } from '@/game/types'
-import { describeUnlock, isUnlocked } from '@/game/unlock'
+import { describeUnlock } from '@/game/unlock'
 
 export { FAMILY_LABELS }
 
@@ -88,27 +88,23 @@ export function canBuy(
   n = 1,
 ): BuyCheck {
   if (!Number.isInteger(n) || n < 1) return { ok: false, reason: 'Nothing to buy' }
-  if (!derived.unlockedFamilies.includes(def.family)) {
-    const reason =
-      def.family === 'amd-consumer'
-        ? 'Locked · install the ROCm Setup upgrade to buy AMD cards'
-        : `Locked · ${FAMILY_LABELS[def.family]} hardware is not available yet`
-    return { ok: false, reason }
+  const cause = explainBuy(def, state, derived, catalog, n)[0]
+  if (!cause) return { ok: true }
+  switch (cause.kind) {
+    case 'family':
+      return { ok: false, reason: `Locked · ${describeCause(cause, catalog)}` }
+    case 'max': {
+      const left = Math.max(0, cause.max - (state.hardware[def.id] ?? 0))
+      return { ok: false, reason: left === 0 ? describeCause(cause, catalog) : `Only ${left} more available` }
+    }
+    case 'credits':
+      return { ok: false, reason: describeCause(cause, catalog) }
+    default: {
+      // An unlock condition: the store names the whole requirement, not just the leaf that failed.
+      const what = describeUnlock(def.unlock, catalog)
+      return { ok: false, reason: what ? `Locked · ${what}` : 'Locked' }
+    }
   }
-  if (!isUnlocked(def.unlock, state, derived, catalog)) {
-    const what = describeUnlock(def.unlock, catalog)
-    return { ok: false, reason: what ? `Locked · ${what}` : 'Locked' }
-  }
-  const owned = state.hardware[def.id] ?? 0
-  if (def.max !== undefined && owned + n > def.max) {
-    const left = Math.max(0, def.max - owned)
-    return { ok: false, reason: left === 0 ? `Maxed out · ${def.max} owned` : `Only ${left} more available` }
-  }
-  const cost = bulkCost(def, owned, n)
-  if (state.credits < cost) {
-    return { ok: false, reason: `Need ${formatNum(cost)} credits · have ${formatNum(state.credits)}` }
-  }
-  return { ok: true }
 }
 
 /**
@@ -214,8 +210,6 @@ export function cheapestPurchasable(
   return best
 }
 
-const GB = (gb: number): string => (Number.isFinite(gb) ? `${Math.round(gb * 10) / 10} GB` : '∞ GB')
-
 /** Letters whose spoken name starts with a vowel sound, for initialisms like "RTX" or "H100". */
 const VOWEL_SOUND_INITIALS = /^[AEFHILMNORSX]/
 const INITIALISM = /^[A-Z0-9]{1,4}(\s|$)/
@@ -230,16 +224,13 @@ export function withArticle(name: string): string {
   return `${vowelSound ? 'an' : 'a'} ${name}`
 }
 
-const KIND_LABELS: Record<ModelDef['kind'], string> = {
-  image: 'image models',
-  video: 'video models',
-  '3d': '3D models',
-  audio: 'audio models',
-}
-
 /**
  * Why the model can't run at that precision on anything the player owns, or null when it can.
  * Example: `Needs 20 GB · your best card has 12 GB · quantize FP8 for 450 or buy an RTX 3090`.
+ *
+ * One line over the cause layer: `explainRun` decides (level, API Nodes, backend, VRAM) and
+ * `describeCause` writes it down, so every surface that wants a button instead of a sentence can
+ * ask `explainRun` for the same answer.
  */
 export function lockReason(
   model: ModelDef,
@@ -248,43 +239,8 @@ export function lockReason(
   derived: Derived,
   catalog: Catalog,
 ): string | null {
-  if (model.api) return derived.apiNodes ? null : 'Needs API Nodes · unlock it on the Graph'
-  const owned = ownedHardware(state, catalog).map((u) => u.def)
-  if (owned.some((hw) => runsOn(model, precision, hw, derived, catalog))) return null
-
-  const compatible = owned.filter((hw) => backendAllows(model, hw, derived.zluda))
-  if (compatible.length === 0) {
-    const gpus = owned.filter((hw) => !hw.cpuOnly)
-    if (gpus.length === 0) return `Needs a GPU · ${model.name} won't run on a CPU box`
-    if (model.needsZluda && !derived.zluda && gpus.some((hw) => hw.rocm)) {
-      return 'Needs ZLUDA to run on AMD cards · unlock it on the Graph'
-    }
-    if (gpus.every((hw) => hw.mps)) {
-      return model.kind === 'image'
-        ? `${model.name} is not supported on Apple silicon · needs a discrete GPU`
-        : `Apple silicon runs images only · ${KIND_LABELS[model.kind]} need a discrete GPU`
-    }
-    return `No owned hardware can run ${model.name}`
-  }
-
-  // Backend is fine somewhere; VRAM is the blocker.
-  const need = requiredVram(model, precision, catalog)
-  const have = Math.max(...compatible.map((hw) => hw.vram))
-  const parts = [`Needs ${GB(need)}`, `your best card has ${GB(have)}`]
-  const fixes: string[] = []
-  if (precision === 'native' && model.quantizable !== false) {
-    for (const tier of ['fp8', 'q4'] as const) {
-      if (!catalog.precisions[tier]) continue
-      if (compatible.some((hw) => hw.vram >= requiredVram(model, tier, catalog))) {
-        fixes.push(`quantize ${catalog.precisions[tier].label} for ${formatNum(quantFee(model, tier, catalog))}`)
-        break
-      }
-    }
-  }
-  const buy = cheapestPurchasable(model, precision, derived, catalog)
-  if (buy) fixes.push(`buy ${withArticle(buy.name)}`)
-  if (fixes.length > 0) parts.push(fixes.join(' or '))
-  return parts.join(' · ')
+  const cause = explainRun(model, precision, state, derived, catalog)
+  return cause ? describeCause(cause, catalog) : null
 }
 
 /**

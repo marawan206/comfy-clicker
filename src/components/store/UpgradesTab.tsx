@@ -1,11 +1,11 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useGameStore } from '@/state/useGame'
 import { buildIndex } from '@/game/catalog'
 import type { UpgradeCategory } from '@/game/types'
 import { UpgradeRow } from './UpgradeRow'
-import { UPGRADE_CATEGORIES, useReducedMotionPref, useVisibleUpgrades } from './storeHooks'
+import { UPGRADE_CATEGORIES, useHighlight, useReducedMotionPref, useVisibleUpgrades } from './storeHooks'
 
 interface Group {
   id: UpgradeCategory
@@ -19,6 +19,9 @@ export function UpgradesTab() {
   const store = useGameStore()
   const ids = useVisibleUpgrades()
   const reduced = useReducedMotionPref()
+  const listRef = useRef<HTMLDivElement>(null)
+  // A `focusId` on `comfy:store-tab` (guidance, Next up) scrolls that row in and rings it.
+  useHighlight(listRef)
 
   const groups = useMemo((): Group[] => {
     const { upgradeById } = buildIndex(store.catalog)
@@ -34,7 +37,7 @@ export function UpgradesTab() {
   }, [ids, store.catalog])
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" role="list" aria-label="Upgrades">
+    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" role="list" aria-label="Upgrades">
       {groups.length === 0 && (
         <p className="px-2 py-8 text-center text-xs text-smoke-700">
           Nothing to install yet. Keep clicking; the Manager will find something.

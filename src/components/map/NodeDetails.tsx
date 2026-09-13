@@ -5,16 +5,19 @@
  * parents are chips that jump to them), what it leads to, and the Unlock button. Unlocking pops
  * the button, bursts credit diamonds from it and lets the canvas repaint the node electric.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useAnimate } from 'motion/react'
 import { ArrowRight, Check, Lock, Sparkles, X } from 'lucide-react'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { ComfyMark } from '@/components/brand/ComfyMark'
 import { Art } from '@/components/common/Art'
 import { ModalButton, SectionLabel } from '@/components/overlays/ModalBase'
+import { runGuideAction } from '@/components/guidance/navigate'
+import { stepsFor, type GuideStep } from '@/components/guidance/lockGuide'
 import { summarizeEffects } from '@/components/store/storeHooks'
 import { UpgradeIcon } from '@/components/store/UpgradeRow'
-import { formatNum } from '@/game/format'
+import { formatDuration, formatNum } from '@/game/format'
+import { explainMapNode } from '@/game/guidance'
 import { isMarker, mapNodeCost } from '@/game/map'
 import type { MapNodeDef } from '@/game/types'
 import { cn } from '@/lib/utils'
@@ -30,6 +33,8 @@ export interface NodeDetailsProps {
   onClose: () => void
   /** Jump to another node (parents, children). */
   onSelect: (id: string) => void
+  /** Unlock through the canvas, so the "unlocked" toast can offer to show the node. */
+  onUnlock?: (def: MapNodeDef, point?: { x: number; y: number }) => boolean
 }
 
 const STATUS_WORD: Record<NodeStatus, string> = { owned: 'Unlocked', available: 'Available', locked: 'Locked' }
@@ -38,7 +43,7 @@ const DOT_CLASS: Record<NodeStatus, string> = { owned: 'bg-electric-400', availa
 
 const SLIDE = { type: 'spring', stiffness: 380, damping: 32 } as const
 
-export function NodeDetails({ def, layout, sets, onClose, onSelect }: NodeDetailsProps) {
+export function NodeDetails({ def, layout, sets, onClose, onSelect, onUnlock }: NodeDetailsProps) {
   const store = useGameStore()
   const reduced = useReducedMotionPref()
   const { status, affordable, reason, balance, missing } = useNodeStatus(def)
@@ -55,6 +60,13 @@ export function NodeDetails({ def, layout, sets, onClose, onSelect }: NodeDetail
   const missingIds = missing ? missing.split('|') : []
   const children = layout.children[def.id] ?? []
   const short = Math.max(0, cost - balance)
+  // The same engine causes the guidance popover uses, rendered inline: on the Graph the player is
+  // already where the answer is, so a popover would only cover the node they are looking at.
+  const steps = useMemo(
+    () => stepsFor(explainMapNode(def, store.state, store.derived, store.catalog), store, def.title).steps,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `balance` and `status` are the slice that moves; the store object is stable
+    [def, store, balance, status, missing],
+  )
 
   // Selecting another node scrolls the panel back to the top so the title is what you see.
   useEffect(() => {
@@ -65,14 +77,14 @@ export function NodeDetails({ def, layout, sets, onClose, onSelect }: NodeDetail
     const el = scope.current
     const rect = el?.getBoundingClientRect()
     const point = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : undefined
-    const ok = unlockNode(def, point)
+    const ok = (onUnlock ?? unlockNode)(def, point)
     if (!ok) {
       if (el && !reduced) void animate(el, { x: [0, -5, 5, -3, 3, 0] }, { duration: 0.35 })
       return
     }
     setJustUnlocked(def.id)
     if (el && !reduced) void animate(el, { scale: [1, 1.14, 0.98, 1] }, { duration: 0.45, ease: 'easeOut' })
-  }, [animate, def, reduced, scope, unlockNode])
+  }, [animate, def, onUnlock, reduced, scope, unlockNode])
 
   return (
     <motion.aside
@@ -184,26 +196,17 @@ export function NodeDetails({ def, layout, sets, onClose, onSelect }: NodeDetail
               </div>
             </section>
 
-            {status === 'locked' ? (
+            {steps.length > 0 ? (
               <section aria-label="Requirements" className="rounded-xl border border-slot-vae/30 bg-slot-vae/5 p-3">
                 <SectionLabel className="mb-1.5 flex items-center gap-1.5 text-slot-vae">
                   <Lock size={12} aria-hidden="true" />
-                  Locked
+                  {status === 'locked' ? 'Locked' : 'Short'}
                 </SectionLabel>
-                {missingIds.length > 0 ? (
-                  <>
-                    <p className="text-xs text-smoke-600">Unlock first:</p>
-                    <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                      {missingIds.map((id) => (
-                        <li key={id}>
-                          <NodeChip id={id} layout={layout} sets={sets} onSelect={onSelect} />
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : (
-                  <p className="text-sm text-smoke-100">{reason}</p>
-                )}
+                <ol className="flex flex-col gap-2">
+                  {steps.map((step, i) => (
+                    <RequirementRow key={`${step.label}-${i}`} step={step} index={i} onSelect={onSelect} />
+                  ))}
+                </ol>
               </section>
             ) : null}
 
@@ -272,6 +275,52 @@ export function NodeDetails({ def, layout, sets, onClose, onSelect }: NodeDetail
         ) : null}
       </footer>
     </motion.aside>
+  )
+}
+
+/**
+ * One requirement as a row: what is missing, where it lives, and a button. A `map` step stays on
+ * this canvas (select the node) instead of pushing a route we are already on.
+ */
+function RequirementRow({ step, index, onSelect }: { step: GuideStep; index: number; onSelect: (id: string) => void }) {
+  const action = step.action
+  const go = useCallback(() => {
+    if (!action) return
+    if (action.type === 'map') onSelect(action.nodeId)
+    else runGuideAction(action)
+  }, [action, onSelect])
+
+  return (
+    <li className="flex gap-2">
+      <span
+        aria-hidden="true"
+        className="mt-px grid size-[18px] shrink-0 place-items-center rounded-[0.354em] border border-charcoal-400 bg-charcoal-700 text-[10px] font-extrabold tabular-nums text-smoke-600"
+      >
+        {index + 1}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="min-w-0 text-xs font-semibold leading-snug text-smoke-100">{step.label}</span>
+          {step.cost !== undefined ? (
+            <span className="shrink-0 text-[11px] font-extrabold tabular-nums text-credits">{formatNum(step.cost)}</span>
+          ) : null}
+        </div>
+        {step.detail ? <p className="mt-0.5 text-[11px] leading-snug text-smoke-600">{step.detail}</p> : null}
+        {step.etaSec !== undefined && Number.isFinite(step.etaSec) ? (
+          <p className="mt-0.5 text-[11px] font-semibold tabular-nums text-electric-400">{formatDuration(step.etaSec)} at your rate</p>
+        ) : null}
+        {action ? (
+          <button
+            type="button"
+            onClick={go}
+            className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-electric-400 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
+          >
+            {action.type === 'map' ? 'Show me' : 'Take me there'}
+            <ArrowRight size={12} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
+    </li>
   )
 }
 
