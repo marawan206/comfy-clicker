@@ -67,7 +67,7 @@ export function FeedPanel() {
   const wire =
     origin === "db" || origin === "memory" ? (
       <span
-        className="inline-flex items-center gap-1 text-sapphire-700"
+        className="inline-flex items-center gap-1 text-sapphire-300"
         title="Real posts are live from the wire"
       >
         <Radio size={12} aria-hidden="true" />
@@ -112,8 +112,16 @@ export function FeedPanel() {
               {entries.map((e) => (
                 <motion.li
                   key={e.key}
-                  className="cv-auto"
-                  style={{ containIntrinsicSize: "0 150px" }}
+                  /*
+                   * `content-visibility: auto` also turns on paint containment, which clips to the
+                   * padding box. The card paints outside its own border box twice: the hard shadow
+                   * sits 4 px below it and the BLEW UP ribbon hangs 10 px above (12.4 px once its
+                   * -3 deg tilt is counted), so a flush row cut both off. The padding opens that
+                   * headroom and the matching negative margins hand it straight back, which leaves
+                   * the 12 px `gap-3` rhythm and the first and last card exactly where they were.
+                   */
+                  className="cv-auto -mt-4 -mb-1.5 pt-4 pb-1.5"
+                  style={{ containIntrinsicSize: "0 172px" }}
                   initial={
                     reduced ? false : { opacity: 0, y: -14, scale: 0.98 }
                   }

@@ -161,12 +161,15 @@
   --color-smoke-500: #c5c5c5;
   --color-smoke-600: #b4b4b4;
   --color-smoke-700: #a0a0a0;
-  --color-smoke-800: #8a8a8a;
+  --color-smoke-800: #909090;
   --color-ash-300: #bbbbbb;
   --color-ash-500: #828282;
   --color-ash-800: #444444;
   --color-electric-400: #f0ff41;
   --color-sapphire-700: #172dd7;
+  /* sapphire-700 is a background/border colour: on charcoal it measures 1.70:1 and disappears.
+     sapphire-300 is the foreground tint (5.09:1 on charcoal-600, 5.50:1 on charcoal-700). */
+  --color-sapphire-300: #7f8dff;
   --color-brand-yellow: #f0ff41;
   --color-brand-blue: #172dd7;
   --color-credits: #fbbf24;
@@ -286,13 +289,21 @@
   animation-play-state: paused;
 }
 
-/* Reduced motion: the OS setting or the in-game toggle (`html.reduced-motion`) stops the CSS loops. */
+/*
+ * Reduced motion: the OS setting or the in-game toggle (`html.reduced-motion`) stops the CSS loops.
+ * Tailwind's own `animate-*` utilities are in the list too, so a skeleton, a status dot or a spinner
+ * that forgot to gate itself in JS still holds still.
+ */
 @media (prefers-reduced-motion: reduce) {
   .cc-striped,
   .cc-marquee,
   .cc-aura,
   .cc-breathe,
-  .cc-shimmer {
+  .cc-shimmer,
+  .animate-pulse,
+  .animate-ping,
+  .animate-spin,
+  .animate-bounce {
     animation: none;
   }
 }
@@ -300,7 +311,11 @@ html.reduced-motion .cc-striped,
 html.reduced-motion .cc-marquee,
 html.reduced-motion .cc-aura,
 html.reduced-motion .cc-breathe,
-html.reduced-motion .cc-shimmer {
+html.reduced-motion .cc-shimmer,
+html.reduced-motion .animate-pulse,
+html.reduced-motion .animate-ping,
+html.reduced-motion .animate-spin,
+html.reduced-motion .animate-bounce {
   animation: none;
 }
 
@@ -342,9 +357,15 @@ html.reduced-motion .cc-shimmer {
 }
 
 /*
- * Projector mode. Every Tailwind size is rem-based, so bumping the root size scales the whole UI
- * (type, panel padding, header height) together; the shell also carries `.projector` so
- * components can opt into extra emphasis.
+ * Projector mode. Bumping the root size scales everything Tailwind writes in rem: panel padding,
+ * header height, gaps, `text-xs`/`text-sm`/`text-2xl`. The type scale, though, is written as
+ * arbitrary pixel utilities (`text-[11px]` and eight siblings), which Tailwind emits as literal
+ * pixels that no root size can reach, so the labels, prices and store rows used to stay put while
+ * the chrome around them grew. The block below restates those nine sizes in rem at the 16 px base,
+ * so they are byte-for-byte the same when the mode is off and scale with everything else when it
+ * is on. `--cc-scale` carries the same ratio for components that want to size something by hand.
+ *
+ * Adding a new `text-[Npx]` anywhere in `src/` means adding its rem twin here (N / 16 rem).
  */
 html.projector {
   font-size: 18px;
@@ -359,6 +380,36 @@ html.projector {
   html.projector {
     font-size: 20px;
   }
+}
+html.projector .text-\[9px\] {
+  font-size: 0.5625rem;
+}
+html.projector .text-\[10px\] {
+  font-size: 0.625rem;
+}
+html.projector .text-\[11px\] {
+  font-size: 0.6875rem;
+}
+html.projector .text-\[12px\] {
+  font-size: 0.75rem;
+}
+html.projector .text-\[12\.5px\] {
+  font-size: 0.78125rem;
+}
+html.projector .text-\[13px\] {
+  font-size: 0.8125rem;
+}
+html.projector .text-\[14px\] {
+  font-size: 0.875rem;
+}
+html.projector .text-\[22px\] {
+  font-size: 1.375rem;
+}
+html.projector .text-\[40px\] {
+  font-size: 2.5rem;
+}
+html.projector .text-\[44px\] {
+  font-size: 2.75rem;
 }
 
 /*

@@ -51,6 +51,13 @@ export function AuthSheet() {
   // Signing in from anywhere (another tab, the callback bounce) closes the sheet.
   const signedIn = auth.status === 'signed-in'
 
+  // `open` has to be cleared, not just masked: the email-confirmation path leaves the sheet open and
+  // returns before `onDone`, so a sheet that only hid behind `signedIn` would pop itself back up the
+  // next time the player signed out. Adjusting during render rather than in an effect, because the
+  // session can arrive from another tab or the `/auth/callback` bounce: React re-runs this component
+  // before anything paints, so the sheet never flashes.
+  if (open && signedIn) setOpen(false)
+
   return (
     <ModalBase
       open={open && !signedIn}

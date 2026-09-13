@@ -10,7 +10,7 @@ import { Crown, LogIn, TriangleAlert, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { openAuthSheet } from '@/components/auth/useAuth'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
-import { ModalButton } from '@/components/overlays/ModalBase'
+import { ModalButton, useReducedMotionPref } from '@/components/overlays/ModalBase'
 import { formatCps, formatNum } from '@/game/format'
 import type { LeaderboardEntry } from '@/server/leaderboard'
 
@@ -45,6 +45,9 @@ const RANK_TONE: Record<number, string> = {
 
 export function LeaderboardTable({ entries, loading, error, available, currentUserId, guest, you }: LeaderboardTableProps) {
   const onBoard = currentUserId !== null && entries.some((e) => e.userId === currentUserId)
+  // /leaderboard is not inside GameShell, so `html.reduced-motion` never lands here and the CSS
+  // safety net only catches the OS setting. The in-game toggle has to be read in JS.
+  const reduced = useReducedMotionPref()
   return (
     <div className="flex flex-col gap-3">
       <div className="overflow-x-auto rounded-xl border border-charcoal-400 bg-charcoal-700/40">
@@ -73,7 +76,7 @@ export function LeaderboardTable({ entries, loading, error, available, currentUs
           </thead>
           <tbody className="divide-y divide-charcoal-400/50">
             {loading && entries.length === 0 ? (
-              Array.from({ length: 8 }, (_, i) => <SkeletonRow key={i} />)
+              Array.from({ length: 8 }, (_, i) => <SkeletonRow key={i} reduced={reduced} />)
             ) : entries.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-10 text-center text-sm text-smoke-600">
@@ -190,12 +193,12 @@ function YouTableRow({ you }: { you: YouRow }) {
   )
 }
 
-function SkeletonRow() {
+function SkeletonRow({ reduced }: { reduced: boolean }) {
   return (
     <tr aria-hidden="true">
       {[10, 40, 16, 22, 16, 10].map((w, i) => (
         <td key={i} className={CELL}>
-          <span className="block h-3 animate-pulse rounded bg-charcoal-400/60" style={{ width: `${w}%`, minWidth: 24, marginLeft: i === 0 || i >= 2 ? 'auto' : undefined }} />
+          <span className={cn('block h-3 rounded bg-charcoal-400/60', !reduced && 'animate-pulse')} style={{ width: `${w}%`, minWidth: 24, marginLeft: i === 0 || i >= 2 ? 'auto' : undefined }} />
         </td>
       ))}
     </tr>

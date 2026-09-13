@@ -114,7 +114,9 @@ function LineText({ line }: { line: Line }) {
         className="rounded-sm text-smoke-100 hover:text-electric-400 hover:underline"
         title={`Open ${line.author ?? 'post'}`}
       >
-        <span className="font-semibold text-sapphire-700 brightness-150">{line.author}:</span> {line.text}
+        {/* sapphire-700 brightened is rgb(35,68,255), 2.57:1 on the strip; sapphire-300 is the readable
+            tint at 5.50:1, and dropping the filter takes a compositing layer off the marquee. */}
+        <span className="font-semibold text-sapphire-300">{line.author}:</span> {line.text}
       </a>
     )
   }
@@ -127,7 +129,9 @@ function Track({ lines, hidden }: { lines: Line[]; hidden?: boolean }) {
       {lines.map((l) => (
         <Fragment key={l.key}>
           <LineText line={l} />
-          <span className="mx-4 text-sapphire-700" aria-hidden="true">
+          {/* Sapphire on charcoal is 1.84:1, so the separators were invisible; smoke-800 reads as
+              punctuation (5.06:1) without competing with the line it separates. */}
+          <span className="mx-4 text-smoke-800" aria-hidden="true">
             ◆
           </span>
         </Fragment>

@@ -60,7 +60,7 @@ function Intro() {
       <div className="flex items-start gap-4">
         <span
           aria-hidden="true"
-          className="flex size-14 shrink-0 items-center justify-center rounded-comfy border-2 border-charcoal-400 bg-charcoal-700 text-sapphire-700 shadow-[0_3px_0_#0e0e0f]"
+          className="flex size-14 shrink-0 items-center justify-center rounded-comfy border-2 border-charcoal-400 bg-charcoal-700 text-sapphire-300 shadow-[0_3px_0_#0e0e0f]"
         >
           <Workflow size={28} />
         </span>

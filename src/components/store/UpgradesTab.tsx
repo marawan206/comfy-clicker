@@ -37,7 +37,9 @@ export function UpgradesTab() {
   }, [ids, store.catalog])
 
   return (
-    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" role="list" aria-label="Upgrades">
+    // The rows carry the real list semantics below (`ul`/`li`, as in ModelsTab); a `role="list"` on
+    // the scroller owned no `listitem`, so a screen reader read a full panel as "Upgrades, 0 items".
+    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
       {groups.length === 0 && (
         <p className="px-2 py-8 text-center text-xs text-smoke-700">
           Nothing to install yet. Keep clicking; the Manager will find something.
@@ -49,10 +51,10 @@ export function UpgradesTab() {
             <h3 className="text-[11px] font-semibold tracking-[0.08em] text-smoke-600 uppercase">{group.label}</h3>
             <span className="truncate text-[10px] text-smoke-800">{group.blurb}</span>
           </header>
-          <div className="pt-1.5">
+          <ul className="pt-1.5">
             <AnimatePresence initial={false}>
               {group.ids.map((id) => (
-                <motion.div
+                <motion.li
                   key={id}
                   className="cv-auto"
                   initial={reduced ? false : { opacity: 0, y: 6 }}
@@ -61,10 +63,10 @@ export function UpgradesTab() {
                   transition={{ duration: reduced ? 0 : 0.18, ease: 'easeOut' }}
                 >
                   <UpgradeRow id={id} />
-                </motion.div>
+                </motion.li>
               ))}
             </AnimatePresence>
-          </div>
+          </ul>
         </section>
       ))}
     </div>
