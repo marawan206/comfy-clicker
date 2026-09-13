@@ -11,6 +11,8 @@ import { HASHTAGS } from '@/data/hashtags'
 
 export const FEED_TTL_MS = 15 * 60_000
 export const FEED_LIMIT = 120
+/** Rows older than this are pruned after every refresh; reads only ever look at the newest FEED_LIMIT anyway. */
+export const FEED_RETENTION_DAYS = 30
 const META_KEY = 'feed'
 
 export interface FeedSnapshot {
@@ -90,6 +92,24 @@ async function persist(result: FeedResult): Promise<void> {
   }
   if (result.trending.length) await db.from('trending_tags').insert({ tags: result.trending, computed_at: result.fetchedAt })
   await db.from('feed_meta').upsert({ key: META_KEY, updated_at: result.fetchedAt, errors: result.errors }, { onConflict: 'key' })
+  await prune(db)
+}
+
+/**
+ * Retention: drop feed rows older than FEED_RETENTION_DAYS and every trending snapshot but the
+ * newest 200. The curated founder posts are re-seeded on read, so they never disappear from the
+ * feed even when their rows age out. Failures are recorded in memory and never block the refresh.
+ */
+async function prune(db: NonNullable<ReturnType<typeof getSupabaseAdminClient>>): Promise<void> {
+  const cutoff = new Date(Date.now() - FEED_RETENTION_DAYS * 86_400_000).toISOString()
+  const items = await db.from('feed_items').delete().lt('date', cutoff)
+  if (items.error) memory.errors.prune = items.error.message
+  const keep = await db.from('trending_tags').select('id').order('computed_at', { ascending: false }).range(200, 200)
+  const oldest = keep.data?.[0]?.id
+  if (oldest !== undefined) {
+    const tags = await db.from('trending_tags').delete().lte('id', oldest)
+    if (tags.error) memory.errors.prune = tags.error.message
+  }
 }
 
 function rowToItem(row: {
