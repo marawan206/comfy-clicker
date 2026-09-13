@@ -208,12 +208,20 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
           </span>
         </SectionLabel>
         <p>
-          <span className="font-semibold text-smoke-100">Comfy Clicker</span>, an incremental game for ComfyUI people. Click Generate, buy real GPUs, quantize
-          everything, go viral. Built with Next.js, Motion and Kokonut UI; art generated on Comfy Cloud.
+          <span className="font-semibold text-smoke-100">Comfy Clicker</span>, made by{' '}
+          <a
+            href="https://github.com/marawan206"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-electric-400 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
+          >
+            marawan206
+          </a>
+          . Click Generate, buy real GPUs, quantize everything, go viral. Art was generated using Comfy Cloud.
         </p>
         <p className="mt-1">
-          A fan project. Not affiliated with or endorsed by Comfy Org, NVIDIA, AMD, Apple, AWS, Azure or Runpod. Hardware names are used
-          for flavour; prices are credits, and credits aren&rsquo;t real.
+          Not affiliated with or endorsed by Comfy Org, NVIDIA, AMD, Apple, AWS, Azure or Runpod. Hardware names are used for flavour;
+          prices are credits, and credits aren&rsquo;t real.
         </p>
       </section>
     </div>
