@@ -15,6 +15,9 @@ export default defineConfig({
           environment: 'node',
           include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
           exclude: [...configDefaults.exclude, 'src/components/**'],
+          // The pacing suite replays a seven-day simulation per case. That is a second or two on a
+          // laptop and four times that on a shared CI runner, so the 5 s default flakes there.
+          testTimeout: 30_000,
         },
       },
       {
