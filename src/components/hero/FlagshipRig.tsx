@@ -1,15 +1,16 @@
 'use client'
 /**
  * The best owned unit (derived.bestHardwareId): its art, VRAM, speed tier, which of the owned
- * models it can run and at what precision, and the next card worth saving for because it would
- * unlock a model at native precision.
+ * models it can run and at what precision.
+ *
+ * What to buy next is not this panel's job: the "Next up" panel owns that line, and two surfaces
+ * disagreeing about the next unlock is worse than one surface saying it.
  */
 import { useMemo } from 'react'
-import { Cpu, Gauge, MemoryStick, Sparkles } from 'lucide-react'
+import { Cpu, Gauge, MemoryStick } from 'lucide-react'
 import { useGame, useGameStore } from '@/state/useGame'
 import { buildIndex } from '@/game/catalog'
-import { cheapestPurchasable, runnableHardware, runsOn } from '@/game/hardware'
-import { isUnlocked } from '@/game/unlock'
+import { runsOn } from '@/game/hardware'
 import type { Derived, GameState, ModelDef, Precision } from '@/game/types'
 import type { Catalog } from '@/data'
 import { Art } from '@/components/common/Art'
@@ -39,7 +40,6 @@ interface RigView {
   moreChips: number
   /** Owned, set-up models the flagship cannot run at any unlocked precision. */
   cannotRun: number
-  nextHint: string
 }
 
 function bestPrecisionOn(model: ModelDef, unlocked: readonly Precision[], hw: Parameters<typeof runsOn>[2], derived: Derived, catalog: Catalog): Precision | null {
@@ -48,25 +48,6 @@ function bestPrecisionOn(model: ModelDef, unlocked: readonly Precision[], hw: Pa
     if (runsOn(model, p, hw, derived, catalog)) return p
   }
   return null
-}
-
-function nextUnlockHint(state: GameState, derived: Derived, catalog: Catalog): string {
-  let bestHw: { name: string; cost: number } | null = null
-  let bestModel: string | null = null
-  for (const model of catalog.models) {
-    if (model.api) continue
-    const owned = state.models[model.id] !== undefined
-    if (!owned && !isUnlocked(model.unlock, state, derived, catalog)) continue
-    if (runnableHardware(model, 'native', state, derived, catalog).length > 0) continue
-    const hw = cheapestPurchasable(model, 'native', derived, catalog)
-    if (!hw) continue
-    if (!bestHw || hw.baseCost < bestHw.cost) {
-      bestHw = { name: hw.name, cost: hw.baseCost }
-      bestModel = model.name
-    }
-  }
-  if (!bestHw || !bestModel) return 'Every model you can see runs native on this rig.'
-  return `Next: ${bestHw.name} unlocks ${bestModel} native`
 }
 
 function buildView(state: GameState, derived: Derived, catalog: Catalog): RigView | null {
@@ -104,7 +85,6 @@ function buildView(state: GameState, derived: Derived, catalog: Catalog): RigVie
     chips: chips.slice(0, MAX_CHIPS),
     moreChips: Math.max(0, chips.length - MAX_CHIPS),
     cannotRun,
-    nextHint: nextUnlockHint(state, derived, catalog),
   }
 }
 
@@ -204,11 +184,6 @@ export function FlagshipRig() {
               </p>
             )}
           </div>
-
-          <p className="flex items-start gap-1.5 rounded-lg border border-charcoal-400 bg-charcoal-700 px-2.5 py-1.5 text-xs text-smoke-600">
-            <Sparkles size={13} className="mt-0.5 shrink-0 text-electric-400" aria-hidden="true" />
-            <span>{view.nextHint}</span>
-          </p>
         </>
       ) : (
         <p className="flex items-center gap-2 text-xs text-smoke-600">

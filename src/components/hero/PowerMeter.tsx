@@ -9,6 +9,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useGame, useGameShallow } from '@/state/useGame'
 import { formatWatts } from '@/game/format'
 import { Panel } from '@/components/common/Panel'
+import { Tooltip } from '@/components/common/Tooltip'
+import { powerTip } from '@/components/common/tooltipCopy'
 import { openStoreTab } from '@/components/store/storeHooks'
 import { cn } from '@/lib/utils'
 
@@ -56,7 +58,11 @@ interface PowerSlice {
 }
 
 function usePower(): PowerSlice {
-  return useGameShallow((_s, d) => ({ draw: d.powerDraw, budget: d.powerBudget, throttled: d.throttled }))
+  return useGameShallow((_s, d) => ({
+    draw: d.powerDraw,
+    budget: d.powerBudget,
+    throttled: d.throttled,
+  }))
 }
 
 export function PowerMeter({ compact = false }: PowerMeterProps) {
@@ -71,22 +77,23 @@ export function PowerMeter({ compact = false }: PowerMeterProps) {
 
   if (compact) {
     return (
-      <button
-        type="button"
-        onClick={() => openStoreTab('power')}
-        aria-label={`Power ${label}. ${statusWord(load, throttled)}. Open the power store`}
-        title={`${statusWord(load, throttled)} · ${label}`}
-        className={cn(
-          'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-charcoal-400 bg-charcoal-700 px-2.5 text-xs font-semibold tabular-nums text-smoke-100 outline-none hover:border-charcoal-300 focus-visible:ring-2 focus-visible:ring-electric-400',
-          throttled && 'border-slot-vae/60',
-        )}
-      >
-        <Zap size={14} style={{ color }} fill={throttled ? color : 'none'} aria-hidden="true" />
-        <span>
-          {formatWatts(draw).replace(/ (k|M|G)?W$/, '')}
-          <span className="text-smoke-600">/{formatWatts(budget)}</span>
-        </span>
-      </button>
+      <Tooltip {...powerTip({ draw, budget, throttled })} side="bottom">
+        <button
+          type="button"
+          onClick={() => openStoreTab('power')}
+          aria-label={`Power ${label}. ${statusWord(load, throttled)}. Open the power store`}
+          className={cn(
+            'inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-charcoal-400 bg-charcoal-700 px-2.5 text-xs font-semibold tabular-nums text-smoke-100 outline-none hover:border-charcoal-300 focus-visible:ring-2 focus-visible:ring-electric-400',
+            throttled && 'border-slot-vae/60',
+          )}
+        >
+          <Zap size={14} style={{ color }} fill={throttled ? color : 'none'} aria-hidden="true" />
+          <span>
+            {formatWatts(draw).replace(/ (k|M|G)?W$/, '')}
+            <span className="text-smoke-600">/{formatWatts(budget)}</span>
+          </span>
+        </button>
+      </Tooltip>
     )
   }
 
@@ -95,10 +102,12 @@ export function PowerMeter({ compact = false }: PowerMeterProps) {
       stripe="vae"
       title="Power"
       right={
-        <span className="flex items-center gap-1.5 tabular-nums text-smoke-100">
-          <Zap size={12} style={{ color }} fill={throttled ? color : 'none'} aria-hidden="true" />
-          {label}
-        </span>
+        <Tooltip {...powerTip({ draw, budget, throttled })} side="left">
+          <span className="flex items-center gap-1.5 tabular-nums text-smoke-100">
+            <Zap size={12} style={{ color }} fill={throttled ? color : 'none'} aria-hidden="true" />
+            {label}
+          </span>
+        </Tooltip>
       }
       bodyClassName="flex flex-col gap-3 p-4"
     >

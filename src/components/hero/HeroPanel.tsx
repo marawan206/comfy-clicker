@@ -2,13 +2,16 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { MousePointerClick } from 'lucide-react'
-import { useGame } from '@/state/useGame'
-import { formatNum } from '@/game/format'
+import { useGame, useGameShallow } from '@/state/useGame'
+import { formatCps, formatNum } from '@/game/format'
 import { CLICK_LINES } from '@/data/flavor'
 import { Panel } from '@/components/common/Panel'
+import { Tooltip } from '@/components/common/Tooltip'
+import { incomeTip } from '@/components/common/tooltipCopy'
+import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { CreditsCounter } from '@/components/hero/CreditsCounter'
-import { GenerateButton } from '@/components/hero/GenerateButton'
 import { ComboMeter } from '@/components/hero/ComboMeter'
+import { GenerateButton, formatClickValue } from '@/components/hero/GenerateButton'
 
 const FLAVOR_ROTATE_MS = 4200
 
@@ -42,6 +45,27 @@ function FlavorLine({ reduced }: { reduced: boolean }) {
 }
 
 /**
+ * The two numbers a new player needs in one line: what a click pays and what the rack pays while
+ * they do nothing. Both come from `derived`, so they already carry every multiplier.
+ */
+function RateLine() {
+  const clickValue = useGame((_s, d) => d.clickValue)
+  const income = useGameShallow((_s, d) => ({ cps: d.cps, throttled: d.throttled, draw: d.powerDraw, budget: d.powerBudget }))
+  return (
+    <Tooltip {...incomeTip(income)} side="bottom">
+      <p className="flex items-center gap-1.5 text-xs font-semibold tabular-nums text-smoke-600">
+        <CreditsIcon size={12} className="shrink-0 text-credits" aria-hidden="true" />
+        <span className="text-credits">+{formatClickValue(clickValue)}</span>
+        <span>per click</span>
+        <span className="h-1 w-1 rounded-full bg-charcoal-300" aria-hidden="true" />
+        <span className={income.throttled ? 'text-slot-vae' : 'text-credits'}>+{formatCps(income.cps)}</span>
+        <span>idle</span>
+      </p>
+    </Tooltip>
+  )
+}
+
+/**
  * Left-column hero: the big credits odometer, the logo click target with its aura and pill,
  * the combo pill riding its shoulder, and a rotating ComfyUI console line.
  */
@@ -62,13 +86,16 @@ export function HeroPanel() {
         </span>
       }
       className="relative overflow-hidden"
-      bodyClassName="relative flex flex-col items-center gap-5 px-4 pb-5 pt-6"
+      bodyClassName="relative flex flex-col items-center gap-4 px-4 pb-4 pt-5"
     >
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,rgba(23,45,215,0.22),transparent_70%)]"
       />
-      <CreditsCounter size="lg" className="relative" />
+      <div className="relative flex flex-col items-center gap-1.5">
+        <CreditsCounter size="lg" showCps={false} />
+        <RateLine />
+      </div>
       <div className="relative">
         <GenerateButton />
         <ComboMeter className="absolute -right-6 -top-3" />

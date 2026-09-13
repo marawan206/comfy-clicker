@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils'
 
 /** Two clicks belong to the same combo when no more than this many ms pass between them. */
 export const COMBO_GAP_MS = 400
+/** How long the pill reads `MAX` after the engine refuses a click for going over the rate cap. */
+const MAX_FLASH_MS = 600
 /** Show the counter from the first tier; each tier restyles the pill. */
 export const COMBO_TIERS = [10, 25, 50] as const
 
@@ -20,17 +22,31 @@ function tierOf(n: number): number {
  * Counts rapid clicks (≤ 400 ms apart) and shows "combo ×N" once a streak reaches 10; the pill
  * turns amber at 25 and shimmers electric at 50. The thin bar underneath drains over the gap
  * window so the player can see how long they have to keep the streak alive.
+ *
+ * The same pill is where a refused click surfaces: over fifteen in a second the engine stops
+ * paying, and the pill says `MAX` for 600 ms instead of a combo. Nothing else changes, because
+ * nothing else happened: the click simply did not count.
  */
 export function ComboMeter({ className }: { className?: string }) {
   const [combo, setCombo] = useState(0)
+  const [capped, setCapped] = useState(false)
   const comboRef = useRef(0)
   const lastAt = useRef(0)
   const timer = useRef<number>(0)
+  const capTimer = useRef<number>(0)
   const reducedSetting = useGame((s) => s.settings.reducedMotion)
   const prefersReduced = useReducedMotion()
   const reduced = reducedSetting || prefersReduced === true
 
   useGameEvents((e) => {
+    if (e.type === 'clickBlocked') {
+      // Only the rate cap belongs here; a cadence lockout is the Generate pill's story to tell.
+      if (e.reason !== 'rate') return
+      setCapped(true)
+      window.clearTimeout(capTimer.current)
+      capTimer.current = window.setTimeout(() => setCapped(false), MAX_FLASH_MS)
+      return
+    }
     if (e.type !== 'click') return
     const now = performance.now()
     const next = now - lastAt.current <= COMBO_GAP_MS ? comboRef.current + 1 : 1
@@ -45,9 +61,15 @@ export function ComboMeter({ className }: { className?: string }) {
     }, COMBO_GAP_MS)
   })
 
-  useEffect(() => () => window.clearTimeout(timer.current), [])
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current)
+      window.clearTimeout(capTimer.current)
+    },
+    [],
+  )
 
-  const visible = combo >= COMBO_TIERS[0]
+  const visible = capped || combo >= COMBO_TIERS[0]
   const tier = tierOf(combo)
   const milestone = (COMBO_TIERS as readonly number[]).includes(combo)
 
@@ -64,27 +86,28 @@ export function ComboMeter({ className }: { className?: string }) {
             className="flex flex-col items-center gap-1"
           >
             <motion.div
-              key={milestone ? `pop-${combo}` : 'steady'}
+              key={capped ? 'capped' : milestone ? `pop-${combo}` : 'steady'}
               initial={milestone && !reduced ? { scale: 1.35 } : false}
               animate={{ scale: 1 }}
               transition={{ type: 'spring', stiffness: 600, damping: 18 }}
               className={cn(
                 'flex items-center gap-1.5 rounded-full border-2 px-3 py-1 text-sm font-extrabold tracking-tight tabular-nums shadow-[0_3px_0_#0e0e0f]',
-                tier >= 3
-                  ? 'border-electric-400 bg-charcoal-700 text-electric-400'
-                  : tier >= 2
-                    ? 'border-credits/70 bg-charcoal-700 text-credits'
-                    : 'border-charcoal-300 bg-charcoal-700 text-smoke-100',
+                capped
+                  ? 'border-slot-vae bg-charcoal-700 text-slot-vae'
+                  : tier >= 3
+                    ? 'border-electric-400 bg-charcoal-700 text-electric-400'
+                    : tier >= 2
+                      ? 'border-credits/70 bg-charcoal-700 text-credits'
+                      : 'border-charcoal-300 bg-charcoal-700 text-smoke-100',
               )}
             >
-              <Flame size={14} className={tier >= 2 ? 'text-credits' : 'text-smoke-600'} aria-hidden="true" />
+              <Flame size={14} className={capped ? 'text-slot-vae' : tier >= 2 ? 'text-credits' : 'text-smoke-600'} aria-hidden="true" />
               <span
                 className={cn(
-                  tier >= 3 &&
-                    'cc-shimmer bg-gradient-to-r from-electric-400 via-smoke-100 to-electric-400 bg-clip-text text-transparent',
+                  !capped && tier >= 3 && 'cc-shimmer bg-gradient-to-r from-electric-400 via-smoke-100 to-electric-400 bg-clip-text text-transparent',
                 )}
               >
-                combo ×{combo}
+                {capped ? 'MAX' : `combo ×${combo}`}
               </span>
             </motion.div>
             <span className="h-0.5 w-16 overflow-hidden rounded-full bg-charcoal-400" aria-hidden="true">
