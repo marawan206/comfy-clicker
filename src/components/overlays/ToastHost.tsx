@@ -10,6 +10,8 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useReducedMotionPref } from '@/components/overlays/ModalBase'
 import { dismissToast, TOAST_MAX_VISIBLE, useToasts, type Toast, type ToastTone } from '@/components/overlays/useToasts'
+import { cueForToast } from '@/audio/sfxMap'
+import { playCue } from '@/audio/sfxEngine'
 
 const STRIPE: Record<ToastTone, string> = {
   default: 'border-l-charcoal-300',
@@ -51,6 +53,13 @@ const ToastCard = memo(function ToastCard({ toast, reduced }: { toast: Toast; re
   const remaining = useRef(toast.durationMs)
   const startedAt = useRef(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // One cue per card, when it becomes visible. `sound: false` is how an engine-event toast stays
+  // quiet: the event itself already sounded.
+  useEffect(() => {
+    playCue(toast.sound === false ? false : (toast.sound ?? cueForToast(toast.tone)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one cue per card, keyed by its id
+  }, [toast.id])
 
   // Auto-dismiss runs from the moment the card is visible; hovering pauses it.
   useEffect(() => {
@@ -106,6 +115,18 @@ const ToastCard = memo(function ToastCard({ toast, reduced }: { toast: Toast; re
           <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs leading-snug text-smoke-600 [&_svg]:inline-block [&_svg]:shrink-0">
             {toast.description}
           </p>
+        ) : null}
+        {toast.action ? (
+          <button
+            type="button"
+            onClick={() => {
+              toast.action?.onClick()
+              dismissToast(toast.id)
+            }}
+            className="mt-1.5 text-xs font-semibold text-electric-400 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
+          >
+            {toast.action.label}
+          </button>
         ) : null}
       </div>
       <button

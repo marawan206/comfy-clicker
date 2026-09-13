@@ -6,6 +6,7 @@
  * The rest wait in order and slide in as earlier ones dismiss.
  */
 import { useSyncExternalStore, type ReactNode } from 'react'
+import type { Cue } from '@/audio/sfxMap'
 
 export const TOAST_MAX_VISIBLE = 4
 export const TOAST_DURATION_MS = 5_000
@@ -24,6 +25,14 @@ export interface ToastOptions {
   durationMs?: number
   /** Dedupe key: a new toast with the same key replaces the earlier one instead of stacking. */
   key?: string
+  /**
+   * Sound played when the card appears. Omit for the tone's default cue; pass `false` for silence.
+   * Every toast raised from an engine event must pass `false`, because the event already sounded
+   * through `useSfx` and a double play is the difference between juice and noise.
+   */
+  sound?: Cue | false
+  /** One inline action rendered under the description, e.g. "Post now" on a week rollover. */
+  action?: { label: string; onClick: () => void }
 }
 
 export interface Toast {
@@ -35,6 +44,8 @@ export interface Toast {
   tone: ToastTone
   durationMs: number
   key?: string
+  sound?: Cue | false
+  action?: { label: string; onClick: () => void }
   createdAt: number
 }
 
@@ -62,6 +73,8 @@ export function toast(message: string, opts: ToastOptions = {}): number {
   if (opts.description !== undefined) item.description = opts.description
   if (opts.icon !== undefined) item.icon = opts.icon
   if (opts.key !== undefined) item.key = opts.key
+  if (opts.sound !== undefined) item.sound = opts.sound
+  if (opts.action !== undefined) item.action = opts.action
   toasts = opts.key ? [...toasts.filter((t) => t.key !== opts.key), item] : [...toasts, item]
   emit()
   return item.id
