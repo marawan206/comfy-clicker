@@ -52,6 +52,12 @@ export interface CloudMergeRequest {
 
 /** `window` event carrying a `CloudMergeRequest` in `detail`. */
 export const CLOUD_MERGE_EVENT = 'comfy:cloud-merge'
+/**
+ * `window` event fired with a boolean `detail` whenever the sign-in decision flips: true right
+ * after the upload / adopt / merge question is settled, false when the session ends. Anything that
+ * must not read the state until the cloud save has had its say (the welcome gift) waits for it.
+ */
+export const CLOUD_DECIDED_EVENT = 'comfy:cloud-decided'
 /** Upload cadence while the save is dirty. */
 export const CLOUD_SYNC_MS = 60_000
 /** localStorage receipt of the last row this device wrote: `{ userId, savedAt }`. */
@@ -89,6 +95,25 @@ export function subscribeCloudSync(listener: Listener): () => void {
 /** A merge question nobody has answered yet (for a modal that mounts after the event fired). */
 export function getPendingMerge(): CloudMergeRequest | null {
   return pendingMerge
+}
+
+let cloudDecided = false
+
+/**
+ * True once this sign-in has decided what happens to the local run (uploaded it, adopted the cloud
+ * save or had the merge question answered). False while signed out or still deciding: the state a
+ * component reads before that can be a throwaway run the cloud save is about to replace.
+ */
+export function getCloudDecided(): boolean {
+  return cloudDecided
+}
+
+function setCloudDecided(next: boolean): void {
+  if (cloudDecided === next) return
+  cloudDecided = next
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<boolean>(CLOUD_DECIDED_EVENT, { detail: next }))
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +220,7 @@ function endSession(ctx: Ctx): void {
   if (!s) return
   if (s.timer !== null) window.clearInterval(s.timer)
   ctx.session = null
+  setCloudDecided(false)
   if (pendingMerge) {
     pendingMerge = null
     for (const l of listeners) l()
@@ -260,6 +286,7 @@ async function beginSession(ctx: Ctx, userId: string): Promise<void> {
   }
   if (ctx.session !== session) return
   session.decided = true
+  setCloudDecided(true)
   schedule(ctx, session)
 }
 
@@ -432,7 +459,12 @@ function finite(n: number): number {
   return Number.isFinite(n) && n >= 0 ? n : 0
 }
 
-/** Cheap change detector: income, play time and purchase counts move on anything worth uploading. */
+/**
+ * Cheap change detector: income, play time and purchase counts move on anything worth uploading.
+ * The flag count is in there because raising a flag can be the only thing that changed (declining
+ * the welcome gift, an easter egg), and without it that answer would never reach the cloud and the
+ * next device would ask again.
+ */
 function fingerprint(s: GameState): string {
   return [
     Math.floor(s.lifetimeCredits),
@@ -446,6 +478,7 @@ function fingerprint(s: GameState): string {
     s.daily.lastClaimDay ?? '',
     s.hubRep,
     s.stats.hubPublished,
+    Object.keys(s.flags).length,
   ].join('|')
 }
 

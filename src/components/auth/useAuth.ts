@@ -10,6 +10,8 @@
 import { useSyncExternalStore } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { OPEN_MODAL_EVENT } from '@/components/overlays/ModalBase'
+import { toast } from '@/components/overlays/useToasts'
+import { mapProfileError, normalizeHandle, validateHandle } from '@/lib/handle'
 import { getSupabaseBrowserClient, type SupabaseBrowserClient } from '@/server/supabase/client'
 import { getCloudSyncSnapshot, subscribeCloudSync, type CloudSyncStatus } from '@/state/persistence'
 
@@ -20,6 +22,12 @@ export interface AuthState {
   user: User | null
   /** `profiles.handle` once loaded; null while guest or before the lookup returns. */
   handle: string | null
+  /**
+   * `profiles.handle_changed_at`: null means the handle is still the one sign-up handed out.
+   * The welcome gift reads it, because a handle somebody renamed themselves into is not evidence
+   * of anything (see FounderGiftModal).
+   */
+  handleChangedAt: string | null
 }
 
 export type AuthResult = { ok: true; message?: string } | { ok: false; error: string }
@@ -35,14 +43,25 @@ export function openAuthSheet(tab: 'sign-in' | 'sign-up' = 'sign-in'): void {
 }
 export const AUTH_TAB_EVENT = 'comfy:auth-tab'
 
+/** Fired with the new handle in `detail` after a successful rename. */
+export const HANDLE_CHANGED_EVENT = 'comfy:handle-changed'
+
+/**
+ * The handle asked for on the create-account form, parked until the account actually exists.
+ * Confirming the email can happen days later in another tab, and the 0004 trigger silently falls
+ * back to `comfy-xxxxxx` when the name was taken in between, so this is the only way to tell the
+ * player their pick did not land.
+ */
+const WANTED_HANDLE_KEY = 'comfy-clicker:wanted-handle'
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 type Listener = () => void
 
 const listeners = new Set<Listener>()
-let state: AuthState = { status: 'loading', user: null, handle: null }
-const SERVER_STATE: AuthState = { status: 'loading', user: null, handle: null }
+let state: AuthState = { status: 'loading', user: null, handle: null, handleChangedAt: null }
+const SERVER_STATE: AuthState = { status: 'loading', user: null, handle: null, handleChangedAt: null }
 let booted = false
 
 function setState(next: Partial<AuthState>): void {
@@ -68,25 +87,77 @@ function boot(): void {
   booted = true
   const supabase = getSupabaseBrowserClient()
   if (!supabase) {
-    setState({ status: 'unavailable', user: null, handle: null })
+    setState({ status: 'unavailable', user: null, handle: null, handleChangedAt: null })
     return
   }
   // INITIAL_SESSION fires synchronously-ish on subscribe with the cookie session (or null).
   supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT' || !session) {
-      setState({ status: 'guest', user: null, handle: null })
+      setState({ status: 'guest', user: null, handle: null, handleChangedAt: null })
       return
     }
     const sameUser = state.user?.id === session.user.id
-    setState({ status: 'signed-in', user: session.user, handle: sameUser ? state.handle : null })
+    setState({
+      status: 'signed-in',
+      user: session.user,
+      handle: sameUser ? state.handle : null,
+      handleChangedAt: sameUser ? state.handleChangedAt : null,
+    })
     if (!sameUser || !state.handle) void loadHandle(supabase, session)
   })
 }
 
 async function loadHandle(supabase: SupabaseBrowserClient, session: Session): Promise<void> {
-  const { data, error } = await supabase.from('profiles').select('handle').eq('id', session.user.id).maybeSingle()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('handle, handle_changed_at')
+    .eq('id', session.user.id)
+    .maybeSingle()
   if (error || !data) return
-  if (state.user?.id === session.user.id) setState({ handle: data.handle })
+  if (state.user?.id !== session.user.id) return
+  setState({ handle: data.handle, handleChangedAt: data.handle_changed_at })
+  reportWantedHandle(data.handle, data.handle_changed_at)
+}
+
+/**
+ * One toast when the sign-up handle did not survive: the name was taken between the form and the
+ * confirmation click, so the trigger handed out the generated one instead.
+ */
+function reportWantedHandle(actual: string, changedAt: string | null): void {
+  const wanted = readWanted()
+  if (!wanted) return
+  clearWanted()
+  if (wanted === actual || changedAt !== null) return
+  toast('That username was gone', {
+    title: 'Account',
+    description: `@${wanted} was claimed while you confirmed the email, so you are @${actual} for now. Change username is in the account menu.`,
+    tone: 'sapphire',
+    key: 'handle',
+  })
+}
+
+function readWanted(): string | null {
+  try {
+    return window.localStorage.getItem(WANTED_HANDLE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function rememberWanted(handle: string): void {
+  try {
+    window.localStorage.setItem(WANTED_HANDLE_KEY, handle)
+  } catch {
+    /* storage unavailable: the player just does not get the heads-up */
+  }
+}
+
+function clearWanted(): void {
+  try {
+    window.localStorage.removeItem(WANTED_HANDLE_KEY)
+  } catch {
+    /* nothing to clean up */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -120,19 +191,34 @@ function validate(email: string, password: string, signup: boolean): string | nu
   return null
 }
 
-export async function signUp(email: string, password: string): Promise<AuthResult> {
+/**
+ * Create an account. `handle` is optional: when it is given it rides along as
+ * `raw_user_meta_data.handle` and the 0004 trigger takes it if it is still free, otherwise the
+ * player gets the generated `comfy-xxxxxx` and one toast about it on the way back in.
+ */
+export async function signUp(email: string, password: string, handle?: string): Promise<AuthResult> {
   const supabase = client()
   if (!supabase) return UNAVAILABLE
   const invalid = validate(email, password, true)
   if (invalid) return { ok: false, error: invalid }
+  const wanted = normalizeHandle(handle ?? '')
+  if (wanted) {
+    const check = validateHandle(wanted)
+    if (!check.ok) return { ok: false, error: check.error }
+  }
   const emailRedirectTo = `${siteOrigin()}/auth/callback?next=${encodeURIComponent(window.location.pathname)}`
   try {
-    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo } })
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: wanted ? { emailRedirectTo, data: { handle: wanted } } : { emailRedirectTo },
+    })
     if (error) return { ok: false, error: mapAuthError(error) }
     // Supabase returns a user with no identities when the address already has an account (anti-enumeration).
     if (data.user && data.user.identities && data.user.identities.length === 0) {
       return { ok: false, error: 'That email already has an account. Sign in instead.' }
     }
+    if (wanted) rememberWanted(wanted)
     if (!data.session) {
       return { ok: true, message: 'Check your inbox, confirm the email and this browser signs in on the way back.' }
     }
@@ -165,6 +251,41 @@ export async function signOut(): Promise<AuthResult> {
     return { ok: true }
   } catch (err) {
     return { ok: false, error: mapAuthError(err) }
+  }
+}
+
+/**
+ * Rename the signed-in player. The rules live in three places that must agree: `validateHandle`
+ * here, the `profiles` check constraint and unique index, and the 0004 before-update trigger
+ * (reserved names, one rename a day). Everything the server refuses comes back as copy from
+ * `mapProfileError`, so a race with another account reads like a sentence and not like Postgres.
+ */
+export async function updateHandle(next: string): Promise<AuthResult> {
+  const supabase = client()
+  if (!supabase) return UNAVAILABLE
+  const user = state.user
+  if (!user) return { ok: false, error: 'Sign in first. A guest run has no name to change.' }
+  const handle = normalizeHandle(next)
+  const check = validateHandle(handle)
+  if (!check.ok) return { ok: false, error: check.error }
+  if (handle === state.handle) return { ok: false, error: 'That is already your username.' }
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ handle })
+      .eq('id', user.id)
+      .select('handle, handle_changed_at')
+    if (error) return { ok: false, error: mapProfileError(error.code, error.message) }
+    // RLS refusing the row and a vanished profile both arrive as zero rows, not as an error.
+    const row = data?.[0]
+    if (!row) return { ok: false, error: mapProfileError(null, null) }
+    if (state.user?.id === user.id) setState({ handle: row.handle, handleChangedAt: row.handle_changed_at })
+    clearWanted()
+    window.dispatchEvent(new CustomEvent<string>(HANDLE_CHANGED_EVENT, { detail: row.handle }))
+    return { ok: true }
+  } catch (err) {
+    const message = typeof err === 'object' && err !== null ? String((err as { message?: unknown }).message ?? '') : String(err)
+    return { ok: false, error: mapProfileError(null, message) }
   }
 }
 

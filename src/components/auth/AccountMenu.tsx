@@ -2,14 +2,17 @@
 /**
  * Header account menu (after Kokonut's profile-dropdown, on the game's chrome): an avatar tile
  * with the handle or "Guest", a cloud-sync status dot, and a dropdown with Save to cloud now /
- * Leaderboard / Sign in / Sign out. It also mounts the AuthSheet and CloudMergeModal (the
- * header is on every route, so they are always reachable) and boots cloud sync once.
+ * Change username / the routes the header drops on a narrow screen / Sign in / Sign out. It also
+ * mounts the AuthSheet, CloudMergeModal, UsernameModal and FounderGiftModal (the header is on
+ * every route, so they are always reachable) and boots cloud sync once.
  */
 import Link from 'next/link'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ChevronDown, CloudUpload, LogIn, LogOut, Trophy, UserPlus } from 'lucide-react'
+import { AtSign, ChevronDown, CloudUpload, LogIn, LogOut, Trophy, UserPlus, Waypoints, Workflow } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AuthSheet } from '@/components/auth/AuthSheet'
+import { FounderGiftModal } from '@/components/auth/FounderGiftModal'
+import { UsernameModal } from '@/components/auth/UsernameModal'
 import { openAuthSheet, signOut, useAuth, useCloudSync } from '@/components/auth/useAuth'
 import { gradientFor } from '@/components/common/Art'
 import { CloudMergeModal } from '@/components/overlays/CloudMergeModal'
@@ -31,6 +34,7 @@ export function AccountMenu({ className }: { className?: string }) {
   const auth = useAuth()
   const sync = useCloudSync()
   const [saving, setSaving] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   useEffect(() => {
     ensureCloudSync()
   }, [])
@@ -107,10 +111,17 @@ export function AccountMenu({ className }: { className?: string }) {
           <DropdownMenuSeparator className="my-1.5 bg-charcoal-400/70" />
 
           {signedIn ? (
-            <DropdownMenuItem className={ITEM} onClick={() => void saveNow()} disabled={saving || sync === 'syncing'}>
-              <CloudUpload size={16} />
-              {saving ? 'Uploading…' : 'Save to cloud now'}
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem className={ITEM} onClick={() => void saveNow()} disabled={saving || sync === 'syncing'}>
+                <CloudUpload size={16} />
+                {saving ? 'Uploading…' : 'Save to cloud now'}
+              </DropdownMenuItem>
+              <DropdownMenuItem className={ITEM} onClick={() => setRenaming(true)}>
+                <AtSign size={16} />
+                Change username
+                {auth.handle ? <Hint>@{auth.handle}</Hint> : null}
+              </DropdownMenuItem>
+            </>
           ) : (
             <>
               <DropdownMenuItem className={ITEM} onClick={() => openAuthSheet('sign-in')}>
@@ -124,6 +135,17 @@ export function AccountMenu({ className }: { className?: string }) {
               </DropdownMenuItem>
             </>
           )}
+          {/* The header drops its Map / Hub / Board tiles below lg, so they live here on a narrow screen. */}
+          <DropdownMenuItem className={cn(ITEM, 'lg:hidden')} render={<Link href="/map" />}>
+            <Waypoints size={16} />
+            The Graph
+            <Hint>map</Hint>
+          </DropdownMenuItem>
+          <DropdownMenuItem className={cn(ITEM, 'lg:hidden')} render={<Link href="/hub" />}>
+            <Workflow size={16} />
+            ComfyHub
+            <Hint>publish</Hint>
+          </DropdownMenuItem>
           <DropdownMenuItem className={ITEM} render={<Link href="/leaderboard" />}>
             <Trophy size={16} />
             Leaderboard
@@ -144,6 +166,8 @@ export function AccountMenu({ className }: { className?: string }) {
 
       <AuthSheet />
       <CloudMergeModal />
+      <UsernameModal open={renaming} onClose={() => setRenaming(false)} current={auth.handle} />
+      <FounderGiftModal />
     </>
   )
 }

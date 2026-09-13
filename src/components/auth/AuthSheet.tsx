@@ -10,8 +10,10 @@ import { motion } from 'motion/react'
 import { Cloud, Eye, EyeOff, KeyRound, LogIn, MailCheck, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AUTH_MODAL_ID, AUTH_TAB_EVENT, signIn, signUp, useAuth } from '@/components/auth/useAuth'
+import { HANDLE_HINT } from '@/components/auth/UsernameModal'
 import { ModalBase, ModalButton, OPEN_MODAL_EVENT, useReducedMotionPref } from '@/components/overlays/ModalBase'
 import { toast } from '@/components/overlays/useToasts'
+import { normalizeHandle, validateHandle } from '@/lib/handle'
 
 type Tab = 'sign-in' | 'sign-up'
 
@@ -67,13 +69,20 @@ function AuthBody({ tab, onTab, onDone, unavailable }: { tab: Tab; onTab: (t: Ta
   const reduced = useReducedMotionPref()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [handle, setHandle] = useState('')
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const emailId = useId()
   const passwordId = useId()
+  const handleId = useId()
+  const handleHintId = useId()
   const signup = tab === 'sign-up'
+  // The field is optional, so an empty one is never wrong; anything typed must hold up.
+  const handleCheck = validateHandle(handle)
+  const handleError = handle.length > 0 && !handleCheck.ok ? handleCheck.error : null
+  const blocked = busy || unavailable || (signup && handleError !== null)
 
   const switchTab = (t: Tab) => {
     onTab(t)
@@ -87,7 +96,7 @@ function AuthBody({ tab, onTab, onDone, unavailable }: { tab: Tab; onTab: (t: Ta
     setBusy(true)
     setError(null)
     setNotice(null)
-    const result = signup ? await signUp(email, password) : await signIn(email, password)
+    const result = signup ? await signUp(email, password, handle) : await signIn(email, password)
     setBusy(false)
     if (!result.ok) {
       setError(result.error)
@@ -165,6 +174,39 @@ function AuthBody({ tab, onTab, onDone, unavailable }: { tab: Tab; onTab: (t: Ta
         />
       </div>
 
+      {signup ? (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={handleId} className="text-[11px] font-semibold uppercase tracking-[0.08em] text-smoke-600">
+            Username <span className="text-smoke-800 normal-case">(optional)</span>
+          </label>
+          <div className="relative">
+            <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm font-semibold text-smoke-800">
+              @
+            </span>
+            <input
+              id={handleId}
+              type="text"
+              name="handle"
+              value={handle}
+              onChange={(e) => setHandle(normalizeHandle(e.target.value))}
+              autoComplete="username"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={32}
+              placeholder="leave blank for comfy-xxxxxx"
+              disabled={busy || unavailable}
+              aria-describedby={handleHintId}
+              aria-invalid={handleError ? 'true' : undefined}
+              className={cn(INPUT, 'pr-3 pl-7', handleError ? 'border-slot-vae' : 'border-charcoal-400')}
+            />
+          </div>
+          <p id={handleHintId} className="text-[11px] leading-relaxed text-smoke-800">
+            {handleError ?? HANDLE_HINT}
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-1.5">
         <label htmlFor={passwordId} className="text-[11px] font-semibold uppercase tracking-[0.08em] text-smoke-600">
           Password
@@ -221,7 +263,7 @@ function AuthBody({ tab, onTab, onDone, unavailable }: { tab: Tab; onTab: (t: Ta
         >
           {signup ? 'Already have an account? Sign in' : 'New here? Create an account'}
         </button>
-        <ModalButton type="submit" tone="primary" size="lg" disabled={busy || unavailable} aria-disabled={busy || unavailable ? 'true' : undefined}>
+        <ModalButton type="submit" tone="primary" size="lg" disabled={blocked} aria-disabled={blocked ? 'true' : undefined}>
           {signup ? <UserPlus size={16} /> : <LogIn size={16} />}
           {busy ? (signup ? 'Creating…' : 'Signing in…') : signup ? 'Create account' : 'Sign in'}
         </ModalButton>
