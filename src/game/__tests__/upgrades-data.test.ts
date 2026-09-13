@@ -203,10 +203,16 @@ describe('ACHIEVEMENTS', () => {
     }
   })
 
-  it('hidden achievements are flag-driven easter eggs', () => {
+  it('hidden achievements key off a flag or a stat, never off something the store reveals', () => {
     const hidden = ACHIEVEMENTS.filter((a) => a.hidden)
     expect(hidden.length).toBeGreaterThanOrEqual(3)
-    for (const a of hidden) expect(a.cond.type, a.id).toBe('flag')
+    for (const a of hidden) {
+      let ok = false
+      walk(a.cond, (c) => {
+        if (c.type === 'flag' || c.type === 'stat') ok = true
+      })
+      expect(ok, a.id).toBe(true)
+    }
   })
 
   it('every achievement has a name, desc and icon', () => {

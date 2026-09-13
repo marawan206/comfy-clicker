@@ -57,3 +57,124 @@ export const TIER_UPGRADE_EFFECT = 2
 
 /** Likes multiplier for a job run from a published ComfyHub workflow (the runner's reward). */
 export const HUB_RUN_LIKES_BOOST = 1.15
+
+// ---------------------------------------------------------------------------
+// Player level (src/game/level.ts)
+// ---------------------------------------------------------------------------
+/**
+ * XP needed for each level, indexed by `level - 1`. Strictly increasing, `LEVEL_XP[0] === 0`.
+ * Levels 1 to 12 are hand-placed against the balance simulator (see the arrival table in
+ * `docs/HOW-IT-WORKS.md`); 13 to 30 are a flat LEVEL_XP_TAIL_STEP per level.
+ */
+export const MAX_LEVEL = 30
+const LEVEL_XP_HAND = [0, 500, 900, 1_550, 2_050, 2_450, 2_800, 3_150, 3_500, 3_850, 4_200, 4_550] as const
+export const LEVEL_XP_TAIL_STEP = 400
+export const LEVEL_XP: readonly number[] = [
+  ...LEVEL_XP_HAND,
+  ...Array.from(
+    { length: MAX_LEVEL - LEVEL_XP_HAND.length },
+    (_, i) => (LEVEL_XP_HAND[LEVEL_XP_HAND.length - 1] as number) + LEVEL_XP_TAIL_STEP * (i + 1),
+  ),
+]
+
+/** XP weights. Credits are the backbone; posts are log-compressed so nothing can be farmed. */
+export const XP_CREDITS = 150
+export const XP_POSTS = 25
+export const XP_ACHIEVEMENT = 20
+export const XP_CONTRACT = 10
+export const XP_MAP_NODE = 6
+export const XP_QUANTIZE = 15
+export const XP_LORA = 15
+export const XP_REBRAND = 50
+
+/** Level-up payout: `max(LEVEL_REWARD_PER_LEVEL × level, round(LEVEL_REWARD_SECS × cps))`. */
+export const LEVEL_REWARD_PER_LEVEL = 100
+export const LEVEL_REWARD_SECS = 90
+
+/**
+ * Level titles, indexed by `level - 1`. They live here rather than in `src/data/flavor.ts` because
+ * `level.ts` may import only types and constants (`state.ts` imports it, so anything richer cycles).
+ */
+export const LEVEL_TITLES: readonly string[] = [
+  'Fresh Install',
+  'Queue Prompt',
+  'Node Wrangler',
+  'Guidance Scale',
+  'Latent Explorer',
+  'Sampler Sommelier',
+  'VRAM Negotiator',
+  'Custom Node Author',
+  'Cluster Operator',
+  'Region Owner',
+  'Subgraph Architect',
+  'Checkpoint Merger',
+  'KSampler Whisperer',
+  'Seed Oracle',
+  'Cloud Native',
+  'ControlNet Conductor',
+  'LoRA Librarian',
+  'Upscale Overlord',
+  'Tensor Tamer',
+  'Denoise Diplomat',
+  'CFG Cardinal',
+  'Attention Head',
+  'Subgraph Sovereign',
+  'Latent Lord',
+  'Scheduler Sage',
+  'Inference Infinite',
+  'Weights Whisperer',
+  'Diffusion Deity',
+  'The Frontend Rewrite',
+  'Honorary Maintainer',
+]
+
+// ---------------------------------------------------------------------------
+// Seed roulette (src/game/gamble.ts)
+// ---------------------------------------------------------------------------
+export const SPIN_MIN_LEVEL = 2
+export const SPIN_COOLDOWN_MS = 180_000
+/** Wager bounds in seconds of income, floored at SPIN_MIN_WAGER credits. */
+export const SPIN_MIN_SECS = 30
+export const SPIN_MAX_SECS = 300
+export const SPIN_MIN_WAGER = 50
+/** The house stake on the daily free spin. */
+export const SPIN_FREE_SECS = 120
+export const SPIN_FREE_MIN = 200
+/** Consecutive NaN results after which the next one is rerolled once. */
+export const SPIN_PITY_DRY = 3
+/** Consecutive x2-or-better results that flip the sampler to "fixed". */
+export const SPIN_HOT_STREAK = 3
+export const SPIN_HOT_MULT = 1.5
+/** Share of every paid wager that joins the x42 pot. */
+export const SPIN_POT_FRACTION = 0.02
+
+// ---------------------------------------------------------------------------
+// Click guard (src/game/clickGuard.ts)
+// ---------------------------------------------------------------------------
+/** Counted clicks per trailing second. Refused clicks pay nothing and are not a strike. */
+export const CLICK_CAP_PER_SEC = 15
+/** Attempted intervals examined for machine cadence. */
+export const CADENCE_INTERVALS = 24
+export const CADENCE_MAX_MEAN_MS = 200
+/** Human inter-click CV sits at 0.15 to 0.35; timer-driven tools sit under 0.02. */
+export const CADENCE_MAX_CV = 0.05
+/** Lockout length by strike count. */
+export const CLICK_LOCKOUT_MS = [10_000, 30_000, 60_000] as const
+export const CLICK_LOCKOUT_MAX_MS = 60_000
+export const CLICK_STRIKE_DECAY_MS = 5 * 60_000
+
+// ---------------------------------------------------------------------------
+// Ratioed posts (src/game/virality.ts)
+// ---------------------------------------------------------------------------
+/** A ratioed post collects this many times the likes it would have earned, as dislikes. */
+export const RATIO_DISLIKE_MULT = 3
+/** And costs another `RATIO_LOSS_MULT × paid × roll` on top of the sunk job cost. */
+export const RATIO_LOSS_MULT = 1
+export const RATIOED_FLAG = 'ratioed'
+
+/** Lucky seed: one click in two hundred pays ten times. */
+export const LUCKY_CLICK_CHANCE = 0.005
+export const LUCKY_CLICK_MULT = 10
+
+/** Debounce on the save written after a state-changing action. */
+export const SAVE_DEBOUNCE_MS = 1_500

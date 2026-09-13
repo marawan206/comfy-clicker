@@ -95,6 +95,8 @@ export interface ModelDef {
   baseTime: number
   quantizable?: boolean
   preinstalled?: boolean
+  /** Player level required before this model can be set up. Defaults to 1. */
+  minLevel?: number
   unlock?: UnlockCond
   flavor: string
   art: string
@@ -158,6 +160,10 @@ export type StatKey =
   | 'mapNodes'
   | 'achievements'
   | 'streak'
+  | 'level'
+  | 'ratioed'
+  | 'dislikes'
+  | 'spins'
 
 export type UnlockCond =
   | { type: 'always' }
@@ -234,6 +240,8 @@ export interface AchievementDef {
   icon: string
   cond: UnlockCond
   hidden?: boolean
+  /** Credits paid once when the achievement is granted. */
+  reward?: number
 }
 
 export interface HashtagDef {
@@ -290,6 +298,32 @@ export interface EventDef {
   minTier: number
 }
 
+/**
+ * One segment of the seed roulette. `weight` is the outcome's probability: the shipped table sums
+ * to exactly 1, so `weightedPick` draws it directly and the expected value is `Σ weight × mult`.
+ */
+export interface GambleOutcomeDef {
+  id: string
+  label: string
+  /** Payout multiplier on the wager. 0 loses it. */
+  mult: number
+  /** Probability in [0, 1]. The table sums to 1. */
+  weight: number
+  /** Flavor line shown with the result. */
+  line: string
+}
+
+/** A welcome gift offered once per account. */
+export type GiftKind = 'founder' | 'sonam'
+
+export interface GiftGrant {
+  /** Flag raised when the gift is accepted, so it is offered exactly once. */
+  flag: string
+  hardware?: { id: string; count: number }
+  upgrades?: string[]
+  credits?: number
+}
+
 // ---------------------------------------------------------------------------
 // Runtime state
 // ---------------------------------------------------------------------------
@@ -332,6 +366,12 @@ export interface Post {
   founderBoost: boolean
   followersGained: number
   granted: boolean
+  /** Tagged for a kind the model is not: dislikes instead of likes, and the player pays. */
+  ratioed?: boolean
+  /** Explicit type tags that named the wrong kind. */
+  mismatchedTags?: string[]
+  /** Rolled just outside the viral band: no boost, but the card says so. */
+  nearViral?: boolean
   upscaled?: boolean
   hubWorkflowId?: string
   /** Multiplier snapshot for the card breakdown. */
@@ -359,6 +399,19 @@ export interface ActiveEvent {
   resolved?: boolean
 }
 
+/** Seed roulette bookkeeping. `nextSpinAt` is a timestamp, so a cooldown cannot be farmed offline. */
+export interface GambleState {
+  nextSpinAt: number
+  /** `dayKey` of the day whose free spin was used; null when it is still available. */
+  freeSpinDay: string | null
+  /** Consecutive results paying x2 or better (the hot sampler). */
+  winStreak: number
+  /** Consecutive NaN results (the pity meter). */
+  dryStreak: number
+  /** Credits banked from every paid spin, paid out with the x42 seed. */
+  pot: number
+}
+
 export interface DailyState {
   lastClaimDay: string | null
   streak: number
@@ -371,6 +424,8 @@ export interface GameSettings {
   particles: boolean
   reducedMotion: boolean
   projector: boolean
+  /** Write the save on the interval, after actions and when the tab hides. */
+  autosave: boolean
 }
 
 export interface GameStats {
@@ -390,6 +445,27 @@ export interface GameStats {
   lastPostKey: string
   bestCps: number
   clicksWindow: number[]
+  /** Highest level already announced and paid. Starts at 1; makes a level-up reward idempotent. */
+  levelSeen: number
+  /** Posts ratioed (tagged for the wrong kind). */
+  ratioed: number
+  /** Dislikes collected across every ratioed post. */
+  dislikes: number
+  /** Seed roulette spins taken. */
+  spins: number
+  /** Lifetime roulette profit. May be negative. */
+  spinNet: number
+  /** Epoch ms until which clicks pay nothing; 0 = not locked. */
+  clickLockUntil: number
+  /** Cadence strikes on record (drives the lockout ladder). */
+  clickStrikes: number
+  /** Epoch ms of the last cadence strike; strikes decay after CLICK_STRIKE_DECAY_MS. */
+  clickStrikeAt: number
+  /** Clicks that rolled the lucky-seed multiplier. */
+  luckyClicks: number
+  /** Consecutive posts that landed (no flop, no ratio). */
+  landedStreak: number
+  bestLandedStreak: number
 }
 
 export interface GameState {
@@ -429,6 +505,7 @@ export interface GameState {
   contracts: { active: ActiveContract[]; nextRotateAt: number }
   events: { active: ActiveEvent[]; nextAt: number }
   daily: DailyState
+  gamble: GambleState
   stats: GameStats
   settings: GameSettings
   flags: Record<string, boolean>
@@ -483,14 +560,14 @@ export interface Derived {
 // Events emitted by the engine for the UI/FX layer
 // ---------------------------------------------------------------------------
 export type GameEvent =
-  | { type: 'click'; value: number }
+  | { type: 'click'; value: number; lucky?: boolean }
   | { type: 'purchase'; hardwareId: string; count: number }
   | { type: 'upgrade'; id: string }
   | { type: 'mapUnlock'; id: string }
   | { type: 'jobStarted'; jobId: string }
   | { type: 'postCreated'; postId: string }
-  | { type: 'postResolved'; postId: string; viral: boolean; flop: boolean }
-  | { type: 'achievement'; id: string }
+  | { type: 'postResolved'; postId: string; viral: boolean; flop: boolean; ratioed: boolean }
+  | { type: 'achievement'; id: string; reward: number }
   | { type: 'offline'; gain: number; elapsedSec: number }
   | { type: 'contractDone'; defId: string }
   | { type: 'eventStart'; defId: string; kind: EventKind }
@@ -502,6 +579,10 @@ export type GameEvent =
   | { type: 'weekRollover'; tags: string[] }
   | { type: 'easterEgg'; id: string }
   | { type: 'milestone'; cps: number }
+  | { type: 'levelUp'; level: number; credits: number; unlocked: string[] }
+  | { type: 'clickBlocked'; reason: 'locked' | 'rate' | 'cadence'; until: number }
+  | { type: 'spin'; outcome: string; mult: number; wager: number; payout: number; free: boolean; hot: boolean }
+  | { type: 'reward'; id: string; credits: number }
 
 export type Rng = () => number
 

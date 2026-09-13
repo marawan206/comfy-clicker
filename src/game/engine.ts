@@ -19,6 +19,7 @@ import { checkAchievements } from '@/game/achievements'
 import { contractsDue, progressContracts, rotateContracts } from '@/game/contracts'
 import { expireEvents, maybeStartEvent } from '@/game/events'
 import { currentTrending, weekIndex } from '@/game/hashtags'
+import { settleLevelUps } from '@/game/level'
 import { advanceQueue } from '@/game/studio'
 import type { Derived, GameEvent, GameState, Rng } from '@/game/types'
 import { settlePosts } from '@/game/virality'
@@ -144,6 +145,10 @@ export function tick(
   // 5. Achievements: once per whole second of play, not 20× a second.
   if (Math.floor(state.meta.playedSec) !== Math.floor(playedBefore)) {
     pushEvents(events, checkAchievements(state, derived, catalog))
+    // Levels are derived from lifetime stats, so this only ever pays for a threshold already
+    // crossed. `levelUp` is not in DERIVED_EVENT_TYPES: the reward is credits, nothing that
+    // computeDerived reads.
+    pushEvents(events, settleLevelUps(state, derived, catalog))
   }
 
   // 6. Trending week rollover (wall clock, weekSpeed, or a demo override change).

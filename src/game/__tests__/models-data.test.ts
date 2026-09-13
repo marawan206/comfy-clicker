@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { CATALOG } from '@/data'
 import { MODELS } from '@/data/models'
+import { ACHIEVEMENTS } from '@/data/achievements'
 import { HASHTAGS } from '@/data/hashtags'
 import { PRECISIONS, PRECISION_ORDER } from '@/data/precisions'
 import { SETUP_FEE_MULT } from '@/game/constants'
 import { nativeHardware, quantFee, setupFee } from '@/game/quantize'
-import type { Derived, ModelKind, Precision } from '@/game/types'
+import type { Derived, ModelKind, Precision, UnlockCond } from '@/game/types'
 
 const VENDOR_DIR = fileURLToPath(new URL('../../assets/brand/vendors/', import.meta.url))
 
@@ -198,6 +199,91 @@ describe('hashtags data', () => {
     const ids = new Set(HASHTAGS.map((h) => h.id))
     for (const id of ['comfyui', 'wan22', 'ltx2', 'videogen', '3dgen', 'musicgen', 'cats', 'hackathon']) {
       expect(ids.has(id), id).toBe(true)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Level gates. `minLevel` is the one thing standing between a fresh install and
+// a 160 GB video model, so the table is pinned here rather than left to drift.
+// ---------------------------------------------------------------------------
+const MAX_MODEL_LEVEL = 12
+
+describe('model level gates', () => {
+  it('gives every model an integer minLevel in 1..12', () => {
+    for (const m of MODELS) {
+      expect(typeof m.minLevel, m.id).toBe('number')
+      expect(Number.isInteger(m.minLevel), `${m.id}: ${m.minLevel}`).toBe(true)
+      expect(m.minLevel, m.id).toBeGreaterThanOrEqual(1)
+      expect(m.minLevel, m.id).toBeLessThanOrEqual(MAX_MODEL_LEVEL)
+    }
+  })
+
+  it('starts everyone on sd15 at level 1', () => {
+    expect(MODELS.find((m) => m.id === 'sd15')!.minLevel).toBe(1)
+  })
+
+  it('unlocks at least one model on every level from 2 to 12, so no rung is dead', () => {
+    for (let level = 2; level <= MAX_MODEL_LEVEL; level++) {
+      const unlocked = MODELS.filter((m) => m.minLevel === level).map((m) => m.id)
+      expect(unlocked.length, `level ${level} unlocks nothing`).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('keeps api models at level 7 and up', () => {
+    for (const m of apiModels) expect(m.minLevel, m.id).toBeGreaterThanOrEqual(7)
+  })
+
+  it('keeps video models at level 5 and up', () => {
+    for (const m of MODELS.filter((m) => m.kind === 'video')) expect(m.minLevel, m.id).toBeGreaterThanOrEqual(5)
+  })
+
+  it('never lowers minLevel as vram rises within a local kind', () => {
+    for (const kind of KINDS) {
+      const sorted = local.filter((m) => m.kind === kind).sort((a, b) => a.vram - b.vram)
+      for (let i = 1; i < sorted.length; i++) {
+        const prev = sorted[i - 1]!
+        const cur = sorted[i]!
+        expect(
+          cur.minLevel,
+          `${kind}: ${cur.id} (${cur.vram} GB) should gate at or above ${prev.id} (${prev.vram} GB)`,
+        ).toBeGreaterThanOrEqual(prev.minLevel!)
+      }
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Achievement data. The grant logic lives in game/achievements.ts; these are the
+// invariants the catalog itself has to hold.
+// ---------------------------------------------------------------------------
+function condLeaves(cond: UnlockCond): UnlockCond[] {
+  if (cond.type === 'all' || cond.type === 'any') return cond.conds.flatMap(condLeaves)
+  return [cond]
+}
+
+describe('achievements data', () => {
+  it('has unique ids and unique names', () => {
+    const ids = ACHIEVEMENTS.map((a) => a.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    const names = ACHIEVEMENTS.map((a) => a.name)
+    expect(new Set(names).size).toBe(names.length)
+  })
+
+  it('pays a positive whole number of credits wherever a reward is set', () => {
+    for (const a of ACHIEVEMENTS) {
+      if (a.reward === undefined) continue
+      expect(Number.isInteger(a.reward), `${a.id}: ${a.reward}`).toBe(true)
+      expect(a.reward, a.id).toBeGreaterThan(0)
+    }
+  })
+
+  it('gates every hidden achievement on a flag or a stat, never on something the store reveals', () => {
+    const hidden = ACHIEVEMENTS.filter((a) => a.hidden)
+    expect(hidden.length).toBeGreaterThanOrEqual(3)
+    for (const a of hidden) {
+      const kinds = condLeaves(a.cond).map((c) => c.type)
+      expect(kinds.some((k) => k === 'flag' || k === 'stat'), `${a.id}: ${kinds.join(', ')}`).toBe(true)
     }
   })
 })

@@ -478,8 +478,8 @@ describe('likesAt / settlePosts', () => {
     const events = settlePosts(state, derived, CATALOG, T0 + 60_000)
     const resolved = events.filter((e) => e.type === 'postResolved')
     expect(resolved).toEqual([
-      { type: 'postResolved', postId: 'v', viral: true, flop: false },
-      { type: 'postResolved', postId: 'f', viral: false, flop: true },
+      { type: 'postResolved', postId: 'v', viral: true, flop: false, ratioed: false },
+      { type: 'postResolved', postId: 'f', viral: false, flop: true, ratioed: false },
     ])
     expect(state.credits).toBe(110)
     expect(state.stats.videos).toBe(1)

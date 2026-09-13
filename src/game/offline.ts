@@ -16,6 +16,7 @@ import { progressContracts } from '@/game/contracts'
 import { primeTickMemo } from '@/game/engine'
 import { expireEvents } from '@/game/events'
 import { currentTrending, weekIndex } from '@/game/hashtags'
+import { settleLevelUps } from '@/game/level'
 import { hashString, mulberry32 } from '@/game/rng'
 import { advanceQueue } from '@/game/studio'
 import type { Derived, GameEvent, GameState, Job, Rng } from '@/game/types'
@@ -130,6 +131,7 @@ export function applyOffline(state: GameState, derived: Derived, catalog: Catalo
 
   // Milestones reached offline ("Comfy Sleep Mode", a post count) ride along with the welcome-back card.
   events.push(...checkAchievements(state, derived, catalog))
+  events.push(...settleLevelUps(state, derived, catalog))
 
   state.meta.lastTickAt = now
   return { elapsedSec, gain, events }

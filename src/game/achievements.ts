@@ -29,7 +29,7 @@ export function checkAchievements(state: GameState, derived: Derived, catalog: C
       if (!isUnlocked(def.cond, state, derived, catalog)) continue
       owned.add(def.id)
       state.achievements.push(def.id)
-      out.push({ type: 'achievement', id: def.id })
+      out.push({ type: 'achievement', id: def.id, reward: def.reward ?? 0 })
       granted += 1
     }
     if (granted === 0) break

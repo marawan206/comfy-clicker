@@ -2,10 +2,18 @@
  * Achievement catalog. Each one adds ACHIEVEMENT_MULT to the global multiplier
  * (see derived.ts), so the list is also a slow-burn progression track.
  *
+ * `reward` is a one-off credit payout handed over by `checkAchievements` the moment the row is
+ * granted, so an easter egg, its achievement and its credits all land on the same click.
+ *
  * Hidden achievements are easter eggs that key off `state.flags`. Flag keys used here and who raises them:
- *   speedrun, brokeAtZero (actions.ts) · spaghetti (studio.ts) · founderMention (virality.ts)
- *   sparkCaught, fixedNode (events.ts) · konami, comfy-wave, click-frenzy, ticker-seven, seed42,
- *   rickroll (UI, through `actions.setFlag`: src/hooks/useEasterEggs.ts, NewsTicker, PromptInput)
+ *   speedrun, brokeAtZero, luckySeed (actions.ts) · spaghetti, bad-hands, masterpiece,
+ *   sd15-forever (studio.ts, compared before and after `createJob`) · founderMention, ratioed
+ *   (virality.ts) · sparkCaught, fixedNode (events.ts) · clickGuard (clickGuard.ts, on a cadence
+ *   strike) · jackpot42, nanStreak3, hotSeed (gamble.ts) · gift:founder, gift:sonam (actions.ts,
+ *   `grantGift`) · konami, comfy-wave, click-frenzy, ticker-seven, seed42, rickroll, title-25,
+ *   grand-tour, night-shift, ctrl-enter (UI, through `actions.setFlag`: src/hooks/useEasterEggs.ts,
+ *   NewsTicker, PromptInput, the header wordmark and the Generate button)
+ * `level-20` is the one hidden row that is not flag-driven; it keys off the `level` stat.
  * Icon strings are lucide kebab-case names or `src/assets/brand/nodes` file stems.
  */
 import type { AchievementDef, HardwareFamily, StatKey, UnlockCond } from '@/game/types'
@@ -570,6 +578,45 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     cond: stat('playedSec', 86_400),
   },
 
+  // ---- level -------------------------------------------------------------
+  {
+    id: 'level-5',
+    name: 'Five Star Node',
+    desc: 'Reach level 5. Latent Explorer, and the first video model is yours.',
+    icon: 'star',
+    cond: stat('level', 5),
+  },
+  {
+    id: 'level-10',
+    name: 'Double Digits',
+    desc: 'Reach level 10. The title says Region Owner. You cannot afford a region.',
+    icon: 'chevrons-up',
+    cond: stat('level', 10),
+  },
+
+  // ---- seed roulette -----------------------------------------------------
+  {
+    id: 'seed-first',
+    name: 'Random Seed',
+    desc: 'Spin the seed roulette once. control_after_generate handles the rest.',
+    icon: 'dices',
+    cond: stat('spins', 1),
+  },
+  {
+    id: 'seed-100',
+    name: 'Degenerate Sampler',
+    desc: 'Spin the seed roulette 100 times. Three minutes apart, that is five hours of waiting.',
+    icon: 'coins',
+    cond: stat('spins', 100),
+  },
+  {
+    id: 'lucky-seed',
+    name: 'Lucky Seed',
+    desc: 'Hit the lucky seed on a click. One in two hundred, and it pays ten times over.',
+    icon: 'clover',
+    cond: flag('luckySeed'),
+  },
+
   // ---- hidden easter eggs (flag-driven) ----------------------------------
   {
     id: 'speedrun',
@@ -665,6 +712,122 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     desc: 'Prompt for the one link everyone still clicks.',
     icon: 'music',
     cond: flag('rickroll'),
+    hidden: true,
+  },
+  {
+    id: 'level-20',
+    name: 'There Is No Level 21',
+    desc: 'Reach level 20. There is a level 21. There are ten more after that.',
+    icon: 'crown',
+    cond: stat('level', 20),
+    hidden: true,
+  },
+  {
+    id: 'seed-42-hit',
+    name: 'It Was Always 42',
+    desc: 'Land seed 42 on the roulette. Forty-two times the wager, and the pot on top.',
+    icon: 'party-popper',
+    cond: flag('jackpot42'),
+    hidden: true,
+  },
+  {
+    id: 'seed-nan-3',
+    name: 'NaN, NaN, NaN',
+    desc: 'Three NaN latents in a row. The next one gets rerolled, out of pity.',
+    icon: 'circle-slash',
+    cond: flag('nanStreak3'),
+    hidden: true,
+  },
+  {
+    id: 'seed-hot',
+    name: 'Control After Generate: Fixed',
+    desc: 'Three wins in a row. The sampler stops randomizing and starts paying 1.5x.',
+    icon: 'lock',
+    cond: flag('hotSeed'),
+    hidden: true,
+  },
+  {
+    id: 'click-guard',
+    name: 'Suspiciously Regular',
+    desc: 'Trip the autoclicker guard. That was a very even hand.',
+    icon: 'timer',
+    cond: flag('clickGuard'),
+    hidden: true,
+  },
+  {
+    id: 'ratioed',
+    name: 'Workflow? (Derogatory)',
+    desc: 'Tag a post for a kind it is not. The replies asked which workflow, and not nicely.',
+    icon: 'thumbs-down',
+    cond: flag('ratioed'),
+    hidden: true,
+  },
+  {
+    id: 'title-25',
+    name: 'Not The Generate Button',
+    desc: 'Click the title 25 times. Every pixel is a button if you believe.',
+    icon: 'mouse-pointer-2',
+    cond: flag('title-25'),
+    reward: 1000,
+    hidden: true,
+  },
+  {
+    id: 'grand-tour',
+    name: 'Read The Docs',
+    desc: 'Open every panel in the header. Nobody does this.',
+    icon: 'compass',
+    cond: flag('grand-tour'),
+    reward: 500,
+    hidden: true,
+  },
+  {
+    id: 'night-shift',
+    name: 'Prompt Executed At 3 A.M.',
+    desc: 'Click Generate between 3 and 4 in the morning. Local time. We know.',
+    icon: 'moon-star',
+    cond: flag('night-shift'),
+    reward: 333,
+    hidden: true,
+  },
+  {
+    id: 'bad-hands',
+    name: 'Negative Prompt In The Positive Box',
+    desc: 'Prompt for bad hands. The model obliged.',
+    icon: 'hand',
+    cond: flag('bad-hands'),
+    hidden: true,
+  },
+  {
+    id: 'ctrl-enter',
+    name: 'Queue Prompt (Legacy Shortcut)',
+    desc: 'Queue a post with Ctrl+Enter. Old habits queue hard.',
+    icon: 'keyboard',
+    cond: flag('ctrl-enter'),
+    reward: 250,
+    hidden: true,
+  },
+  {
+    id: 'sd15-forever',
+    name: 'It Is 2022 In Here Forever',
+    desc: 'Render on SD 1.5 from a region. Some things you do not upgrade.',
+    icon: 'history',
+    cond: flag('sd15-forever'),
+    hidden: true,
+  },
+  {
+    id: 'masterpiece',
+    name: 'Masterpiece, Best Quality',
+    desc: 'Prompt like it is 2022.',
+    icon: 'sparkle',
+    cond: flag('masterpiece'),
+    hidden: true,
+  },
+  {
+    id: 'founder-gift',
+    name: 'Friends In High Places',
+    desc: 'Accept a card someone left in the rack.',
+    icon: 'gift',
+    cond: { type: 'any', conds: [flag('gift:founder'), flag('gift:sonam')] },
     hidden: true,
   },
 ]

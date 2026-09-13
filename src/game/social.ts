@@ -46,6 +46,15 @@ export function addFollowers(state: GameState, n: number): GameEvent[] {
   return events
 }
 
+/**
+ * Take `n` followers away (a ratioed post drives them off). Floors at zero and leaves
+ * `lifetimeFollowers` alone, so signups already earned are never revoked. Announces nothing.
+ */
+export function removeFollowers(state: GameState, n: number): void {
+  if (!(Number.isFinite(n) && n > 0)) return
+  state.followers = Math.max(0, state.followers - Math.floor(n))
+}
+
 /** Reach multiplier for likes: `1 + log10(1 + followers / AUDIENCE_REF_DIVISOR)`. */
 export function audienceMult(followers: number): number {
   const f = Number.isFinite(followers) && followers > 0 ? followers : 0

@@ -70,13 +70,14 @@ vi.mock('@/game/virality', () => ({
       }
       if (p >= 1 && !post.granted) {
         post.granted = true
-        events.push({ type: 'postResolved', postId: post.id, viral: false, flop: false })
+        events.push({ type: 'postResolved', postId: post.id, viral: false, flop: false, ratioed: false })
       }
     }
     return events
   },
 }))
 
+import { levelReward } from '@/game/level'
 import { applyOffline, OFFLINE_CLAIM_MIN_S, offlineGain, replayQueue } from '@/game/offline'
 import { ACHIEVEMENTS } from '@/data/achievements'
 import { CONTRACTS } from '@/data/contracts'
@@ -199,7 +200,9 @@ describe('applyOffline', () => {
     expect(r.elapsedSec).toBe(48 * 3600)
     expect(r.gain).toBe(gain)
     expect(r.events[0]).toEqual({ type: 'offline', gain, elapsedSec: 48 * 3600 })
-    expect(state.credits).toBe(gain)
+    // The credits earned in the gap cross level 2; settleLevelUps pays for it on the way out.
+    expect(state.stats.levelSeen).toBe(2)
+    expect(state.credits).toBe(gain + levelReward(2, 2))
     expect(state.stats.offlineClaims).toBe(1)
     expect(state.meta.lastTickAt).toBe(now)
   })
@@ -317,7 +320,7 @@ describe('applyOffline', () => {
     const withAchievements = createCatalog({ achievements: [sleep] })
     const state = stateAt(T0)
     const r = applyOffline(state, derivedWith({ cps: 1 }), withAchievements, T0 + 3600_000)
-    expect(r.events).toContainEqual({ type: 'achievement', id: 'offline-first' })
+    expect(r.events).toContainEqual({ type: 'achievement', id: 'offline-first', reward: 0 })
     expect(state.achievements).toEqual(['offline-first'])
   })
 })

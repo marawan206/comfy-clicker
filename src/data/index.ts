@@ -6,6 +6,7 @@ import type {
   AchievementDef,
   ContractDef,
   EventDef,
+  GambleOutcomeDef,
   HardwareDef,
   HashtagDef,
   MapNodeDef,
@@ -17,6 +18,7 @@ import type {
 import { ACHIEVEMENTS } from '@/data/achievements'
 import { CONTRACTS } from '@/data/contracts'
 import { EVENT_DEFS } from '@/data/events'
+import { GAMBLE_OUTCOMES } from '@/data/gamble'
 import { HARDWARE } from '@/data/hardware'
 import { HASHTAGS } from '@/data/hashtags'
 import { MAP_NODES } from '@/data/mapNodes'
@@ -35,11 +37,13 @@ export interface Catalog {
   hashtags: HashtagDef[]
   contracts: ContractDef[]
   events: EventDef[]
+  /** Seed roulette segments. Weights are probabilities and sum to 1. */
+  gamble: GambleOutcomeDef[]
 }
 
 /**
- * Build a catalog from partial data. Missing arrays are empty and precisions default to the
- * shipped table, so unit tests can write `createCatalog({ hardware: [rtx3060] })`.
+ * Build a catalog from partial data. Missing arrays are empty; precisions and the roulette table
+ * default to the shipped data, so unit tests can write `createCatalog({ hardware: [rtx3060] })`.
  */
 export function createCatalog(partial: Partial<Catalog> = {}): Catalog {
   return {
@@ -52,6 +56,7 @@ export function createCatalog(partial: Partial<Catalog> = {}): Catalog {
     hashtags: partial.hashtags ?? [],
     contracts: partial.contracts ?? [],
     events: partial.events ?? [],
+    gamble: partial.gamble ?? GAMBLE_OUTCOMES,
   }
 }
 
@@ -66,4 +71,5 @@ export const CATALOG: Catalog = {
   hashtags: HASHTAGS,
   contracts: CONTRACTS,
   events: EVENT_DEFS,
+  gamble: GAMBLE_OUTCOMES,
 }

@@ -92,6 +92,8 @@ export function describeUnlock(cond: UnlockCond | undefined, catalog: Catalog): 
     case 'always':
       return ''
     case 'stat':
+      // "Reach 4 level" reads wrong; the level gate is the one stat whose unit goes first.
+      if (cond.key === 'level') return `Reach level ${formatInt(cond.value)}`
       return `Reach ${formatInt(cond.value)} ${STAT_LABELS[cond.key]}`
     case 'ownHardware': {
       const name = index.hardwareById[cond.id]?.name ?? cond.id

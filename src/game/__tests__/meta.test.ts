@@ -317,8 +317,8 @@ describe('contracts: progress', () => {
     const events = progressContracts(
       state,
       [
-        { type: 'postResolved', postId: 'a', viral: false, flop: false },
-        { type: 'postResolved', postId: 'b', viral: true, flop: false },
+        { type: 'postResolved', postId: 'a', viral: false, flop: false, ratioed: false },
+        { type: 'postResolved', postId: 'b', viral: true, flop: false, ratioed: false },
       ],
       CATALOG,
     )
@@ -757,7 +757,9 @@ describe('achievements', () => {
     const state = fresh()
     expect(checkAchievements(state, derivedWith(), CATALOG)).toEqual([])
     state.totalClicks = 1
-    expect(checkAchievements(state, derivedWith(), CATALOG)).toEqual([{ type: 'achievement', id: 'first-click' }])
+    expect(checkAchievements(state, derivedWith(), CATALOG)).toEqual([
+      { type: 'achievement', id: 'first-click', reward: 0 },
+    ])
     expect(checkAchievements(state, derivedWith(), CATALOG)).toEqual([])
     expect(state.achievements).toEqual(['first-click'])
   })

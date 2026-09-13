@@ -15,14 +15,17 @@ import { CATALOG, type Catalog } from '@/data'
 import { buildIndex } from '@/game/catalog'
 import {
   CLICK_JOB_BONUS_CAP,
+  CLICK_LOCKOUT_MAX_MS,
   CONTRACT_ROTATE_MS,
   EVENT_MAX_GAP_MS,
   POST_WINDOW_MS,
   SAVE_KEY,
   SAVE_VERSION,
+  SPIN_COOLDOWN_MS,
   TIER_UPGRADE_THRESHOLDS,
 } from '@/game/constants'
 import { DAILY_CLAIMED_KEEP } from '@/game/daily'
+import { playerLevel } from '@/game/level'
 import { STARTER_HARDWARE_ID, STARTER_MODEL_ID, createInitialState } from '@/game/state'
 import type { ActiveContract, ActiveEvent, GameState, Job, Post, Precision } from '@/game/types'
 
@@ -137,8 +140,12 @@ const postSchema = z.object({
   viral: z.boolean().catch(false),
   flop: z.boolean().catch(false),
   founderBoost: z.boolean().catch(false),
-  followersGained: money.catch(0),
+  // A ratioed post loses followers, so this one is signed.
+  followersGained: z.number().catch(0),
   granted: z.boolean().catch(false),
+  ratioed: z.boolean().optional().catch(undefined),
+  mismatchedTags: stringArray.optional().catch(undefined),
+  nearViral: z.boolean().optional().catch(undefined),
   upscaled: z.boolean().optional().catch(undefined),
   hubWorkflowId: z.string().optional().catch(undefined),
   roll: z.number().catch(1),
@@ -212,6 +219,26 @@ const statsSchema = z.object({
   lastPostKey: fallback(z.string()),
   bestCps: fallback(money),
   clicksWindow: fallback(arrayOf(z.number())),
+  levelSeen: fallback(z.number().int().min(1)),
+  ratioed: fallback(count),
+  dislikes: fallback(money),
+  spins: fallback(count),
+  // Roulette profit is signed.
+  spinNet: fallback(z.number()),
+  clickLockUntil: fallback(money),
+  clickStrikes: fallback(count),
+  clickStrikeAt: fallback(money),
+  luckyClicks: fallback(count),
+  landedStreak: fallback(count),
+  bestLandedStreak: fallback(count),
+})
+
+const gambleSchema = z.object({
+  nextSpinAt: fallback(money),
+  freeSpinDay: fallback(z.string().nullable()),
+  winStreak: fallback(count),
+  dryStreak: fallback(count),
+  pot: fallback(money),
 })
 
 const settingsSchema = z.object({
@@ -219,6 +246,7 @@ const settingsSchema = z.object({
   particles: fallback(z.boolean()),
   reducedMotion: fallback(z.boolean()),
   projector: fallback(z.boolean()),
+  autosave: fallback(z.boolean()),
 })
 
 /** Permissive mirror of `GameState`. Every field is optional; invalid values become `undefined`. */
@@ -260,6 +288,7 @@ export const saveSchema = z.object({
     }),
   ),
   daily: fallback(dailySchema),
+  gamble: fallback(gambleSchema),
   stats: fallback(statsSchema),
   settings: fallback(settingsSchema),
   flags: fallback(recordOf(z.boolean())),
@@ -331,10 +360,11 @@ function normaliseJob(job: Job, now: number): Job {
 function hydrate(data: SaveData, now: number, guestId: string, catalog: Catalog): GameState {
   const idx = buildIndex(catalog)
   const state = createInitialState(now, guestId)
-  const { meta, contracts, events, daily, stats, settings, ...top } = data
+  const { meta, contracts, events, daily, gamble, stats, settings, ...top } = data
   fill(state, top as Partial<GameState>)
   fill(state.meta, meta)
   fill(state.daily, daily)
+  fill(state.gamble, gamble)
   fill(state.stats, stats)
   fill(state.settings, settings)
   if (contracts) {
@@ -353,6 +383,12 @@ function hydrate(data: SaveData, now: number, guestId: string, catalog: Catalog)
   if (state.meta.lastTickAt > now) state.meta.lastTickAt = now
   state.events.nextAt = Math.min(state.events.nextAt, now + EVENT_MAX_GAP_MS)
   state.contracts.nextRotateAt = Math.min(state.contracts.nextRotateAt, now + CONTRACT_ROTATE_MS)
+  // A roulette cooldown or a click lockout from a clock that ran ahead would otherwise outlast
+  // its own rules; neither may ever reach further than one full period from now.
+  state.gamble.nextSpinAt = Math.min(state.gamble.nextSpinAt, now + SPIN_COOLDOWN_MS)
+  state.stats.clickLockUntil = Math.min(state.stats.clickLockUntil, now + CLICK_LOCKOUT_MAX_MS)
+  // A save from before levels: award the level the stats already earned, without paying for it.
+  if (stats?.levelSeen === undefined) state.stats.levelSeen = playerLevel(state)
 
   // Drop ids the catalog no longer knows.
   state.hardware = knownKeys(state.hardware, idx.hardwareById)

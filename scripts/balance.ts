@@ -72,6 +72,10 @@ export interface SimResult {
   /** Effective cps at the end (rig × throttle × global × content multipliers). */
   cps: number
   bank: number
+  /** Credits earned over the whole run (the level system's XP backbone). */
+  lifetime: number
+  /** Generate clicks taken over the whole run. */
+  clicks: number
   powerDraw: number
   powerBudget: number
 }
@@ -447,6 +451,8 @@ function result(s: SimState, opts: SimOptions): SimResult {
     owned: { ...s.owned },
     cps: effectiveCps(s, opts),
     bank: s.bank,
+    lifetime: s.lifetime,
+    clicks: s.clicks,
     powerDraw: powerDraw(s),
     powerBudget: powerBudget(s),
   }

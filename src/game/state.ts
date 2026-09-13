@@ -2,6 +2,7 @@
  * Initial game state and stat lookups.
  */
 import { EVENT_MIN_GAP_MS, SAVE_VERSION } from '@/game/constants'
+import { playerLevel } from '@/game/level'
 import type { Derived, GameState, HardwareFamily, StatKey } from '@/game/types'
 
 /** The rig everyone starts on: a 4-core desktop, `--cpu`, patience. */
@@ -49,6 +50,7 @@ export function createInitialState(now: number, guestId: string): GameState {
     contracts: { active: [], nextRotateAt: now },
     events: { active: [], nextAt: now + EVENT_MIN_GAP_MS },
     daily: { lastClaimDay: null, streak: 0, claimed: [] },
+    gamble: { nextSpinAt: now, freeSpinDay: null, winStreak: 0, dryStreak: 0, pot: 0 },
     stats: {
       posts: 0,
       videos: 0,
@@ -66,12 +68,24 @@ export function createInitialState(now: number, guestId: string): GameState {
       lastPostKey: '',
       bestCps: 0,
       clicksWindow: [],
+      levelSeen: 1,
+      ratioed: 0,
+      dislikes: 0,
+      spins: 0,
+      spinNet: 0,
+      clickLockUntil: 0,
+      clickStrikes: 0,
+      clickStrikeAt: 0,
+      luckyClicks: 0,
+      landedStreak: 0,
+      bestLandedStreak: 0,
     },
     settings: {
       sfx: true,
       particles: true,
       reducedMotion: false,
       projector: false,
+      autosave: true,
     },
     flags: {},
     weekOverride: null,
@@ -118,6 +132,10 @@ export const STAT_LABELS: Record<StatKey, string> = {
   mapNodes: 'map nodes',
   achievements: 'achievements',
   streak: 'day streak',
+  level: 'level',
+  ratioed: 'ratioed posts',
+  dislikes: 'dislikes',
+  spins: 'spins',
 }
 
 /**
@@ -169,6 +187,14 @@ export function statValue(state: GameState, key: StatKey, _derived?: Derived): n
       return state.achievements.length
     case 'streak':
       return state.daily.streak
+    case 'level':
+      return playerLevel(state)
+    case 'ratioed':
+      return state.stats.ratioed
+    case 'dislikes':
+      return state.stats.dislikes
+    case 'spins':
+      return state.stats.spins
     default: {
       // Exhaustiveness guard: a new StatKey without a branch fails to compile.
       const never: never = key

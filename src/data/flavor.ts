@@ -180,3 +180,36 @@ export const LOADING_LINES: string[] = [
   'Preloading the templates nobody reads…',
   'Almost there. The bar is decorative.',
 ]
+
+/**
+ * Income milestone fanfare, keyed by the base-10 exponent of credits per second
+ * (1 = 10/s, 3 = 1,000/s, 9 = 1,000,000,000/s). `AchievementToast` reads it on `milestone`.
+ */
+export const MILESTONE_LINES: Record<number, string> = {
+  1: 'Passive income. Technically.',
+  2: 'The office PC is jealous.',
+  3: 'Render farm status: plausible.',
+  4: 'Your power bill has opinions.',
+  6: 'Compute is all you need.',
+  9: 'The datacenter has a datacenter.',
+}
+
+/** Shown on a ratioed post card: an explicit type tag on a post that is not that kind. */
+export const RATIO_LINES: string[] = [
+  'Top reply: "this is an image". It was.',
+  'Quote-posted by someone whose whole account is corrections.',
+  'Four hundred people typed "workflow?" and none of them meant it kindly.',
+  'The tag said video. The pixels did not move. The replies did.',
+  'Community note added. It has sources.',
+  'Bookmarked by an account called tag_police. Not a compliment.',
+]
+
+/** Shown on a post that rolled inside twice the viral chance and missed anyway. */
+export const NEAR_VIRAL_LINES: string[] = [
+  'The algorithm hovered. Then scrolled.',
+  'Two hundred impressions from the For You page, then nothing.',
+  'It got as far as the people who repost everything. They did not.',
+  'Somebody with 40k followers liked it and kept the like to themselves.',
+  'Trending for eleven minutes in one timezone.',
+  'Screenshotted, cropped, never credited, never spread.',
+]

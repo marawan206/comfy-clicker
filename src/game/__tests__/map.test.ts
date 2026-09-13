@@ -113,6 +113,7 @@ const catalog: Catalog = {
   hashtags: [],
   contracts: CONTRACTS,
   events: EVENT_DEFS,
+  gamble: [],
 }
 
 function makeState(overrides: Partial<GameState> = {}): GameState {
@@ -148,8 +149,12 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
       posts: 0, videos: 0, flops: 0, virals: 0, quantizations: 0, offlineClaims: 0, rebrands: 0,
       contractsDone: 0, hubPublished: 0, hubRuns: 0, lorasTrained: 0, bestPostLikes: 0,
       lastPrompt: '', lastPostKey: '', bestCps: 0, clicksWindow: [],
+      levelSeen: 1, ratioed: 0, dislikes: 0, spins: 0, spinNet: 0,
+      clickLockUntil: 0, clickStrikes: 0, clickStrikeAt: 0,
+      luckyClicks: 0, landedStreak: 0, bestLandedStreak: 0,
     },
-    settings: { sfx: true, particles: true, reducedMotion: false, projector: false },
+    gamble: { nextSpinAt: 0, freeSpinDay: null, winStreak: 0, dryStreak: 0, pot: 0 },
+    settings: { sfx: true, particles: true, reducedMotion: false, projector: false, autosave: true },
     flags: {},
     weekOverride: null,
     liveTrending: null,

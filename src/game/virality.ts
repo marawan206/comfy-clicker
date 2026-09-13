@@ -232,7 +232,13 @@ export function settlePosts(
       if (post.viral) state.stats.virals += 1
       if (post.targetLikes > state.stats.bestPostLikes) state.stats.bestPostLikes = post.targetLikes
       post.granted = true
-      events.push({ type: 'postResolved', postId: post.id, viral: post.viral, flop: post.flop })
+      events.push({
+        type: 'postResolved',
+        postId: post.id,
+        viral: post.viral,
+        flop: post.flop,
+        ratioed: post.ratioed === true,
+      })
     }
   }
   return events

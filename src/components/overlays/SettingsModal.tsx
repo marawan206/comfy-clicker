@@ -49,6 +49,7 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
     particles: s.settings.particles,
     reducedMotion: s.settings.reducedMotion,
     projector: s.settings.projector,
+    autosave: s.settings.autosave,
   }))
   const [exported, setExported] = useState('')
   const [copied, setCopied] = useState(false)

@@ -94,7 +94,7 @@ function richState(): GameState {
   }
   s.daily = { lastClaimDay: '2023-11-14', streak: 3, claimed: ['2023-11-12', '2023-11-13', '2023-11-14'] }
   s.stats = { ...s.stats, posts: 9, videos: 2, bestPostLikes: 500, lastPrompt: UNICODE_PROMPT, bestCps: 12.5, clicksWindow: [T0 - 300, T0 - 100] }
-  s.settings = { sfx: false, particles: true, reducedMotion: true, projector: false }
+  s.settings = { sfx: false, particles: true, reducedMotion: true, projector: false, autosave: false }
   s.flags = { spaghetti: true }
   s.weekOverride = 4
   s.liveTrending = { tags: ['comfyui', 'wan22'], fetchedAt: T0 - 60_000 }
@@ -209,7 +209,7 @@ describe('serialize / deserialize', () => {
     expect(back.hardware).toEqual({ 'pc-8c16t': 2, 'pc-4c8t': 1 })
     expect(back.models.sd15).toEqual({ precisions: ['native', 'fp8'], setup: true })
     expect(back.models.sdxl).toEqual({ precisions: ['native'], setup: true })
-    expect(back.settings).toEqual({ sfx: true, particles: false, reducedMotion: false, projector: false })
+    expect(back.settings).toEqual({ sfx: true, particles: false, reducedMotion: false, projector: false, autosave: true })
     expect(back.weekOverride).toBeNull()
     expect(back.posts).toEqual([])
   })
