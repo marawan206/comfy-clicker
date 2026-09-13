@@ -16,6 +16,7 @@ import {
   currentTrending,
   matchTags,
   matchedTrending,
+  mismatchedTypeTags,
   msUntilRollover,
   normalizePromptText,
   trendMult,
@@ -137,10 +138,14 @@ describe('currentTrending', () => {
 
 describe('matchTags', () => {
   it('matches keywords on word boundaries, case-insensitively', () => {
-    expect(matchTags('A CAT on the moon', [], FIX)).toEqual({ matched: ['cats', 'space'], keywordHits: 2 })
+    expect(matchTags('A CAT on the moon', [], FIX)).toEqual({
+      matched: ['cats', 'space'],
+      keywordHits: 2,
+      explicit: [],
+    })
     // 'catalog' is not a cat; 'spaceship' is not space.
     expect(matchTags('catalog of spaceship parts', [], FIX).matched).toEqual([])
-    expect(matchTags('', [], FIX)).toEqual({ matched: [], keywordHits: 0 })
+    expect(matchTags('', [], FIX)).toEqual({ matched: [], keywordHits: 0, explicit: [] })
   })
 
   it('matches multi-word and punctuated keywords as phrases', () => {
@@ -182,6 +187,73 @@ describe('matchTags', () => {
   it('normalizePromptText pads and collapses', () => {
     expect(normalizePromptText('Close-Up of SD1.5!')).toBe(' close up of sd1 5 ')
     expect(normalizePromptText('   ')).toBe(' ')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// explicit tags and the mismatch rule
+// ---------------------------------------------------------------------------
+describe('matchTags explicit', () => {
+  it('carries literal #tags and selected ids, never keyword hits', () => {
+    // 'clip' is a #videogen keyword: matched, but nobody claimed anything.
+    const prose = matchTags('a clip of a cat', [], FIX)
+    expect(prose.matched).toEqual(['cats', 'videogen'])
+    expect(prose.explicit).toEqual([])
+    // The same words typed as a tag are a claim.
+    expect(matchTags('a cat #videogen', [], FIX).explicit).toEqual(['videogen'])
+    // So is picking the chip in the Studio.
+    expect(matchTags('a cat', ['videogen'], FIX).explicit).toEqual(['videogen'])
+  })
+
+  it('lists literals before selections, deduped, unknown ids dropped', () => {
+    const r = matchTags('#space #Cats #bogus', ['cats', 'videogen', 'videogen', 'nope'], FIX)
+    expect(r.explicit).toEqual(['space', 'cats', 'videogen'])
+    expect(r.matched).toEqual(['space', 'cats', 'videogen'])
+    expect(r.keywordHits).toBe(0)
+  })
+
+  it('is a subset of matched on the shipped catalog', () => {
+    const r = matchTags('a dragon over a neon city #videogen', ['cats'], CATALOG)
+    expect(r.explicit).toEqual(['videogen', 'cats'])
+    for (const id of r.explicit) expect(r.matched).toContain(id)
+  })
+})
+
+describe('mismatchedTypeTags', () => {
+  it('flags an explicit type tag whose kind is not the post kind', () => {
+    expect(mismatchedTypeTags(['videogen'], 'image', FIX)).toEqual(['videogen'])
+    expect(mismatchedTypeTags(['musicgen'], 'video', FIX)).toEqual(['musicgen'])
+  })
+
+  it('says nothing about a correctly typed tag, or a tag with no kind', () => {
+    expect(mismatchedTypeTags(['videogen'], 'video', FIX)).toEqual([])
+    expect(mismatchedTypeTags(['musicgen'], 'audio', FIX)).toEqual([])
+    expect(mismatchedTypeTags(['cats', 'space', 'portrait'], 'image', FIX)).toEqual([])
+    expect(mismatchedTypeTags([], 'image', FIX)).toEqual([])
+  })
+
+  it('returns several in catalog order, whatever order they were claimed in', () => {
+    const order = FIX.hashtags.map((h) => h.id)
+    expect(order.indexOf('videogen')).toBeLessThan(order.indexOf('musicgen'))
+    expect(mismatchedTypeTags(['musicgen', 'videogen'], 'image', FIX)).toEqual(['videogen', 'musicgen'])
+    // The right one survives when a matching tag rides along.
+    expect(mismatchedTypeTags(['videogen', 'musicgen', 'cats'], 'audio', FIX)).toEqual(['videogen'])
+  })
+
+  it('a keyword hit alone never reaches it: prose is not a claim', () => {
+    // "a cat in motion" on an image model matches #videogen by keyword, and must cost nothing.
+    const r = matchTags('a cat in motion', [], CATALOG)
+    expect(r.matched).toContain('videogen')
+    expect(r.explicit).toEqual([])
+    expect(mismatchedTypeTags(r.explicit, 'image', CATALOG)).toEqual([])
+    // Typed as a tag, the same word is a claim the image model cannot back up.
+    const claimed = matchTags('a cat in motion #videogen', [], CATALOG)
+    expect(mismatchedTypeTags(claimed.explicit, 'image', CATALOG)).toEqual(['videogen'])
+    expect(mismatchedTypeTags(claimed.explicit, 'video', CATALOG)).toEqual([])
+  })
+
+  it('an unknown catalog knows nothing about kinds, so nothing is a mismatch', () => {
+    expect(mismatchedTypeTags(['videogen'], 'image', createCatalog())).toEqual([])
   })
 })
 

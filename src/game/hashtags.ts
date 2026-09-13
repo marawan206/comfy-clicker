@@ -113,19 +113,31 @@ const LITERAL_TAG_RE = /#([a-z0-9_]+)/g
  * literal `#tags`, and explicitly selected ids, deduped, unknown ids dropped.
  * `keywordHits` counts distinct keywords found in the prose (literal tags excluded), which
  * `trendMult` turns into the small "descriptive prompt" bonus.
+ *
+ * `explicit` is the subset the player put there on purpose: literal `#tags` typed into the
+ * prompt plus the ids picked in the Studio, in that order. Keyword hits are deliberately left
+ * out. "a cat in motion" matches the `videogen` keyword `motion`, and prose is not a claim
+ * about what the post is, so only `explicit` may ever ratio a post (`mismatchedTypeTags`).
  */
 export function matchTags(
   prompt: string,
   selected: string[],
   catalog: HashtagCatalog,
-): { matched: string[]; keywordHits: number } {
+): { matched: string[]; keywordHits: number; explicit: string[] } {
   const byId = indexById(catalog.hashtags)
   const matched: string[] = []
   const seen = new Set<string>()
+  const explicit: string[] = []
+  const claimed = new Set<string>()
   const add = (id: string): void => {
     if (seen.has(id) || !byId[id]) return
     seen.add(id)
     matched.push(id)
+  }
+  const claim = (id: string): void => {
+    if (claimed.has(id) || !byId[id]) return
+    claimed.add(id)
+    explicit.push(id)
   }
 
   const lower = prompt.toLowerCase()
@@ -143,9 +155,36 @@ export function matchTags(
     }
     if (hit) add(def.id)
   }
-  for (const m of lower.matchAll(LITERAL_TAG_RE)) add(m[1] as string)
-  for (const id of selected) add(id)
-  return { matched, keywordHits }
+  for (const m of lower.matchAll(LITERAL_TAG_RE)) {
+    const id = m[1] as string
+    add(id)
+    claim(id)
+  }
+  for (const id of selected) {
+    add(id)
+    claim(id)
+  }
+  return { matched, keywordHits, explicit }
+}
+
+/**
+ * The explicit tags that lied about the post: ids whose `HashtagDef.kind` is set and is not the
+ * kind the model produces, in catalog order. `#videogen` on SD 1.5 is one of these; the post
+ * gets ratioed for it (see `rollPost`). A keyword hit is never in `explicit`, so prose can
+ * never cost anybody credits.
+ */
+export function mismatchedTypeTags(
+  explicit: readonly string[],
+  kind: ModelKind,
+  catalog: HashtagCatalog,
+): string[] {
+  if (explicit.length === 0) return []
+  const picked = new Set(explicit)
+  const out: string[] = []
+  for (const def of catalog.hashtags) {
+    if (def.kind !== undefined && def.kind !== kind && picked.has(def.id)) out.push(def.id)
+  }
+  return out
 }
 
 /**
