@@ -11,11 +11,14 @@ import { useEffect, useRef } from 'react'
 import { armSfx, playCue, setSfxEnabled, stopAllSfx } from '@/audio/sfxEngine'
 import { cueForEvent } from '@/audio/sfxMap'
 import { COMBO_GAP_MS } from '@/components/hero/ComboMeter'
+import { useReducedMotionPref } from '@/components/overlays/ModalBase'
 import { useGame, useGameEvents, useGameStore } from '@/state/useGame'
 
 export function useSfx(): void {
   const store = useGameStore()
   const sfx = useGame((s) => s.settings.sfx)
+  // The Lounge lands a bet instantly under reduced motion, so its anticipation cues are skipped.
+  const reducedMotion = useReducedMotionPref()
   const combo = useRef(0)
   const lastClickAt = useRef(0)
 
@@ -42,6 +45,6 @@ export function useSfx(): void {
     const hiddenAchievement =
       event.type === 'achievement' && store.catalog.achievements.some((a) => a.id === event.id && a.hidden === true)
 
-    playCue(cueForEvent(event, { combo: combo.current, hiddenAchievement }))
+    playCue(cueForEvent(event, { combo: combo.current, hiddenAchievement, reducedMotion }))
   })
 }

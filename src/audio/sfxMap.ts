@@ -71,9 +71,18 @@ export interface CueContext {
   combo?: number
   /** True when the granted achievement is a hidden one (those get the easter-egg sting). */
   hiddenAchievement?: boolean
+  /**
+   * True under reduced motion. The Lounge then lands a bet in the same instant it is placed, so
+   * the toss and the ticking reel have nothing to cover and the landing cue carries the whole bet.
+   */
+  reducedMotion?: boolean
 }
 
-/** Per-name gain before the master volume. Big moments sit above the chatter. */
+/**
+ * Per-name gain before the master volume. Big moments sit above the chatter. This is the mix
+ * intent and it applies to the synth recipes as much as to the files; a file that was mastered
+ * off the others is corrected in SAMPLE_TRIM, not here.
+ */
 export const BASE_GAIN: Record<SfxName, number> = {
   achievement: 0.8,
   breaker: 0.65,
@@ -94,6 +103,16 @@ export const BASE_GAIN: Record<SfxName, number> = {
   viral: 0.8,
   whoosh: 0.45,
 }
+
+/**
+ * Gain applied on top of BASE_GAIN when the recorded file plays, and only then. The files were
+ * not mastered to one level: measured integrated loudness (ffmpeg ebur128) puts most of the set
+ * between -14 and -23 LUFS, `flop.mp3` at -9.2 and `lose.mp3` at -8.7, so at an equal gain a lost
+ * coin flip landed about 13 dB louder than a won one (`cash.mp3` is -22.0). These two trims pull
+ * the files down to the level their recipes already sit at, beside `error` and `egg` in the mix
+ * rather than above the jackpot.
+ */
+export const SAMPLE_TRIM: Partial<Record<SfxName, number>> = { lose: 0.4, flop: 0.55 }
 
 /** While one of these plays, the click drops to CLICK_DUCK so the payoff is audible over it. */
 export const DUCKERS: readonly SfxName[] = ['achievement', 'viral', 'levelup', 'jackpot']
@@ -265,13 +284,17 @@ export function cueForEvent(event: GameEvent, ctx: CueContext = {}): Cue | null 
     case 'milestone':
       return cue('levelup', 0.9)
 
+    // A bet sounds twice. The engine event is the moment the roll is decided, but the Lounge is
+    // still scrambling the seed or turning the coin, so here it is only the sampler ticking or the
+    // toss, the same for a win and a loss. The payoff is `cueForLanding`, played by the Lounge
+    // when the animation lands, so the sound never says what the screen has not said yet. Under
+    // reduced motion there is no animation to cover, so the landing is the whole sound.
     case 'spin':
-      if (event.mult >= 10) return cue('jackpot')
-      if (event.mult <= 0) return cue('lose')
-      return cue('spin')
+      // Sped up so the ticking runs out roughly when the seed settles.
+      return ctx.reducedMotion ? null : cue('spin', 1.5, 0.9)
 
     case 'flip':
-      return event.payout > 0 ? cue('cash', 1.1) : cue('lose')
+      return ctx.reducedMotion ? null : cue('whoosh', 1.5, 0.6)
 
     // A citizen running your workflow is a background hum, not an event: the royalty lands in the
     // counter and the activity list says who it was. Silence on purpose.
@@ -284,6 +307,29 @@ export function cueForEvent(event: GameEvent, ctx: CueContext = {}): Cue | null 
     default:
       return assertNever(event)
   }
+}
+
+/** A bet at the moment its result reaches the screen. */
+export type BetLanding = { table: 'wheel'; mult: number } | { table: 'coin'; won: boolean }
+
+/** Wheel multiplier from which the landing gets the jackpot fanfare. */
+export const JACKPOT_MULT = 10
+
+/**
+ * The payoff half of a bet. `cueForEvent` covers the toss and the ticking reel; this is what the
+ * Lounge plays when the coin or the seed actually lands. Under reduced motion it is the only
+ * sound the bet makes. The wheel's `mult` is what was paid per credit staked, hot sampler
+ * included, not the segment's printed figure.
+ */
+export function cueForLanding(landing: BetLanding): Cue {
+  if (landing.table === 'coin') return landing.won ? cue('cash', 1.1) : cue('lose', undefined, 0.7)
+  const { mult } = landing
+  if (mult >= JACKPOT_MULT) return cue('jackpot')
+  if (mult > 1) return cue('cash')
+  // Same seed, same image: the stake comes back and nothing else happens.
+  if (mult === 1) return cue('tick', undefined, 0.6)
+  // Half back is a smaller, shorter sting than a NaN.
+  return mult > 0 ? cue('lose', 1.15, 0.5) : cue('lose', undefined, 0.8)
 }
 
 /**
