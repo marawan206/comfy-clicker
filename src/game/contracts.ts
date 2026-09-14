@@ -11,7 +11,8 @@
  */
 import type { Catalog } from '@/data'
 import { buildIndex } from '@/game/catalog'
-import { CONTRACT_ROTATE_MS, CONTRACT_SLOTS } from '@/game/constants'
+import { CONTRACT_ROTATE_MS, CONTRACT_SLOTS, XP_CONTRACT } from '@/game/constants'
+import { grantXp } from '@/game/level'
 import { weightedPick } from '@/game/rng'
 import type {
   ActiveContract,
@@ -238,10 +239,10 @@ export function progressContracts(state: GameState, events: GameEvent[], catalog
 }
 
 /**
- * Pays out a done contract at `idx` (credits + optional RP/CP), bumps `stats.contractsDone`, frees
- * the slot and sets `nextRotateAt = 0` so the next `rotateContracts` refills it. Returns `[]` when
- * there is nothing to claim; the completion event was already emitted by `progressContracts`, so a
- * successful claim also returns `[]`.
+ * Pays out a done contract at `idx` (credits + optional RP/CP), bumps `stats.contractsDone`, banks
+ * XP_CONTRACT of XP, frees the slot and sets `nextRotateAt = 0` so the next `rotateContracts`
+ * refills it. Returns the `xp` event on a successful claim (the completion itself was already
+ * announced by `progressContracts`) and `[]` when there was nothing to claim.
  */
 export function claimContract(state: GameState, idx: number, catalog: ContractCatalog): GameEvent[] {
   const c = state.contracts.active[idx]
@@ -256,5 +257,6 @@ export function claimContract(state: GameState, idx: number, catalog: ContractCa
   state.stats.contractsDone += 1
   state.contracts.active.splice(idx, 1)
   state.contracts.nextRotateAt = 0
-  return []
+  const xp = grantXp(state, XP_CONTRACT, 'contract')
+  return xp ? [xp] : []
 }

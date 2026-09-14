@@ -152,7 +152,7 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
       lastPrompt: '', lastPostKey: '', bestCps: 0, clicksWindow: [],
       levelSeen: 1, ratioed: 0, dislikes: 0, spins: 0, flips: 0, spinNet: 0,
       clickLockUntil: 0, clickStrikes: 0, clickStrikeAt: 0,
-      luckyClicks: 0, landedStreak: 0, bestLandedStreak: 0,
+      luckyClicks: 0, landedStreak: 0, bestLandedStreak: 0, xpBy: {},
     },
     gamble: { freeSpinDay: null, winStreak: 0, dryStreak: 0, coinStreak: 0, pot: 0 },
     citizens: { drops: [], feed: [] },

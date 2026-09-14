@@ -50,6 +50,7 @@ const EVENT_TYPES = [
   'easterEgg',
   'milestone',
   'levelUp',
+  'xp',
   'clickBlocked',
   'spin',
   'flip',
@@ -100,7 +101,11 @@ const SAMPLES: Record<GameEvent['type'], GameEvent[]> = {
   weekRollover: [{ type: 'weekRollover', tags: ['wan'] }],
   easterEgg: [{ type: 'easterEgg', id: 'konami' }],
   milestone: [{ type: 'milestone', cps: 1000 }],
-  levelUp: [{ type: 'levelUp', level: 4, credits: 1000, unlocked: ['flux'] }],
+  levelUp: [{ type: 'levelUp', level: 4, credits: 1000, unlocked: ['flux'], hardware: ['rtx-4090'] }],
+  xp: [
+    { type: 'xp', amount: 16, source: 'post' },
+    { type: 'xp', amount: 500, source: 'rebrand' },
+  ],
   clickBlocked: [{ type: 'clickBlocked', reason: 'cadence', until: 0 }],
   spin: [
     { type: 'spin', outcome: 'seed42', mult: 42, wager: 100, payout: 4200, free: false, hot: true },

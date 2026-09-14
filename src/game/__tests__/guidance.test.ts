@@ -213,6 +213,30 @@ describe('explainBuy', () => {
       expect(credits.need).toBe(hw('rtx-3060').baseCost)
     }
   })
+
+  it('puts the level after the unlock condition and before the cap and the money', () => {
+    const region = hw('region-us-east')
+    const state = fresh((s) => {
+      s.hardware[region.id] = 1
+      s.credits = 0
+    })
+    const causes = explainBuy(region, state, derivedWith({ unlockedFamilies: [region.family] }), CATALOG)
+    expect(causes.map((c) => c.kind)).toEqual(['mapNode', 'level', 'max', 'credits'])
+    expect(causes[1]).toEqual({ kind: 'level', need: region.minLevel, have: 1 })
+  })
+
+  it('the level cause reads exactly like a checkpoint gate, through canBuy too', () => {
+    const state = fresh((s) => {
+      s.hardware['pc-8c16t'] = 1
+      s.credits = 0
+    })
+    const causes = explainBuy(hw('rtx-3060'), state, base, CATALOG)
+    expect(causes.map((c) => c.kind)).toEqual(['level', 'credits'])
+    expect(describeCause(causes[0] as LockCause, CATALOG)).toBe('Needs level 2 · you are level 1')
+    expect(canBuy(hw('rtx-3060'), state, base, CATALOG).reason).toBe('Needs level 2 · you are level 1')
+    state.stats.levelSeen = 2
+    expect(explainBuy(hw('rtx-3060'), state, base, CATALOG).map((c) => c.kind)).toEqual(['credits'])
+  })
 })
 
 describe('explainUnlock', () => {

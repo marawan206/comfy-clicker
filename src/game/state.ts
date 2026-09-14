@@ -81,6 +81,7 @@ export function createInitialState(now: number, guestId: string): GameState {
       luckyClicks: 0,
       landedStreak: 0,
       bestLandedStreak: 0,
+      xpBy: {},
     },
     settings: {
       sfx: true,

@@ -1,13 +1,30 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CATALOG } from '@/data'
-import { SAVE_KEY, SAVE_VERSION } from '@/game/constants'
+import {
+  SAVE_KEY,
+  SAVE_VERSION,
+  XP_ACHIEVEMENT,
+  XP_CONTRACT,
+  XP_HARDWARE_FIRST,
+  XP_LORA,
+  XP_MAP_NODE,
+  XP_QUANTIZE,
+  XP_REBRAND,
+  XP_SETUP,
+  XP_TIER,
+  XP_UPGRADE,
+} from '@/game/constants'
+import { createEmptyDerived } from '@/game/derived'
+import { playerLevel, settleLevelUps } from '@/game/level'
 import {
   EXPORT_PREFIX,
+  LEGACY_POST_XP,
   MIGRATIONS,
   SAVE_CORRUPT_KEY,
   deserialize,
   exportString,
   importString,
+  legacyXp,
   loadSave,
   migrateSave,
   serialize,
@@ -101,8 +118,90 @@ function richState(): GameState {
   return s
 }
 
+/**
+ * A save from before the activity ledger: every counter the legacy seeding reads, at a known
+ * value, using real catalog ids. Two hardware kinds (the office PC counts), one tier, one named
+ * upgrade, one set-up model besides SD 1.5, two Graph nodes, one achievement.
+ */
+function legacyState(): GameState {
+  const s = createInitialState(T0, GUEST)
+  s.hardware = { 'pc-4c8t': 1, 'rtx-3060': 2 }
+  s.hardwareTiers = { 'rtx-3060': 1 }
+  s.upgrades = ['better-prompts']
+  s.models = { sd15: { precisions: ['native'], setup: true }, sdxl: { precisions: ['native', 'fp8'], setup: true } }
+  s.mapNodes = ['core-root', 'core-manager']
+  s.achievements = ['first-click']
+  s.stats.posts = 9
+  s.stats.contractsDone = 2
+  s.stats.quantizations = 1
+  s.stats.lorasTrained = 1
+  s.stats.rebrands = 1
+  return s
+}
+
+/** The blob of `state` with the ledger removed, as a client from before it would have written. */
+function withoutLedger(state: GameState): string {
+  const blob = JSON.parse(serialize(state)) as Record<string, unknown>
+  delete (blob.stats as Record<string, unknown>).xpBy
+  return JSON.stringify(blob)
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe('the XP ledger', () => {
+  it('round-trips the ledger as written', () => {
+    const state = createInitialState(T0, GUEST)
+    state.stats.xpBy = { post: 21, viral: 32, contract: 120 }
+    expect(deserialize(serialize(state), T0, GUEST).stats.xpBy).toEqual({ post: 21, viral: 32, contract: 120 })
+  })
+
+  it('keeps an empty ledger empty rather than re-seeding it', () => {
+    const state = legacyState()
+    state.stats.xpBy = {}
+    expect(deserialize(serialize(state), T0, GUEST).stats.xpBy).toEqual({})
+  })
+
+  it('seeds the ledger of a blob from before it existed from the counters it carries', () => {
+    const back = deserialize(withoutLedger(legacyState()), T0, GUEST)
+    expect(back.stats.xpBy).toEqual({
+      post: 9 * LEGACY_POST_XP,
+      contract: 2 * XP_CONTRACT,
+      achievement: XP_ACHIEVEMENT,
+      mapNode: 2 * XP_MAP_NODE,
+      hardware: 2 * XP_HARDWARE_FIRST,
+      upgrade: XP_UPGRADE,
+      tier: XP_TIER,
+      setup: XP_SETUP,
+      quantize: XP_QUANTIZE,
+      lora: XP_LORA,
+      rebrand: XP_REBRAND,
+    })
+    expect(back.stats.xpBy).toEqual(legacyXp(back, CATALOG))
+    // A fresh save seeds nothing but the starter box, and legacyXp writes nothing.
+    const fresh = deserialize(withoutLedger(createInitialState(T0, GUEST)), T0, GUEST)
+    expect(fresh.stats.xpBy).toEqual({ hardware: XP_HARDWARE_FIRST })
+  })
+
+  it('a seeded ledger may sit above the watermark; the next settle pays the difference', () => {
+    const state = legacyState()
+    state.lifetimeCredits = 1e6
+    state.stats.levelSeen = 2
+    const back = deserialize(withoutLedger(state), T0, GUEST)
+    expect(back.stats.levelSeen).toBe(2)
+    expect(playerLevel(back)).toBeGreaterThan(2)
+    const events = settleLevelUps(back, createEmptyDerived(), CATALOG)
+    expect(events.length).toBeGreaterThan(0)
+    expect(events.every((e) => e.type === 'levelUp')).toBe(true)
+    expect(back.stats.levelSeen).toBe(playerLevel(back))
+  })
+
+  it('drops unknown sources and rounds the rest down', () => {
+    const blob = JSON.parse(serialize(createInitialState(T0, GUEST))) as Record<string, unknown>
+    ;(blob.stats as Record<string, unknown>).xpBy = { post: 12.7, bogus: 40, contract: -3 }
+    expect(deserialize(JSON.stringify(blob), T0, GUEST).stats.xpBy).toEqual({ post: 12 })
+  })
 })
 
 describe('serialize / deserialize', () => {

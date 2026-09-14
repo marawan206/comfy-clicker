@@ -77,8 +77,9 @@ export interface BuyCheck {
 
 /**
  * Can the player buy `n` units of `def` right now? Checks, in order: family unlocked (AMD
- * consumer cards need the ROCm Setup upgrade), the store unlock condition, the per-unit cap,
- * and credits.
+ * consumer cards need the ROCm Setup upgrade), the store unlock condition, the player level
+ * (`Needs level 5 · you are level 4`, the same words a checkpoint uses), the per-unit cap, and
+ * credits.
  */
 export function canBuy(
   def: HardwareDef,
@@ -97,6 +98,7 @@ export function canBuy(
       const left = Math.max(0, cause.max - (state.hardware[def.id] ?? 0))
       return { ok: false, reason: left === 0 ? describeCause(cause, catalog) : `Only ${left} more available` }
     }
+    case 'level':
     case 'credits':
       return { ok: false, reason: describeCause(cause, catalog) }
     default: {

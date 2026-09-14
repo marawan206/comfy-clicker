@@ -18,7 +18,7 @@ import { buildIndex } from '@/game/catalog'
 import { bulkCost, unitCost } from '@/game/economy'
 import { formatNum } from '@/game/format'
 import { cheapestPurchasable, ownedHardware, runsOn, withArticle } from '@/game/hardware'
-import { modelLevelLock } from '@/game/level'
+import { hardwareLevelLock, modelLevelLock } from '@/game/level'
 import { currencyBalance, isNodeUnlocked, mapNodeCost } from '@/game/map'
 import { backendAllows, QUANT_NODE_IDS, quantFee, requiredVram, setupFee } from '@/game/quantize'
 import { FAMILY_LABELS, statValue } from '@/game/state'
@@ -230,8 +230,10 @@ function unlockCauses(
 // ---------------------------------------------------------------------------
 
 /**
- * Why `n` units of `def` cannot be bought, in `canBuy`'s order: family, unlock condition, cap,
- * credits. Every blocker is listed, so a guide can show the whole path; `canBuy` formats the first.
+ * Why `n` units of `def` cannot be bought, in `canBuy`'s order: family, unlock condition, player
+ * level, cap, credits. Every blocker is listed, so a guide can show the whole path; `canBuy`
+ * formats the first. The level is a plain `minLevel` field, not an unlock condition, so a
+ * level-locked unit stays on the shelf with its reason instead of vanishing.
  */
 export function explainBuy(
   def: HardwareDef,
@@ -245,6 +247,8 @@ export function explainBuy(
     causes.push({ kind: 'family', family: def.family, upgradeId: upgradeUnlocking(catalog, def.family) })
   }
   causes.push(...unlockCauses(def.unlock, state, derived, catalog))
+  const level = hardwareLevelLock(def, state)
+  if (level) causes.push({ kind: 'level', need: level.need, have: level.have })
   const owned = state.hardware[def.id] ?? 0
   const count = Number.isInteger(n) && n > 0 ? n : 1
   if (def.max !== undefined && owned + count > def.max) causes.push({ kind: 'max', max: def.max })

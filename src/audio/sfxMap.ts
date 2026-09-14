@@ -240,6 +240,10 @@ export function cueForEvent(event: GameEvent, ctx: CueContext = {}): Cue | null 
     case 'levelUp':
       return cue('levelup')
 
+    // XP rides on the action that earned it, and that action already made its sound.
+    case 'xp':
+      return null
+
     case 'offline':
       // Fires while the tab is still catching up, before any gesture has unlocked audio.
       return null

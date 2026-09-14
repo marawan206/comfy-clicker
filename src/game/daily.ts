@@ -2,9 +2,10 @@
  * Daily login reward. Days are UTC calendar days; the streak continues when the last claim was
  * yesterday (or the day before, with the `streakGrace` effect), otherwise it restarts at 1.
  * Rewards cycle over DAILY_CYCLE_DAYS days: day n pays n × DAILY_BASE_SECS of income (floored at
- * DAILY_MIN_CREDITS), day 3 adds a Research Point and day 7 a Comfy Point.
+ * DAILY_MIN_CREDITS) and `dailyXp(n)` of XP, day 3 adds a Research Point and day 7 a Comfy Point.
  */
 import { DAILY_BASE_SECS, DAILY_MIN_CREDITS } from '@/game/constants'
+import { dailyXp, grantXp } from '@/game/level'
 import type { Derived, GameEvent, GameState } from '@/game/types'
 
 export const DAILY_CYCLE_DAYS = 7
@@ -73,5 +74,8 @@ export function claimDaily(state: GameState, derived: Derived, now: number): Gam
   state.daily.claimed.push(key)
   while (state.daily.claimed.length > DAILY_CLAIMED_KEEP) state.daily.claimed.shift()
 
-  return [{ type: 'daily', day, credits }]
+  const events: GameEvent[] = [{ type: 'daily', day, credits }]
+  const xp = grantXp(state, dailyXp(day), 'daily')
+  if (xp) events.push(xp)
+  return events
 }

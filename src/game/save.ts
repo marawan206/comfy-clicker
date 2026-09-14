@@ -23,11 +23,31 @@ import {
   SAVE_KEY,
   SAVE_VERSION,
   TIER_UPGRADE_THRESHOLDS,
+  XP_ACHIEVEMENT,
+  XP_CONTRACT,
+  XP_HARDWARE_FIRST,
+  XP_LORA,
+  XP_MAP_NODE,
+  XP_QUANTIZE,
+  XP_REBRAND,
+  XP_SETUP,
+  XP_TIER,
+  XP_UPGRADE,
 } from '@/game/constants'
 import { DAILY_CLAIMED_KEEP } from '@/game/daily'
-import { playerLevel } from '@/game/level'
+import { XP_SOURCES, playerLevel } from '@/game/level'
 import { STARTER_HARDWARE_ID, STARTER_MODEL_ID, createInitialState } from '@/game/state'
-import type { ActiveContract, ActiveEvent, CitizenDrop, CitizenVisit, GameState, Job, Post, Precision } from '@/game/types'
+import type {
+  ActiveContract,
+  ActiveEvent,
+  CitizenDrop,
+  CitizenVisit,
+  GameState,
+  Job,
+  Post,
+  Precision,
+  XpSource,
+} from '@/game/types'
 
 export const SAVE_CORRUPT_KEY = `${SAVE_KEY}.corrupt`
 /** Export codes start with this so a pasted string can be recognised. */
@@ -232,6 +252,8 @@ const statsSchema = z.object({
   luckyClicks: fallback(count),
   landedStreak: fallback(count),
   bestLandedStreak: fallback(count),
+  // The activity XP ledger. Absent altogether in a save from before it: `hydrate` seeds it then.
+  xpBy: fallback(recordOf(money)),
 })
 
 const gambleSchema = z.object({
@@ -422,8 +444,6 @@ function hydrate(data: SaveData, now: number, guestId: string, catalog: Catalog)
   // A click lockout from a clock that ran ahead would otherwise outlast its own rules; it may
   // never reach further than one full period from now.
   state.stats.clickLockUntil = Math.min(state.stats.clickLockUntil, now + CLICK_LOCKOUT_MAX_MS)
-  // A save from before levels: award the level the stats already earned, without paying for it.
-  if (stats?.levelSeen === undefined) state.stats.levelSeen = playerLevel(state)
 
   // Drop ids the catalog no longer knows.
   state.hardware = knownKeys(state.hardware, idx.hardwareById)
@@ -475,7 +495,61 @@ function hydrate(data: SaveData, now: number, guestId: string, catalog: Catalog)
     if (!starter) state.models[STARTER_MODEL_ID] = { precisions: ['native'], setup: true }
     else starter.setup = true
   }
+
+  // A save from before the ledger: estimate it from the counters the save already carries. The
+  // level that adds up to may sit above the watermark; the next `settleLevelUps` pays and announces
+  // it, on purpose (the patch gave them a level). A save with a ledger keeps it, known sources only.
+  state.stats.xpBy = stats?.xpBy === undefined ? legacyXp(state, catalog) : knownSources(state.stats.xpBy)
+  // A save from before levels: award the level the stats already earned, without paying for it.
+  if (stats?.levelSeen === undefined) state.stats.levelSeen = playerLevel(state)
   return state
+}
+
+/** A whole, non-negative number, or 0 for anything that is not one. */
+const whole = (n: number | undefined): number =>
+  typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0
+
+/** A legacy save's posts pay a flat estimate each: which models they ran was never recorded. */
+export const LEGACY_POST_XP = 10
+
+/**
+ * The activity ledger a save from before `stats.xpBy` would have banked, estimated from the
+ * counters it already carries under today's weights. Pure: reads the hydrated state, writes nothing.
+ */
+export function legacyXp(state: GameState, catalog: Catalog): Partial<Record<XpSource, number>> {
+  const { hardwareById, upgradeById } = buildIndex(catalog)
+  const stats = state.stats
+  let kinds = 0
+  for (const id in state.hardware) if (hardwareById[id] && (state.hardware[id] ?? 0) > 0) kinds += 1
+  let named = 0
+  for (const id of state.upgrades) if (upgradeById[id] && !id.startsWith('tier:')) named += 1
+  let tiers = 0
+  for (const id in state.hardwareTiers) tiers += whole(state.hardwareTiers[id])
+  let setups = 0
+  for (const id in state.models) if (id !== STARTER_MODEL_ID && state.models[id]?.setup) setups += 1
+  const estimate: Array<[XpSource, number]> = [
+    ['post', LEGACY_POST_XP * whole(stats.posts)],
+    ['contract', XP_CONTRACT * whole(stats.contractsDone)],
+    ['achievement', XP_ACHIEVEMENT * state.achievements.length],
+    ['mapNode', XP_MAP_NODE * state.mapNodes.length],
+    ['hardware', XP_HARDWARE_FIRST * kinds],
+    ['upgrade', XP_UPGRADE * named],
+    ['tier', XP_TIER * tiers],
+    ['setup', XP_SETUP * setups],
+    ['quantize', XP_QUANTIZE * whole(stats.quantizations)],
+    ['lora', XP_LORA * whole(stats.lorasTrained)],
+    ['rebrand', XP_REBRAND * whole(stats.rebrands)],
+  ]
+  const out: Partial<Record<XpSource, number>> = {}
+  for (const [source, xp] of estimate) if (xp > 0) out[source] = xp
+  return out
+}
+
+/** Keep the sources the game knows, each a whole number: a stale key never reaches the bar. */
+function knownSources(ledger: Partial<Record<string, number>>): Partial<Record<XpSource, number>> {
+  const out: Partial<Record<XpSource, number>> = {}
+  for (const source of XP_SOURCES) if (source in ledger) out[source] = whole(ledger[source])
+  return out
 }
 
 /** Achievements are not part of `CatalogIndex`; index them here. */

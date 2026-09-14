@@ -46,6 +46,11 @@ export interface HardwareDef {
   max?: number
   /** Store visibility condition (defaults to "always"). */
   unlock?: UnlockCond
+  /**
+   * Player level required before this unit can be bought. Defaults to 1. A plain field like
+   * `ModelDef.minLevel`, so a level-locked unit stays visible in the store with its reason.
+   */
+  minLevel?: number
   /** Real-world reference for the tooltip, e.g. "$3.49/hr on Runpod". */
   realWorld?: string
   flavor: string
@@ -458,6 +463,23 @@ export interface GameSettings {
   autosave: boolean
 }
 
+/** Where activity XP comes from. The order here is the display order of the breakdown. */
+export type XpSource =
+  | 'post'
+  | 'viral'
+  | 'contract'
+  | 'achievement'
+  | 'mapNode'
+  | 'hardware'
+  | 'upgrade'
+  | 'tier'
+  | 'setup'
+  | 'quantize'
+  | 'lora'
+  | 'daily'
+  | 'milestone'
+  | 'rebrand'
+
 export interface GameStats {
   posts: number
   videos: number
@@ -498,6 +520,8 @@ export interface GameStats {
   /** Consecutive posts that landed (no flop, no ratio). */
   landedStreak: number
   bestLandedStreak: number
+  /** Activity XP banked per source. The credits term is derived on top of this (level.ts). */
+  xpBy: Partial<Record<XpSource, number>>
 }
 
 export interface GameState {
@@ -612,7 +636,10 @@ export type GameEvent =
   | { type: 'weekRollover'; tags: string[] }
   | { type: 'easterEgg'; id: string }
   | { type: 'milestone'; cps: number }
-  | { type: 'levelUp'; level: number; credits: number; unlocked: string[] }
+  /** XP banked by an action. `amount` is whole; `source` is the ledger row it landed in. */
+  | { type: 'xp'; amount: number; source: XpSource }
+  /** `unlocked` is the model ids the level opens, `hardware` the hardware ids, both in catalog order. */
+  | { type: 'levelUp'; level: number; credits: number; unlocked: string[]; hardware: string[] }
   | { type: 'clickBlocked'; reason: 'locked' | 'rate' | 'cadence'; until: number }
   | { type: 'spin'; outcome: string; mult: number; wager: number; payout: number; free: boolean; hot: boolean }
   | { type: 'flip'; side: 'you' | 'comfy'; wager: number; payout: number; streak: number }

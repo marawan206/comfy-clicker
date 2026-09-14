@@ -8,6 +8,7 @@ import type { ActionContext, ActionResult } from '@/game/actions'
 import { addDrop } from '@/game/citizens'
 import { DAILY_CLAIMED_KEEP, DAILY_CP_DAY, DAILY_RP_DAY, cycleDay, dailyReward, dayKey } from '@/game/daily'
 import { addCredits } from '@/game/engine'
+import { dailyXp, grantXp } from '@/game/level'
 import type { GameEvent } from '@/game/types'
 
 const ok = (events: GameEvent[], dirty: boolean): ActionResult => ({ events, dirty })
@@ -50,7 +51,10 @@ export function claimDailyFromServer(ctx: ActionContext, claim: ServerDailyClaim
   const local = dayKey(now)
   if (local !== claim.day) rememberDay(state, local)
 
-  return ok([{ type: 'daily', day, credits }], state.rp !== rp || state.cp !== cp)
+  const events: GameEvent[] = [{ type: 'daily', day, credits }]
+  const xp = grantXp(state, dailyXp(day), 'daily')
+  if (xp) events.push(xp)
+  return ok(events, state.rp !== rp || state.cp !== cp)
 }
 
 /**

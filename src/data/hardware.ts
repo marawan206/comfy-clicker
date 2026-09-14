@@ -21,6 +21,16 @@
  *   referee: PRO 6000 inside 15 min, a cloud node inside 25, no region inside three hours of
  *   continuous play, regions on days 2–4 of a one-hour-a-day week, orbit and the swarm beyond it.
  *
+ * The pace of the ladder is the player level. Every unit carries a `minLevel` (level 1 when
+ * omitted) and the store refuses it below that with `Needs level N · you are level M`, exactly
+ * as a checkpoint does; each level opens one rung of cards, and the checkpoints that rung holds
+ * natively are never gated below the card (hardware-data.test.ts pins that). Payback still
+ * decides *which* unit to buy inside a level; the level decides when the next rung opens. The
+ * table, by level: 1 the two CPUs · 2 Mac mini, RX 7600 XT, RTX 3060 · 3 RX 9070 XT, 4070 Ti
+ * Super, 3090 · 4 RX 7900 XTX, 4090, 5080, Mac Studio · 5 5090, W7900 · 6 A6000, L4, 6000 Ada ·
+ * 7 A40, L40S, PRO 6000 · 8 A100, MI300X · 9 H100, MI325X, H200 · 10 B200, B300, p4d, ND MI300X ·
+ * 11 p5, p5e, p6, 8x B300 · 12 us-east · 13 eu-west · 14 ap-southeast · 16 orbit · 20 the swarm.
+ *
  * Vendor adjustments: consumer Radeons are a little cheaper per cps (×AMD_PAYBACK_MULT) but sit
  * behind the ROCm upgrade and a ×1.25 gen-time tax; the MI-series datacenter parts get no
  * discount (256 GB of HBM is the selling point). Apple MPS is ×1.3 (unified memory is roomy, not
@@ -126,6 +136,8 @@ interface HardwareSpec {
   watts: number
   speedTier: number
   unlock: UnlockCond
+  /** Player level the unit needs before it can be bought. Omitted for level 1. */
+  minLevel?: number
   realWorld?: string
   flavor: string
   cardsPerUnit?: number
@@ -172,6 +184,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 24,
     watts: 40,
     speedTier: 2,
+    minLevel: 2,
     unlock: own('pc-8c16t'),
     realWorld: 'Unified memory over the MPS backend. Images only.',
     flavor: '24 GB of unified memory. MPS reports "unsupported operator" with genuine remorse.',
@@ -186,6 +199,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 16,
     watts: 190,
     speedTier: 3,
+    minLevel: 2,
     unlock: own('pc-8c16t'),
     realWorld: 'Needs ROCm (Linux) or ZLUDA.',
     flavor: '16 GB for the price of 12. The ROCm install guide is longer than the workflow.',
@@ -200,6 +214,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 12,
     watts: 170,
     speedTier: 3,
+    minLevel: 2,
     unlock: own('pc-8c16t'),
     realWorld: '$0.16/hr class on Runpod.',
     flavor: "The people's card. 12 GB, --lowvram in the launch args, dreams of Flux.",
@@ -214,6 +229,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 16,
     watts: 304,
     speedTier: 4,
+    minLevel: 3,
     unlock: anyOf(own('rtx-3060'), own('rx-7600-xt')),
     flavor: 'RDNA 4 finally does FP8. The subreddit has cautiously updated its wiki.',
   },
@@ -227,6 +243,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 16,
     watts: 285,
     speedTier: 4,
+    minLevel: 3,
     unlock: own('rtx-3060'),
     flavor: 'The name has four parts and the VRAM has sixteen gigabytes. Fair trade.',
   },
@@ -240,6 +257,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 24,
     watts: 350,
     speedTier: 4,
+    minLevel: 3,
     unlock: own('rtx-3060'),
     realWorld: '$0.22/hr community on Runpod.',
     flavor: "24 GB on a used-market card. The previous owner mined with it and swears they didn't.",
@@ -254,6 +272,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 24,
     watts: 355,
     speedTier: 5,
+    minLevel: 4,
     unlock: own('rx-9070-xt'),
     flavor: '24 GB and a fan curve you can hear from the kitchen. Sage Attention support pending.',
   },
@@ -267,6 +286,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 24,
     watts: 450,
     speedTier: 5,
+    minLevel: 4,
     unlock: anyOf(own('rtx-4070-ti-super'), own('rtx-3090')),
     realWorld: '$0.34/hr community, $0.74/hr secure on Runpod.',
     flavor: 'The default assumption of every custom node README ever written.',
@@ -281,6 +301,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 16,
     watts: 360,
     speedTier: 5,
+    minLevel: 4,
     unlock: own('rtx-4090'),
     flavor: 'Blackwell, but 16 GB. Very fast at everything that fits.',
   },
@@ -294,6 +315,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 128,
     watts: 150,
     speedTier: 2,
+    minLevel: 4,
     unlock: own('mac-mini-m4'),
     realWorld: '128 GB unified memory; loads anything, eventually.',
     flavor: 'Loads the whole video model. Then thinks about it.',
@@ -308,6 +330,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 32,
     watts: 575,
     speedTier: 6,
+    minLevel: 5,
     unlock: own('rtx-4090'),
     realWorld: '$0.69/hr community, $0.99/hr secure on Runpod.',
     flavor: '32 GB and a 575 W power connector with opinions about your PSU.',
@@ -322,6 +345,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 48,
     watts: 295,
     speedTier: 6,
+    minLevel: 5,
     unlock: own('rx-7900-xtx'),
     flavor: '48 GB in workstation blue. Blower cooler, one slot of dignity.',
   },
@@ -335,6 +359,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 48,
     watts: 300,
     speedTier: 6,
+    minLevel: 6,
     unlock: own('rtx-5090'),
     realWorld: '$0.33/hr on Runpod.',
     flavor: 'Ampere with 48 GB and no RGB. The adults have arrived.',
@@ -349,6 +374,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 24,
     watts: 72,
     speedTier: 6,
+    minLevel: 6,
     // The workstation A6000 is the on-ramp to datacenter silicon. If both branches opened on the
     // 5090, a payback-greedy climber would skip the workstation chain (and the 96 GB PRO 6000
     // the video models want) entirely, since each datacenter rung out-ranks its neighbour.
@@ -366,6 +392,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 48,
     watts: 300,
     speedTier: 6,
+    minLevel: 6,
     unlock: own('rtx-a6000'),
     realWorld: '$0.74/hr on Runpod.',
     flavor: '48 GB, FP8, and a name that confuses procurement. Worth it.',
@@ -380,6 +407,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 48,
     watts: 300,
     speedTier: 7,
+    minLevel: 7,
     unlock: own('l4'),
     realWorld: '$0.35/hr on Runpod.',
     flavor: 'Passively cooled. Needs datacenter airflow or a very brave box fan.',
@@ -394,6 +422,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 48,
     watts: 350,
     speedTier: 7,
+    minLevel: 7,
     unlock: own('a40'),
     realWorld: '$0.79/hr community, $1.09/hr secure on Runpod; g6e on AWS.',
     flavor: 'The card your cloud bill has been quietly trying to tell you about.',
@@ -408,6 +437,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 96,
     watts: 600,
     speedTier: 7,
+    minLevel: 7,
     unlock: own('rtx-6000-ada'),
     realWorld: '$1.69/hr community, $2.09/hr secure on Runpod.',
     flavor: '96 GB. Runs the video model natively, unquantized, out of spite.',
@@ -422,6 +452,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 80,
     watts: 400,
     speedTier: 8,
+    minLevel: 8,
     unlock: own('l40s'),
     realWorld: '$1.19/hr PCIe on Runpod.',
     flavor: "80 GB of HBM2e. Still the benchmark every paper's README quotes.",
@@ -436,6 +467,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 192,
     watts: 750,
     speedTier: 8,
+    minLevel: 8,
     unlock: anyOf(own('radeon-pro-w7900'), own('a100-80')),
     realWorld: 'Azure ND MI300X v5.',
     flavor: '192 GB. Loads two video models at once and dares you to read the ROCm warning.',
@@ -450,6 +482,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 80,
     watts: 700,
     speedTier: 9,
+    minLevel: 9,
     unlock: own('a100-80'),
     realWorld: '$2.69/hr community, $3.49/hr secure on Runpod.',
     flavor: 'The Transformer Engine. Where FP8 stops being a compromise.',
@@ -464,6 +497,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 256,
     watts: 1000,
     speedTier: 9,
+    minLevel: 9,
     unlock: own('mi300x'),
     flavor: '256 GB per card. VRAM stops being a plot point.',
   },
@@ -477,6 +511,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 141,
     watts: 700,
     speedTier: 9,
+    minLevel: 9,
     unlock: own('h100-80'),
     realWorld: '$3.59/hr community, $4.59/hr secure on Runpod.',
     flavor: '141 GB, same Hopper. Half your OOM errors retire.',
@@ -491,6 +526,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 180,
     watts: 1000,
     speedTier: 10,
+    minLevel: 10,
     unlock: own('h200'),
     realWorld: '$5.98/hr community, $6.79/hr secure on Runpod.',
     flavor: 'Blackwell at datacenter scale. The power draw rounds to a kilowatt.',
@@ -505,6 +541,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 288,
     watts: 1400,
     speedTier: 10,
+    minLevel: 10,
     unlock: own('b200'),
     realWorld: '$6.94/hr community, $7.89/hr secure on Runpod.',
     flavor: "288 GB. The model loader finishes before you've read its tooltip.",
@@ -519,6 +556,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 80,
     watts: 3200,
     speedTier: 9,
+    minLevel: 10,
     unlock: own('a100-80'),
     realWorld: '~$32.77/hr on-demand.',
     flavor: 'Eight A100s. Your reserved-instance spreadsheet gains a tab.',
@@ -534,6 +572,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 192,
     watts: 6000,
     speedTier: 9,
+    minLevel: 10,
     unlock: own('mi300x'),
     flavor: 'Eight MI300X in Azure. 1.5 TB of HBM and one quota request pending.',
     cardsPerUnit: CLOUD_CARDS_PER_NODE,
@@ -548,6 +587,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 80,
     watts: 5600,
     speedTier: 10,
+    minLevel: 11,
     unlock: own('h100-80'),
     realWorld: '~$98.32/hr on-demand.',
     flavor: 'Eight H100s and 3.2 Tb/s of EFA. Batch size stops being a question.',
@@ -563,6 +603,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 141,
     watts: 5600,
     speedTier: 10,
+    minLevel: 11,
     unlock: own('h200'),
     flavor: 'Eight H200s. The instance name is shorter than its hourly rate.',
     cardsPerUnit: CLOUD_CARDS_PER_NODE,
@@ -577,6 +618,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 180,
     watts: 8000,
     speedTier: 11,
+    minLevel: 11,
     unlock: own('b200'),
     flavor: 'Eight B200s. Somebody in finance has set up a budget alert.',
     cardsPerUnit: CLOUD_CARDS_PER_NODE,
@@ -591,6 +633,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: 288,
     watts: 11200,
     speedTier: 11,
+    minLevel: 11,
     unlock: own('b300'),
     realWorld: '$7.89/hr per GPU, secure cloud.',
     flavor: 'A whole pod of B300s. The queue is now a formality.',
@@ -606,6 +649,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: Infinity,
     watts: 250000,
     speedTier: 12,
+    minLevel: 12,
     unlock: node(REGIONS_UNLOCK_NODE),
     max: 1,
     flavor: 'Your first Comfy Cloud region. Infinite VRAM, one status page.',
@@ -620,6 +664,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: Infinity,
     watts: 250000,
     speedTier: 12,
+    minLevel: 13,
     unlock: own('region-us-east'),
     max: 1,
     flavor: 'Second region. Same workflows, more consent banners.',
@@ -634,6 +679,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: Infinity,
     watts: 250000,
     speedTier: 12,
+    minLevel: 14,
     unlock: own('region-eu-west'),
     max: 1,
     flavor: 'Third region. The sun never sets on the queue.',
@@ -648,6 +694,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: Infinity,
     watts: 0,
     speedTier: 12,
+    minLevel: 16,
     unlock: node(ORBITAL_UNLOCK_NODE),
     max: 1,
     realWorld: 'Latency is bad, cooling is excellent.',
@@ -663,6 +710,7 @@ const SPECS: readonly HardwareSpec[] = [
     vram: Infinity,
     watts: 0,
     speedTier: 12,
+    minLevel: 20,
     unlock: node(DYSON_UNLOCK_NODE),
     max: 1,
     flavor: 'Every photon the star emits, spent on one more seed.',
@@ -735,6 +783,7 @@ function build(spec: HardwareSpec, rank: number, slot: TailSlot | undefined): Ha
   if (spec.cardsPerUnit !== undefined) def.cardsPerUnit = spec.cardsPerUnit
   if (spec.realWorld !== undefined) def.realWorld = spec.realWorld
   if (spec.max !== undefined) def.max = spec.max
+  if (spec.minLevel !== undefined && spec.minLevel > 1) def.minLevel = spec.minLevel
   return def
 }
 
