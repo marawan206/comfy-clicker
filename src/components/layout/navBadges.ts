@@ -17,6 +17,8 @@ import { LOUNGE_MIN_LEVEL } from '@/game/constants'
 import { dayKey } from '@/game/daily'
 import { playerLevel } from '@/game/level'
 import { useNow } from '@/hooks/useNow'
+import { GAME_VERSION } from '@/data/patchNotes'
+import { hasUnseenNotes, readVersionSeen, writeVersionSeen } from '@/lib/version'
 import { getGameStore } from '@/state/store'
 import { useGame } from '@/state/useGame'
 import {
@@ -328,6 +330,57 @@ export function useFreeSpinReady(): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Settings: the patch-notes dot
+// ---------------------------------------------------------------------------
+
+let versionSeen: string | null = null
+let versionBooted = false
+const versionListeners = new Set<() => void>()
+
+function setVersionSeen(value: string): void {
+  if (versionSeen === value) return
+  versionSeen = value
+  writeVersionSeen(value)
+  for (const l of versionListeners) l()
+}
+
+function bootVersion(): void {
+  if (versionBooted || typeof window === 'undefined') return
+  versionBooted = true
+  const stored = readVersionSeen()
+  // No watermark means this browser is new, or was here before the notes existed. Either way a dot
+  // about a version they never played is noise, so stamp the current one and stay quiet.
+  versionSeen = stored ?? GAME_VERSION
+  if (stored === null) writeVersionSeen(versionSeen)
+  window.addEventListener(OPEN_MODAL_EVENT, onPatchModalOpen as EventListener)
+}
+
+function onPatchModalOpen(event: Event): void {
+  if ((event as CustomEvent<unknown>).detail !== 'patch') return
+  setVersionSeen(GAME_VERSION)
+}
+
+function subscribeVersion(listener: () => void): () => void {
+  bootVersion()
+  versionListeners.add(listener)
+  return () => versionListeners.delete(listener)
+}
+
+/**
+ * Whether the game has updated since this browser last opened the patch notes. The watermark lives
+ * outside React and outside the save: a cloud save arriving on a new device should still show the
+ * notes, and opening them clears the dot on whichever route the header happens to be on.
+ */
+export function useUnseenPatchNotes(): boolean {
+  const seen = useSyncExternalStore(
+    subscribeVersion,
+    () => versionSeen,
+    () => null,
+  )
+  return hasUnseenNotes(seen)
+}
+
+// ---------------------------------------------------------------------------
 // Help: the tutorial dot
 // ---------------------------------------------------------------------------
 
@@ -365,6 +418,8 @@ export interface NavBadges {
   rank: number | null
   statsUnseen: number
   loungeUnlocked: boolean
+  /** The game updated since the player last opened the patch notes. */
+  patchNotes: boolean
   freeSpin: boolean
   tourPending: boolean
 }
@@ -376,11 +431,12 @@ export function useNavBadges(): NavBadges {
   const rank = useBoardRank()
   const statsUnseen = useStatsUnseen()
   const loungeUnlocked = useLoungeUnlocked()
+  const patchNotes = useUnseenPatchNotes()
   const freeSpin = useFreeSpinReady()
   const tourPending = useTourPending()
   return useMemo(
-    () => ({ visited: visitedSet, affordable, hubUnseen: hub, rank, statsUnseen, loungeUnlocked, freeSpin, tourPending }),
-    [visitedSet, affordable, hub, rank, statsUnseen, loungeUnlocked, freeSpin, tourPending],
+    () => ({ visited: visitedSet, affordable, hubUnseen: hub, rank, statsUnseen, loungeUnlocked, patchNotes, freeSpin, tourPending }),
+    [visitedSet, affordable, hub, rank, statsUnseen, loungeUnlocked, patchNotes, freeSpin, tourPending],
   )
 }
 

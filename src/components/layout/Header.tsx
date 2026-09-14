@@ -445,7 +445,8 @@ function Nav() {
         motionOff={off}
         onClick={() => open('stats', 'stats')}
       />
-      <NavTile meta={navTile('settings')} motionOff={off} onClick={() => open('settings', 'settings')} />
+      {/* The dot here is the patch notes, which live one click inside Settings. */}
+      <NavTile meta={navTile('settings')} dot={badges.patchNotes} motionOff={off} onClick={() => open('settings', 'settings')} />
       <span className="hidden 2xl:contents">
         <NavTile
           meta={navTile('projector')}
