@@ -11,7 +11,9 @@
  *    always on screen. That is the whole difference between a game and a trap.
  * 2. **The bet is a number of credits.** A slider and a box, both showing the same figure, plus
  *    six plain shortcuts, with the button that places it right beside them so nothing needs a
- *    scroll. No seconds of income, no tiers, no cooldown to wait out.
+ *    scroll. No seconds of income, no tiers, no cooldown to wait out. The box follows the bank
+ *    down once a bet lands (`draftAfterBet`), never up, so a lost bet cannot leave it promising
+ *    a stake the slider could not cover.
  * 3. **The engine decides.** Every bet goes through `canBet` first and the button carries the
  *    engine's own refusal, so `store.spin` / `store.flip` is never called on a bet the engine
  *    would refuse.
@@ -33,6 +35,7 @@ import { cueForLanding } from '@/audio/sfxMap'
 import { ComfyMark } from '@/components/brand/ComfyMark'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { fx } from '@/components/fx/fxBus'
+import { betNet, draftAfterBet, wagerFor } from '@/components/overlays/loungeBet'
 import { FLIP_MS, SCRAMBLE_MS } from '@/components/overlays/loungeTiming'
 import { ModalBase, ModalButton, SectionLabel, useReducedMotionPref } from '@/components/overlays/ModalBase'
 import { BET_MIN, COIN_PAYOUT, COIN_WIN_CHANCE, LOUNGE_MIN_LEVEL, SPIN_HOT_MULT, SPIN_PITY_DRY } from '@/game/constants'
@@ -193,8 +196,17 @@ function LoungeBody() {
 
   // The wager is clamped on read, not corrected in an effect: the bank moves with every tick and
   // with every purchase made elsewhere, and a render that has to wait for a second pass to be
-  // legal is a render that can call `store.spin` with a stale number.
-  const wager = Math.min(Math.max(Math.floor(bet) || 0, s.min), Math.max(s.min, s.max))
+  // legal is a render that can call `store.spin` with a stale number. The draft itself is pulled
+  // down separately, when a bet lands and between bets (below), so the box agrees with the slider.
+  const wager = wagerFor(bet, s.min, s.max)
+  // Between bets the bank can still move under the draft (a purchase on another tab, a bet placed
+  // somewhere else). Pull the draft down to it, never up, and never while a bet is in the air: the
+  // frozen figures keep their pre-bet values until the landing, and so does the box. Under
+  // `BET_MIN` the control is dead anyway, and the landing has already parked the draft on the floor.
+  // Adjusted during render rather than in an effect (the documented shape for state that follows
+  // an input), so the corrected figure is the one this render shows; the guard makes it converge.
+  if (!busy && live.max >= BET_MIN && bet > live.max) setBet(live.max)
+
   const check = canBet(store.state, store.derived, now, wager)
   const freeCheck = canBet(store.state, store.derived, now, 'free')
   const locked = s.level < LOUNGE_MIN_LEVEL
@@ -203,7 +215,10 @@ function LoungeBody() {
     setResult(r)
     setSeed(r.seed)
     setBusy(false)
-    const net = r.payout - (r.free ? 0 : r.wager)
+    // The bank moved at the press; the box follows it now, with the result on screen. The store
+    // holds the post-bet figure, where `live` in this closure is the pre-bet snapshot.
+    setBet((prev) => draftAfterBet(prev, store.state.credits, BET_MIN))
+    const net = betNet(r.payout, r.wager, r.free)
     setHistory((prev) => [...prev, { id: r.outcome.id, label: r.outcome.label, net, nonce: r.nonce }].slice(-HISTORY_MAX))
     setSessionNet((n) => n + net)
     floatNet(reelRef, net)
@@ -211,19 +226,20 @@ function LoungeBody() {
     // paid, not on the printed multiplier: a hot x1 pays 1.5x and should not sound like a shrug.
     playCue(cueForLanding({ table: 'wheel', mult: r.hot ? r.outcome.mult * SPIN_HOT_MULT : r.outcome.mult }))
     if (r.outcome.mult >= JACKPOT_CONFETTI_MULT) fx.confetti()
-  }, [])
+  }, [store])
 
   const landFlip = useCallback((r: FlipResult) => {
     setFlip(r)
     setBusy(false)
-    const net = r.payout - r.wager
+    setBet((prev) => draftAfterBet(prev, store.state.credits, BET_MIN))
+    const net = betNet(r.payout, r.wager)
     setHistory((prev) => [...prev, { id: r.side === 'you' ? 'clean' : 'nan', label: r.side === 'you' ? 'Your side' : 'Comfy side', net, nonce: r.nonce }].slice(-HISTORY_MAX))
     setSessionNet((n) => n + net)
     floatNet(coinRef, net)
     playCue(cueForLanding({ table: 'coin', won: r.side === 'you' }))
     // A doubled bet is worth a wash of colour, once the face is showing.
     if (r.side === 'you') fx.flash()
-  }, [])
+  }, [store])
 
   // The engine is the source of truth for both results: the modal listens for its own events
   // rather than reading the action's return, so a bet taken anywhere else still lands here.
@@ -625,6 +641,9 @@ function WheelTable({
   reduced: boolean
   reelRef: RefObject<HTMLDivElement | null>
 }) {
+  // The result line prints the net, the same figure as the history chip and the floating number.
+  // Not the gross payout: a NaN pays a quarter back, and a quarter in green would read as a win.
+  const net = result ? betNet(result.payout, result.wager, result.free) : 0
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-3">
@@ -690,8 +709,9 @@ function WheelTable({
                   ×{result.outcome.mult}
                   {result.hot ? ` · hot ×${SPIN_HOT_MULT}` : ''} ·{' '}
                 </span>
-                <span className={cn('font-extrabold tabular-nums', result.payout > 0 ? 'text-credits' : 'text-slot-vae')}>
-                  {result.payout > 0 ? `+${formatNum(result.payout)}` : `-${formatNum(result.wager)}`}
+                <span className={cn('font-extrabold tabular-nums', net >= 0 ? 'text-credits' : 'text-slot-vae')}>
+                  {net >= 0 ? '+' : ''}
+                  {formatNum(net)}
                 </span>
               </motion.p>
             ) : (
@@ -945,7 +965,7 @@ function Disclosure() {
   const wheel = spinEv(store.catalog.gamble)
   return (
     <p className="mr-auto text-left text-[11px] text-smoke-600">
-      Wheel {formatPct(wheel - 1)} · coin {formatPct(coinEv() - 1)} · both pay back less than they take · you can lose the whole bet
+      Wheel {formatPct(wheel - 1)} · coin {formatPct(coinEv() - 1)} · both pay back less than they take · a NaN leaves you a quarter, a lost flip leaves you nothing
     </p>
   )
 }

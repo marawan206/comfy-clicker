@@ -211,7 +211,10 @@ export function upscaleCost(post: Post, ctx: Pick<ActionContext, 'derived' | 'ca
  * a single `clickBlocked` event and no error: the button has to be able to say why it went quiet,
  * and a toast is the only place to say it. What it must never do is move anything. No credits, no
  * `totalClicks`, no `recordClick`, no `applyClickToJobs` and above all no `click` event, so
- * contracts, the combo meter and the click-frenzy egg all see a click that never happened.
+ * contracts, the combo meter and the click-frenzy egg all see a click that never happened. The
+ * one thing a refusal writes is `flags.clickGuard`, raised by the guard itself behind the hidden
+ * achievement "Rate Limited". The only reason left is `rate`: the cap on accepted clicks per
+ * second is the whole guard now that the cadence detector is gone.
  */
 export function click(ctx: ActionContext): ActionResult {
   const { state, derived, catalog, now, rng } = ctx
@@ -423,8 +426,9 @@ export function claimDaily(ctx: ActionContext): ActionResult {
  * reads any of them.
  *
  * Two things this must never become. It is not reachable from the click path or a hotkey, so a
- * wager is always a deliberate press. And it does not call `noteSpend`: a bank that lands on zero
- * because a seed ate the wager is not "Out Of Credits, Not Ideas".
+ * wager is always a deliberate press. And neither it nor `flip` calls `noteSpend`: the wheel
+ * keeps a quarter, so it cannot land the bank on zero on its own, and a bank that lands on zero
+ * because a coin came up Comfy is not "Out Of Credits, Not Ideas".
  */
 export function spin(ctx: ActionContext, wager: number | 'free'): ActionResult {
   const { state, derived, catalog, now, rng } = ctx
