@@ -16,13 +16,14 @@
 import type { Catalog } from '@/data'
 import { buildIndex } from '@/game/catalog'
 import { bulkCost, unitCost } from '@/game/economy'
-import { formatNum } from '@/game/format'
+import { formatNum, formatWatts } from '@/game/format'
 import { cheapestPurchasable, ownedHardware, runsOn, withArticle } from '@/game/hardware'
 import { hardwareLevelLock, modelLevelLock } from '@/game/level'
-import { currencyBalance, isNodeUnlocked, mapNodeCost } from '@/game/map'
+import { currencyBalance, isNodeUnlocked, mapNodeAvailable, mapNodeCost } from '@/game/map'
+import { projectPurchase } from '@/game/power'
 import { backendAllows, QUANT_NODE_IDS, quantFee, requiredVram, setupFee } from '@/game/quantize'
 import { FAMILY_LABELS, statValue } from '@/game/state'
-import { describeUnlock, isUnlocked, ownedInFamily } from '@/game/unlock'
+import { describeUnlock, hasUpgrade, isUnlocked, ownedInFamily } from '@/game/unlock'
 import type {
   Derived,
   GameState,
@@ -68,6 +69,7 @@ export type LockCause =
   | { kind: 'precision'; modelId: string; precision: 'fp8' | 'q4'; fee: number; gateNodeId: string | null }
   | { kind: 'family'; family: HardwareFamily; upgradeId: string | null }
   | { kind: 'max'; max: number }
+  | { kind: 'power'; short: number; upgradeId: string | null; nodeId: string | null }
   | { kind: 'flag' }
 
 export interface BuyFix {
@@ -115,6 +117,36 @@ function upgradeUnlocking(catalog: Catalog, family: HardwareFamily): string | nu
     for (const effect of def.effects) if (effect.kind === 'unlockFamily' && effect.family === family) return def.id
   }
   return null
+}
+
+/**
+ * The power step to take for `short` more watts: the unowned `powerBudget` upgrade that is on
+ * sale, or the Graph node on offer. A step that covers the shortfall on its own wins; when none
+ * does, the cheapest is still the next rung to climb. Both ids are null when the ladder is spent.
+ */
+export function nextPowerStep(
+  short: number,
+  state: GameState,
+  derived: Derived,
+  catalog: Catalog,
+): { upgradeId: string | null; nodeId: string | null } {
+  const steps: Array<{ upgradeId: string | null; nodeId: string | null; cost: number; watts: number }> = []
+  for (const def of catalog.upgrades) {
+    if (hasUpgrade(state, def.id) || !isUnlocked(def.unlock, state, derived, catalog)) continue
+    for (const e of def.effects) {
+      if (e.kind === 'powerBudget' && e.value > 0) steps.push({ upgradeId: def.id, nodeId: null, cost: def.cost, watts: e.value })
+    }
+  }
+  for (const node of catalog.mapNodes) {
+    if (!mapNodeAvailable(node, state, derived, catalog)) continue
+    for (const e of node.effects) {
+      if (e.kind === 'powerBudget' && e.value > 0) steps.push({ upgradeId: null, nodeId: node.id, cost: mapNodeCost(node), watts: e.value })
+    }
+  }
+  const covers = (s: { watts: number }): number => (s.watts >= short ? 0 : 1)
+  steps.sort((a, b) => covers(a) - covers(b) || a.cost - b.cost)
+  const head = steps[0]
+  return head ? { upgradeId: head.upgradeId, nodeId: head.nodeId } : { upgradeId: null, nodeId: null }
 }
 
 /** Cheapest unit in an unlocked family that would run the model, priced at what you would pay now. */
@@ -252,6 +284,13 @@ export function explainBuy(
   const owned = state.hardware[def.id] ?? 0
   const count = Number.isInteger(n) && n > 0 ? n : 1
   if (def.max !== undefined && owned + count > def.max) causes.push({ kind: 'max', max: def.max })
+  // A unit the circuit cannot carry is refused before the money: a dark rack earns nothing, so
+  // the PSU is the purchase that matters, and the cause names it.
+  const power = projectPurchase(def, count, derived)
+  if (power.throttled) {
+    const short = power.draw - power.budget
+    causes.push({ kind: 'power', short, ...nextPowerStep(short, state, derived, catalog) })
+  }
   const cost = bulkCost(def, owned, count)
   if (state.credits < cost) causes.push({ kind: 'credits', need: cost, have: state.credits })
   return causes
@@ -461,6 +500,12 @@ export function describeCause(cause: LockCause, catalog: Catalog): string {
         : `${FAMILY_LABELS[cause.family]} hardware is not available yet`
     case 'max':
       return `Maxed out · ${cause.max} owned`
+    case 'power': {
+      const over = `Trips the breaker · ${formatWatts(cause.short)} over budget`
+      if (cause.upgradeId) return `${over} · install ${index.upgradeById[cause.upgradeId]?.name ?? cause.upgradeId} first`
+      if (cause.nodeId) return `${over} · unlock ${index.mapNodeById[cause.nodeId]?.title ?? cause.nodeId} on the Graph first`
+      return over
+    }
     case 'flag':
       return describeUnlock({ type: 'flag', key: '' }, catalog)
     default: {

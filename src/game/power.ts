@@ -3,11 +3,17 @@
  * and grows through PSU/infra upgrades and map nodes. Drawing more than the budget trips the
  * breaker, and a tripped breaker cuts the power to the whole rack: every unit that needs watts
  * stops, so passive income is zero until the draw fits the circuit again. Clicking still pays
- * (a click is you, not the rack), which is the way back out of a breaker you tripped by buying
- * one card too many. Nothing is lost, nothing is sold: buy a PSU and the rack comes back up.
+ * (a click is you, not the rack).
+ *
+ * The store will not sell you the card that trips it: `explainBuy` (guidance.ts) projects the
+ * purchase with `projectPurchase` and refuses one that lands past the budget, naming the PSU to
+ * install first, and a 'max' buy stops at `unitsWithinBudget`. Clicking to the next PSU with a
+ * dark rack was the one grind the game had, 12,000 credits of it at the Three-Phase step. What
+ * can still trip the breaker is a power surge event taking a slice of the budget, or a save from
+ * before this rule. Nothing is lost, nothing is sold: buy a PSU and the rack comes back up.
  *
  * Pure helpers over `GameState`/`Derived`; derived.ts calls these once per recompute and the
- * store UI uses the projection helpers to warn before a purchase trips the breaker.
+ * guidance layer uses the projection helpers to refuse, and explain, a purchase before it trips.
  */
 import type { Catalog } from '@/data'
 import { buildIndex } from '@/game/catalog'

@@ -327,6 +327,7 @@ describe('actions', () => {
     const cpu = hw('pc-8c16t')
 
     it("'max' buys exactly maxAffordable units", () => {
+      state.upgrades.push('psu-850') // five boxes draw 600 W: the bank, not the breaker, sets the count
       state.credits = bulkCost(cpu, 0, 5) + 3
       const expected = maxAffordable(cpu, 0, state.credits)
       expect(expected).toBe(5)
@@ -365,6 +366,7 @@ describe('actions', () => {
       expect(state.flags.brokeAtZero).toBe(true)
 
       const node = hw('aws-p4d')
+      state.upgrades.push('psu-850', 'psu-1600', 'three-phase') // 3.2 kW a node: the circuit has to carry two
       state.hardware['a100-80'] = 1 // aws-p4d's unlock
       state.stats.levelSeen = node.minLevel ?? 1 // and the level it needs
       state.credits = node.baseCost + 1

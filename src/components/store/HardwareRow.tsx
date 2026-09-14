@@ -1,7 +1,7 @@
 'use client'
 import { memo, useCallback, useEffect, useRef } from 'react'
 import { motion, useAnimate } from 'motion/react'
-import { Lock, Zap } from 'lucide-react'
+import { Lock } from 'lucide-react'
 import type { BuyCount } from '@/game/actions'
 import { useGameStore } from '@/state/useGame'
 import { buildIndex } from '@/game/catalog'
@@ -141,11 +141,6 @@ function HardwareRowImpl({ id, amount, isNew, onSeen }: Props) {
             <span className="text-smoke-100/90">{formatEach(row.cpsEach)} each</span>
             <span>payback {formatDuration(row.paybackSec)}</span>
             <span>{formatWatts(def.watts)}</span>
-            {row.tripsBreaker && (
-              <span className="flex items-center gap-0.5 text-slot-vae" title="This purchase pushes draw past the power budget">
-                <Zap size={10} aria-hidden="true" /> trips breaker
-              </span>
-            )}
           </div>
         )}
       </div>

@@ -76,6 +76,8 @@ function step(store: GameStore, at: number): void {
 function makeStore(): GameStore {
   const store = new GameStore(CATALOG)
   store.state.credits = 1e9
+  // Eleven starter boxes draw 715 W: the PSU keeps the tenth buy on the right side of the breaker.
+  store.state.upgrades.push('psu-850')
   // Establish a baseline write so the very first tick is not an "never saved" interval write.
   // `interval`, not `manual`: a manual write starts the manual cooldown, which these tests set.
   store.save('interval')

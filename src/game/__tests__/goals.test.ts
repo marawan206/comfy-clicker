@@ -715,7 +715,8 @@ describe('saveTarget', () => {
     return fresh((s) => {
       s.credits = credits
       s.hardware = { 'pc-4c8t': 2, 'rtx-3060': 3, 'rtx-3090': 1 }
-      s.upgrades = ['rocm-setup']
+      // 990 W of rack: the two PSUs keep it under the breaker, so the shelf is not all power-locked.
+      s.upgrades = ['rocm-setup', 'psu-850', 'psu-1600']
       s.mapNodes = ['core-root']
       s.lifetimeCredits = 250_000
       s.totalClicks = 2_400
@@ -761,6 +762,20 @@ describe('saveTarget', () => {
     expect(saveTarget(s, base, catalog)?.def.id).toBe('open')
     s.stats.levelSeen = 3
     expect(saveTarget(s, base, catalog)?.def.id).toBe('locked')
+  })
+
+  it('skips a unit the circuit cannot carry, however cheap, until the budget grows', () => {
+    const catalog = createCatalog({
+      hardware: [
+        hardware({ id: 'hot', baseCost: 120, growth: 1, watts: 700 }),
+        hardware({ id: 'cool', baseCost: 150, growth: 1, watts: 100 }),
+      ],
+    })
+    const s = fresh((st) => {
+      st.credits = 100
+    })
+    expect(saveTarget(s, base, catalog)?.def.id).toBe('cool')
+    expect(saveTarget(s, derivedWith({ powerBudget: 1000 }), catalog)?.def.id).toBe('hot')
   })
 
   it('picks the cheapest unaffordable unit, skipping locked, maxed and affordable ones', () => {

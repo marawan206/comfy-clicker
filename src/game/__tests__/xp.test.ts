@@ -118,6 +118,8 @@ function makePost(over: Partial<Post> = {}): Post {
 describe('the store', () => {
   it('buyHardware pays for the first unit of a kind, once, whatever the count', () => {
     const state = richState()
+    // Twenty-one boxes and cards draw about 3 kW; the store refuses what the breaker cannot carry.
+    state.upgrades.push('psu-850', 'psu-1600', 'three-phase')
     const first = buyHardware(ctxFor(state), 'pc-8c16t')
     expect(first.events).toEqual([
       { type: 'purchase', hardwareId: 'pc-8c16t', count: 1 },

@@ -1,4 +1,5 @@
 "use client";
+import { useRef } from "react";
 import { useGameShallow } from "@/state/useGame";
 import { HARDWARE_FAMILIES } from "@/data/hardware";
 import type { HardwareFamily } from "@/game/types";
@@ -7,7 +8,7 @@ import { PowerMeter } from "@/components/hero/PowerMeter";
 import { CreditsIcon } from "@/components/brand/CreditsIcon";
 import { cn } from "@/lib/utils";
 import { UpgradeRow } from "./UpgradeRow";
-import { useFamilyDraw, useVisibleUpgrades } from "./storeHooks";
+import { useFamilyDraw, useHighlight, useVisibleUpgrades } from "./storeHooks";
 
 const FAMILY_TITLE = Object.fromEntries(
   HARDWARE_FAMILIES.map((f) => [f.id, f.label]),
@@ -23,9 +24,12 @@ export function PowerTab() {
     throttled: d.throttled,
   }));
   const totalDraw = rows.reduce((sum, r) => sum + r.watts, 0);
+  const listRef = useRef<HTMLDivElement>(null);
+  // A `focusId` on `comfy:store-tab` (the breaker lock's guide step) scrolls that PSU in and rings it.
+  useHighlight(listRef);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
       <div className="pt-3">
         <PowerMeter inStore />
       </div>

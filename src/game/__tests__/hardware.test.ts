@@ -105,7 +105,7 @@ describe('canBuy', () => {
 
   it('AMD datacenter parts are not family-locked (ROCm tax only)', () => {
     const state = fresh((s) => { s.credits = 1e9; s.hardware['a100-80'] = 1; s.stats.levelSeen = MAX_LEVEL })
-    expect(canBuy(hw('mi300x'), state, base, CATALOG).ok).toBe(true)
+    expect(canBuy(hw('mi300x'), state, derivedWith({ powerBudget: 5_000 }), CATALOG).ok).toBe(true)
   })
 
   it('reports the store unlock condition', () => {
@@ -147,6 +147,26 @@ describe('canBuy', () => {
     state.hardware.capped = 2
     expect(canBuy(capped, state, base, catalog).reason).toMatch(/Maxed out/)
     expect(canBuy(hw('pc-4c8t'), state, base, catalog, 0).ok).toBe(false)
+  })
+
+  it('refuses a unit the circuit cannot carry and names the PSU to install first', () => {
+    const state = fresh((s) => { s.credits = 1e9 })
+    const near = derivedWith({ powerDraw: 600, powerBudget: 650 })
+    expect(canBuy(hw('pc-8c16t'), state, near, CATALOG)).toEqual({
+      ok: false,
+      reason: 'Trips the breaker · 70 W over budget · install 850 W PSU first',
+    })
+    // The whole order is projected: two fit a bigger circuit, three do not.
+    const roomy = derivedWith({ powerDraw: 600, powerBudget: 900 })
+    expect(canBuy(hw('pc-8c16t'), state, roomy, CATALOG, 2)).toEqual({ ok: true })
+    expect(canBuy(hw('pc-8c16t'), state, roomy, CATALOG, 3).reason).toBe(
+      'Trips the breaker · 60 W over budget · install 850 W PSU first',
+    )
+    // With the small PSUs installed, the next rung is Three-Phase.
+    state.upgrades.push('psu-850', 'psu-1600')
+    expect(canBuy(hw('pc-8c16t'), state, near, CATALOG).reason).toBe(
+      'Trips the breaker · 70 W over budget · install Three-Phase Power first',
+    )
   })
 
   it('applyPurchase deducts the bulk cost and installs the units', () => {

@@ -119,7 +119,7 @@ Level gating is a `minLevel` **field** on both `ModelDef` and `HardwareDef`, not
 `activeEffects(state, catalog): Effect[]`: from owned upgrades (incl. virtual tier upgrades), unlocked map nodes, active events (see events.ts `eventEffects`).
 `computeDerived(state, catalog): Derived`:
 - `rawCps = Σ count × baseCps × rigMult[id] × familyMult[family]`; `globalMult = Π(1+globalMult effects) × (1 + RP_MULT_PER_POINT × rp) × (1 + ACHIEVEMENT_MULT × achievements) × cpMult`; `cpMult = 1 + CP_MULT_PER_POINT × cp × Π cpMult effects`; `cps = rawCps × globalMult × throttleMult(powerDraw, powerBudget)`.
-- `powerDraw = Σ count × watts`, `powerBudget = POWER_BUDGET_BASE + Σ powerBudget effects`, `throttled = powerDraw > powerBudget`. The breaker is a **cliff**: `throttleMult = throttled ? 0 : 1` (power.ts), so past it every rig that needs watts stops and passive income is zero until the rack fits the circuit. `clickValue` keeps its flat part, so clicking is the way back out.
+- `powerDraw = Σ count × watts`, `powerBudget = POWER_BUDGET_BASE + Σ powerBudget effects`, `throttled = powerDraw > powerBudget`. The breaker is a **cliff**: `throttleMult = throttled ? 0 : 1` (power.ts), so past it every rig that needs watts stops and passive income is zero until the rack fits the circuit. `clickValue` keeps its flat part, so clicking still pays. The store never trips it on purpose: `explainBuy` adds a `power` cause for a unit whose projected draw passes the budget, `canBuy` refuses on it, `buyHardware('max')` stops at `unitsWithinBudget` and `saveTarget` skips the unit; a `powerSurge` event or a save from before this rule is how a rack ends up dark.
 - `bestVram/bestTier` over owned units (regions = Infinity); `bestHardwareId` = the owned unit with the highest `hardware.speedScore` (effective tier minus the tiers its MPS ×2 / ROCm ×1.25 tax is worth), ties → VRAM → price; `hasGpu` = any owned unit that is not `cpuOnly` and not `mps`.
 - `clickValue = ((1 + clickFlat) × Π clickMult × globalMult + clickCpsPct × cps)`.
 - `concurrency = 1 + Σ concurrency`, `speedMult = Π speedMult`, `likesMult = Π likesMult`, `payoutBonus = Σ payoutRatio`, `followRate = FOLLOW_RATE_BASE × Π followRate`, `viralChance = VIRAL_CHANCE_BASE + Σ`, `flopChance = max(0.02, FLOP_CHANCE_BASE − Σ)`, `offlineCapHours = OFFLINE_CAP_HOURS_BASE + Σ` (Infinity if any Infinity), `offlineEfficiency = max(OFFLINE_EFFICIENCY, offlineEfficiency effects)`, flags from effect kinds, `unlockedFamilies` (cpu/apple/nvidia-consumer/workstation/datacenter/cloud-node/region always; `amd-consumer` needs `unlockFamily`), `tagLikes`, `familyGenTime`, `coolingTier`, `weekSpeed = Π weekSpeed`.
@@ -128,7 +128,7 @@ Level gating is a `minLevel` **field** on both `ModelDef` and `HardwareDef`, not
 `powerDraw(state, catalog)`, `powerBudget(effects)`, `isThrottled(draw, budget)`, `throttleMult(draw, budget)` (1 within budget, 0 past it), `powerHeadroom`, `powerLoad`, `projectPurchase(def, n, derived): { draw, budget, throttled, trips, mult }`, `wouldThrottle`, `unitsWithinBudget`.
 
 ## hardware.ts
-`canBuy(def, state, derived, catalog, n = 1): { ok: boolean; reason?: string }`: family locked (ROCm), unlock cond, player level (`hardwareLevelLock`, refused with `Needs level 5 · you are level 4`, the model string verbatim), max, credits.
+`canBuy(def, state, derived, catalog, n = 1): { ok: boolean; reason?: string }`: family locked (ROCm), unlock cond, player level (`hardwareLevelLock`, refused with `Needs level 5 · you are level 4`, the model string verbatim), max, breaker (`projectPurchase(def, n, derived).throttled`, refused with `Trips the breaker · 70 W over budget · install 850 W PSU first`), credits.
 `runsOn(model, precision, hw, derived, catalog): boolean`: `hw.vram ≥ model.vram × precisions[precision].vramMult`; `hw.cpuOnly → model.cpuOk`; `hw.mps → model.mpsOk && kind === 'image'`; `hw.rocm → model.rocmOk || (!model.needsZluda) || derived.zluda`; `model.api → derived.apiNodes` (any hardware).
 `runnableHardware(...)`, `bestRunnable(...)` = the owned unit with the **shortest `genTimeMs`** for that model and precision (so the MPS/ROCm taxes count), ties → VRAM → price; `speedScore(hw, derived)`, `isFasterUnit(a, b, derived)`, `backendTimeMult(hw)`; `nativeTier(model, catalog)` = speedTier of the cheapest CUDA unit (not cpuOnly, not mps, not rocm) that holds the native weights, 0 for API models; `lockReason(model, precision, state, derived, catalog): string | null` (e.g. `Needs 20 GB · your best card has 12 GB · quantize FP8 for 450 or buy an RTX 3090`).
 `genTimeMs(model, precision, hw, derived, catalog)` = clamp(baseTime × TIER_DELTA_FACTOR^(nativeTier − hw.speedTier − cooling) for below, × ABOVE_TIER_FACTOR^Δ for above, GEN_TIME_MIN_S, GEN_TIME_MAX_S) × precision.timeMult × speedMult × familyGenTime[family] × (mps ? 2 : 1) × (rocm ? 1.25 : 1) → ms. API models skip the tier and backend terms (their `baseTime` is 10 s for images, 12 s for video).
@@ -141,11 +141,11 @@ Level gating is a `minLevel` **field** on both `ModelDef` and `HardwareDef`, not
 The structured reason anything is locked, and the one place the wording lives. `LockCause` is a
 discriminated union (`credits`, `currency`, `ownHardware`, `ownFamily`, `ownModel`, `upgrade`,
 `mapNode`, `parent`, `stat`, `cps`, `level`, `vram`, `backend`, `apiNodes`, `setup`, `precision`,
-`family`, `max`, `flag`).
+`family`, `max`, `power`, `flag`). `power` carries `short` (watts past the budget after the purchase) and the step that fixes it from `nextPowerStep(short, state, derived, catalog)`: the unowned `powerBudget` upgrade on sale or the Graph node on offer, whichever covers the shortfall for the least, both ids null when the ladder is spent.
 `explainUnlock(cond, state, derived, catalog): LockCause[]` (`all` concatenates its unmet children,
 `any` returns the branch with the fewest unmet leaves, a met condition returns `[]`);
 `explainBuy(def, state, derived, catalog, n = 1): LockCause[]` in `canBuy`'s order (family, unlock,
-**player level**, cap, credits); `explainRun(model, precision, state, derived, catalog): LockCause | null` in
+**player level**, cap, **breaker**, credits); `explainRun(model, precision, state, derived, catalog): LockCause | null` in
 `lockReason`'s order (**player level**, API Nodes, backend, VRAM);
 `explainQuantize(model, precision, state, catalog)`; `explainSetup(model, state, derived, catalog)`;
 `setupCause(model, derived, catalog)`; `explainMapNode(def, state, derived, catalog): LockCause[]`
@@ -199,7 +199,7 @@ splices the list); `isGoalDone(goal, state)` flips the row to its done state (a 
 when the credits are **banked**, not spent).
 `saveTarget(state, derived, catalog): { def, cost, pct, etaSec } | null`: the cheapest visible,
 purchasable-but-unaffordable unit, gated by `canBuy`'s non-credit checks in the same order (family
-unlocked, unlock condition, player level, cap) and priced with `unitCost`, so the store's save-for bar and the
+unlocked, unlock condition, player level, cap, breaker) and priced with `unitCost`, so the store's save-for bar and the
 Next up panel can never quote different numbers. `storeHooks.useSaveTarget` is a thin wrapper and a
 test pins that the two agree. `pct` is a whole number 0..100 and `etaSec` whole seconds
 (`Infinity` at cps 0), so a bar re-renders at most a hundred times per target.

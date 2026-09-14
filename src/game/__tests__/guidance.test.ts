@@ -221,8 +221,29 @@ describe('explainBuy', () => {
       s.credits = 0
     })
     const causes = explainBuy(region, state, derivedWith({ unlockedFamilies: [region.family] }), CATALOG)
-    expect(causes.map((c) => c.kind)).toEqual(['mapNode', 'level', 'max', 'credits'])
+    expect(causes.map((c) => c.kind)).toEqual(['mapNode', 'level', 'max', 'power', 'credits'])
     expect(causes[1]).toEqual({ kind: 'level', need: region.minLevel, have: 1 })
+  })
+
+  it('puts the breaker after the cap and before the money, and names the step that fixes it', () => {
+    const state = fresh((s) => {
+      s.credits = 0
+    })
+    const near = derivedWith({ powerDraw: 600, powerBudget: 650 })
+    const causes = explainBuy(hw('pc-8c16t'), state, near, CATALOG)
+    expect(causes.map((c) => c.kind)).toEqual(['power', 'credits'])
+    expect(causes[0]).toEqual({ kind: 'power', short: 70, upgradeId: 'psu-850', nodeId: null })
+    expect(describeCause(causes[0] as LockCause, CATALOG)).toBe('Trips the breaker · 70 W over budget · install 850 W PSU first')
+    expect(canBuy(hw('pc-8c16t'), state, near, CATALOG).reason).toBe('Trips the breaker · 70 W over budget · install 850 W PSU first')
+    // A unit that fits has no power cause at all.
+    expect(explainBuy(hw('pc-8c16t'), state, base, CATALOG).map((c) => c.kind)).toEqual(['credits'])
+    // The Graph is named when it is the step on offer; a spent ladder still says how far over.
+    expect(describeCause({ kind: 'power', short: 200, upgradeId: null, nodeId: 'infra-undervolt' }, CATALOG)).toBe(
+      'Trips the breaker · 200 W over budget · unlock Undervolt on the Graph first',
+    )
+    expect(describeCause({ kind: 'power', short: 1500, upgradeId: null, nodeId: null }, CATALOG)).toBe(
+      'Trips the breaker · 1.5 kW over budget',
+    )
   })
 
   it('the level cause reads exactly like a checkpoint gate, through canBuy too', () => {

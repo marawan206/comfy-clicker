@@ -11,6 +11,8 @@ import {
   type ActionContext,
   LUCKY_SEED_FLAG,
   TUTORIAL_FLAG,
+  buyHardware,
+  buyUpgrade,
   click,
   completeTutorial,
   declineGift,
@@ -532,5 +534,23 @@ describe('upscalePost', () => {
     state.posts.push(makePost())
     expect(upscalePost(ctxFor(state), 'post-1').error).toBeUndefined()
     expect(state.posts[0]?.upscaled).toBe(true)
+  })
+})
+
+describe('buyHardware and the breaker', () => {
+  it('refuses the unit that would trip it, and max stops at the units that fit', () => {
+    const state = richState()
+    // 650 W base budget with the 65 W starter box plugged in: four 120 W boxes fit, the fifth trips.
+    const max = buyHardware(ctxFor(state), 'pc-8c16t', 'max')
+    expect(max.error).toBeUndefined()
+    expect(state.hardware['pc-8c16t']).toBe(4)
+    const refused = buyHardware(ctxFor(state), 'pc-8c16t')
+    expect(refused.error).toBe('Trips the breaker · 15 W over budget · install 850 W PSU first')
+    expect(refused.events).toEqual([])
+    expect(state.hardware['pc-8c16t']).toBe(4)
+    // The PSU is the purchase that reopens the shelf.
+    expect(buyUpgrade(ctxFor(state), 'psu-850').error).toBeUndefined()
+    expect(buyHardware(ctxFor(state), 'pc-8c16t').error).toBeUndefined()
+    expect(state.hardware['pc-8c16t']).toBe(5)
   })
 })

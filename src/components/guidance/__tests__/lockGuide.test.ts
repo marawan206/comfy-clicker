@@ -52,6 +52,25 @@ describe('one cause, one step', () => {
     expect(step.etaSec).toBe(60)
   })
 
+  it('the breaker points at the PSU in the Power tab, or at the Graph, or at the meter', () => {
+    const cause: LockCause = { kind: 'power', short: 70, upgradeId: 'psu-850', nodeId: null }
+    const step = stepFor(cause, store)
+    expect(step.label).toBe('Install 850 W PSU')
+    expect(step.detail).toBe('200 credits in Power & cooling · +300 W')
+    expect(step.cost).toBe(200)
+    expect(step.currency).toBe('credits')
+    expect(step.action).toEqual({ type: 'store', tab: 'power', focusId: 'psu-850' })
+    expect(whyLine(cause, store)).toBe('Plugging it in puts the rack 70 W over budget, and a tripped breaker earns nothing.')
+
+    const node = stepFor({ kind: 'power', short: 70, upgradeId: null, nodeId: 'infra-undervolt' }, store)
+    expect(node.label).toBe('Unlock Undervolt on the Graph')
+    expect(node.action).toEqual({ type: 'map', nodeId: 'infra-undervolt' })
+
+    const spent = stepFor({ kind: 'power', short: 70, upgradeId: null, nodeId: null }, store)
+    expect(spent.label).toBe('Needs more power budget')
+    expect(spent.action).toEqual({ type: 'store', tab: 'power' })
+  })
+
   it('credits with no income say so instead of quoting infinity', () => {
     const step = stepFor({ kind: 'credits', need: 1000, have: 0 }, store)
     expect(step.detail).toBe('No income yet. Click Generate.')

@@ -32,6 +32,7 @@ import { applyFlip, applySpin, canBet } from '@/game/gamble'
 import { applyPurchase, canBuy } from '@/game/hardware'
 import { grantXp, modelLevelLock } from '@/game/level'
 import { canAffordNode, currencyBalance, isNodeUnlocked, mapNodeAvailable, unlockNode } from '@/game/map'
+import { unitsWithinBudget } from '@/game/power'
 import { canRebrand, rebrand as applyRebrand } from '@/game/prestige'
 import { applyQuantize, canQuantize, quantFee, setupFee } from '@/game/quantize'
 import { chance } from '@/game/rng'
@@ -267,7 +268,9 @@ export function buyHardware(ctx: ActionContext, id: string, n: BuyCount = 1): Ac
   const gate = canBuy(def, state, derived, catalog, 1)
   if (!gate.ok) return fail(gate.reason ?? `${def.name} is locked`)
 
-  const count = n === 'max' ? Math.min(room, maxAffordable(def, owned, state.credits)) : Math.min(room, n)
+  // 'max' stops at the breaker as well as the bank: every unit that fits, never the one that trips it.
+  const count =
+    n === 'max' ? Math.min(room, maxAffordable(def, owned, state.credits), unitsWithinBudget(def, derived)) : Math.min(room, n)
   if (count < 1) return fail('Not enough credits')
   if (count > 1) {
     const bulk = canBuy(def, state, derived, catalog, count)

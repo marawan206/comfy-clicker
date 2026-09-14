@@ -17,6 +17,7 @@ import { formatInt, formatNum } from '@/game/format'
 import { runsOn } from '@/game/hardware'
 import { hardwareLevelLock, levelProgress, modelLevelLock, nextUnlocks, playerLevel } from '@/game/level'
 import { currencyBalance, mapNodeAvailable, mapNodeCost } from '@/game/map'
+import { wouldThrottle } from '@/game/power'
 import { setupFee } from '@/game/quantize'
 import { FAMILY_LABELS, STAT_LABELS, statValue } from '@/game/state'
 import { describeUnlock, isUnlocked, ownedInFamily } from '@/game/unlock'
@@ -298,9 +299,10 @@ export interface HardwareTarget {
  * for. Null when everything visible is affordable (or locked for a reason credits cannot fix).
  *
  * The gates mirror `canBuy`'s non-credit checks (family unlocked, store unlock condition, player
- * level, cap) in the same order; the price is `unitCost`, so the store row and this never
+ * level, cap, breaker) in the same order; the price is `unitCost`, so the store row and this never
  * disagree. A level-locked unit is skipped: saving for it buys nothing until the bar moves, and
- * `levelBlocked` is the function that says so.
+ * `levelBlocked` is the function that says so. A unit the circuit cannot carry is skipped the same
+ * way: the store would refuse it, so the PSU is what the credits are really for.
  */
 export function saveTarget(state: GameState, derived: Derived, catalog: Catalog): HardwareTarget | null {
   let best: HardwareDef | null = null
@@ -311,6 +313,7 @@ export function saveTarget(state: GameState, derived: Derived, catalog: Catalog)
     if (hardwareLevelLock(def, state)) continue
     const owned = state.hardware[def.id] ?? 0
     if (def.max !== undefined && owned >= def.max) continue
+    if (wouldThrottle(def, 1, derived)) continue
     const cost = unitCost(def, owned)
     if (cost > state.credits && cost < bestCost) {
       best = def
