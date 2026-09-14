@@ -222,7 +222,7 @@ export function GenerateButton() {
             />
           ) : null}
           <Image
-            src="/brand/comfy-logo.svg"
+            src="/brand/comfy-logo-glyph.png"
             alt=""
             width={LOGO}
             height={LOGO}
