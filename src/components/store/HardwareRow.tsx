@@ -104,6 +104,14 @@ function HardwareRowImpl({ id, amount, isNew, onSeen }: Props) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-1.5">
           <span className="min-w-0 text-[13px] font-semibold text-smoke-100">{def.name}</span>
+          {row.levelNeed > 0 && (
+            <span
+              className="shrink-0 rounded-[0.3rem] border border-slot-vae/60 bg-slot-vae/20 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide tabular-nums text-slot-vae"
+              title={`Unlocks at level ${row.levelNeed}`}
+            >
+              LV {row.levelNeed}
+            </span>
+          )}
           {def.cardsPerUnit && <span className="shrink-0 text-[10px] font-semibold text-smoke-700">{def.cardsPerUnit}× cards</span>}
           {isNew && (
             <motion.span

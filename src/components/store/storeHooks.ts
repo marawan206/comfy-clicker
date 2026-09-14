@@ -13,6 +13,7 @@ import { bulkCost, maxAffordable, unitCost } from '@/game/economy'
 import { saveTarget } from '@/game/goals'
 import { explainBuy } from '@/game/guidance'
 import { canBuy } from '@/game/hardware'
+import { hardwareLevelLock } from '@/game/level'
 import { currencyBalance } from '@/game/map'
 import { hasUpgrade, isUnlocked } from '@/game/unlock'
 import type { Derived, Effect, GameState, HardwareDef, HardwareFamily, UpgradeCategory, UpgradeDef } from '@/game/types'
@@ -190,6 +191,11 @@ export interface HardwareRowState {
   tripsBreaker: boolean
   /** Units still purchasable under `def.max` (Infinity when uncapped). */
   room: number
+  /**
+   * The level the unit asks for while the player is under it (`hardwareLevelLock`), 0 otherwise.
+   * The row prints it as an `LV N` pill next to the name; the lock line already carries the words.
+   */
+  levelNeed: number
 }
 
 /** Per-unit rate matching `paybackSec`'s denominator. */
@@ -216,11 +222,12 @@ export function useHardwareRow(id: string, amount: BuyCount): HardwareRowState {
     (s: GameState, d: Derived, store: GameStore): HardwareRowState => {
       const def = buildIndex(store.catalog).hardwareById[id]
       if (!def) {
-        return { owned: 0, count: 0, cost: 0, affordable: false, lockReason: 'Unknown unit', cpsEach: 0, paybackSec: Infinity, tier: 0, tripsBreaker: false, room: 0 }
+        return { owned: 0, count: 0, cost: 0, affordable: false, lockReason: 'Unknown unit', cpsEach: 0, paybackSec: Infinity, tier: 0, tripsBreaker: false, room: 0, levelNeed: 0 }
       }
       const owned = s.hardware[id] ?? 0
       const room = def.max === undefined ? Infinity : Math.max(0, def.max - owned)
       const lockReason = nonCreditLock(def, s, d, store.catalog)
+      const levelNeed = hardwareLevelLock(def, s)?.need ?? 0
       let count: number
       if (amount === 'max') count = Math.min(room, maxAffordable(def, owned, s.credits))
       else count = Math.min(room, amount)
@@ -239,6 +246,7 @@ export function useHardwareRow(id: string, amount: BuyCount): HardwareRowState {
         tier: s.hardwareTiers[id] ?? 0,
         tripsBreaker: !d.throttled && projectedDraw > d.powerBudget,
         room,
+        levelNeed,
       }
     },
     [id, amount],
@@ -257,7 +265,8 @@ function shallowRow(a: HardwareRowState, b: HardwareRowState): boolean {
     a.paybackSec === b.paybackSec &&
     a.tier === b.tier &&
     a.tripsBreaker === b.tripsBreaker &&
-    a.room === b.room
+    a.room === b.room &&
+    a.levelNeed === b.levelNeed
   )
 }
 

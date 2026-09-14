@@ -3,7 +3,7 @@
  * Mounts every overlay once (toasts, achievement bridge, event banners, the trending spark, the
  * easter-egg shows, the level-up banner, the guidance popover, the offline report and the modals)
  * and routes the window events the rest of the UI dispatches:
- *   `comfy:open-modal`  { detail: 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' | 'patch' }
+ *   `comfy:open-modal`  { detail: 'settings' | 'stats' | 'level' | 'daily' | 'rebrand' | 'lounge' | 'patch' }
  *   `comfy:close-modals`
  *   `comfy:saved`       (from the S hotkey) → a "Saved" toast, or the cooldown line when the
  *                       write was refused because the last one was seconds ago
@@ -20,6 +20,7 @@ import { DailyModal } from '@/components/overlays/DailyModal'
 import { EasterEggs } from '@/components/overlays/EasterEggs'
 import { EventBanner } from '@/components/overlays/EventBanner'
 import { GuidanceHost } from '@/components/guidance/GuidanceHost'
+import { LevelModal } from '@/components/overlays/LevelModal'
 import { LevelUpBanner } from '@/components/overlays/LevelUpBanner'
 import { CLOSE_MODALS_EVENT, OPEN_MODAL_EVENT } from '@/components/overlays/ModalBase'
 import { RebrandModal } from '@/components/overlays/RebrandModal'
@@ -34,8 +35,8 @@ import { WelcomeBackModal } from '@/components/overlays/WelcomeBackModal'
 import { useGrandTour } from '@/hooks/useEasterEggs'
 import type { SavedDetail } from '@/hooks/useHotkeys'
 
-export type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' | 'patch'
-const MODAL_IDS: ReadonlySet<string> = new Set<ModalId>(['settings', 'stats', 'daily', 'rebrand', 'lounge', 'patch'])
+export type ModalId = 'settings' | 'stats' | 'level' | 'daily' | 'rebrand' | 'lounge' | 'patch'
+const MODAL_IDS: ReadonlySet<string> = new Set<ModalId>(['settings', 'stats', 'level', 'daily', 'rebrand', 'lounge', 'patch'])
 const SAVED_EVENT = 'comfy:saved'
 /**
  * How long the save card stays up. Every press refreshes the same card rather than stacking a new
@@ -109,6 +110,7 @@ export function Overlays() {
       <PatchNotesModal open={modal === 'patch'} onClose={close} />
       <SettingsModal open={modal === 'settings'} onClose={close} />
       <StatsModal open={modal === 'stats'} onClose={close} />
+      <LevelModal open={modal === 'level'} onClose={close} />
       <ToastHost />
       <GuidanceHost />
     </>

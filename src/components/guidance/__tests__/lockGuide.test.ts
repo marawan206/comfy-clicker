@@ -7,8 +7,9 @@ import { describe, expect, it } from 'vitest'
 import { CATALOG } from '@/data'
 import { MAX_LEVEL } from '@/game/constants'
 import { createEmptyDerived } from '@/game/derived'
-import { formatNum } from '@/game/format'
+import { formatInt, formatNum } from '@/game/format'
 import { explainBuy, explainMapNode, explainRun, type LockCause } from '@/game/guidance'
+import { levelProgress } from '@/game/level'
 import { createInitialState } from '@/game/state'
 import type { Derived, GameState, HardwareDef, ModelDef, Precision } from '@/game/types'
 import { stepFor, stepsFor, whyLine, type GuideStore } from '../lockGuide'
@@ -96,9 +97,10 @@ describe('one cause, one step', () => {
 
   it('the level gate sends them to the level screen', () => {
     const step = stepFor({ kind: 'level', need: 4, have: 2 }, store)
+    const toGo = formatInt(levelProgress(store.state).xpToGo)
     expect(step.label).toBe('Reach level 4')
-    expect(step.detail).toBe('You are level 2. XP comes from credits earned, posts and achievements.')
-    expect(step.action).toEqual({ type: 'modal', id: 'stats' })
+    expect(step.detail).toBe(`You are level 2. ${toGo} XP to go: post, finish a contract, unlock a Graph node.`)
+    expect(step.action).toEqual({ type: 'modal', id: 'level' })
   })
 
   it('a stat goes where that stat is made', () => {
@@ -108,7 +110,7 @@ describe('one cause, one step', () => {
       action: { type: 'hero' },
     })
     expect(stepFor({ kind: 'stat', key: 'posts', need: 50, have: 3 }, store).action).toEqual({ type: 'center', tab: 'studio' })
-    expect(stepFor({ kind: 'stat', key: 'level', need: 4, have: 1 }, store).action).toEqual({ type: 'modal', id: 'stats' })
+    expect(stepFor({ kind: 'stat', key: 'level', need: 4, have: 1 }, store).action).toEqual({ type: 'modal', id: 'level' })
   })
 
   it('income sends them shopping', () => {

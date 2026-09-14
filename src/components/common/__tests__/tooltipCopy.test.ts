@@ -97,7 +97,7 @@ const SAMPLES: { name: string; copy: TooltipCopy }[] = [
   { name: 'income:throttled', copy: incomeTip({ cps: 2.8, throttled: true, draw: 665, budget: 650 }) },
   {
     name: 'level',
-    copy: levelChipTip({ level: 4, levelTitle: 'Guidance Scale', xp: 1655, ceiling: 2050, unlocks: ['Wan 2.2 5B', 'FLUX.1 Kontext'] }),
+    copy: levelChipTip({ level: 4, levelTitle: 'Guidance Scale', xp: 1655, ceiling: 2050, unlocks: ['RTX 5090', 'Radeon Pro W7900', 'Wan 2.2 5B'] }),
   },
   { name: 'level:max', copy: levelChipTip({ level: 30, levelTitle: 'Honorary Maintainer', xp: 12_400, ceiling: null, unlocks: [] }) },
   {
@@ -107,7 +107,7 @@ const SAMPLES: { name: string; copy: TooltipCopy }[] = [
       levelTitle: 'VRAM Negotiator',
       xp: 2900,
       ceiling: 3150,
-      unlocks: ['Qwen-Image', 'Qwen-Image-Edit', 'Ideogram 3.0', 'Recraft V3', 'Grok Imagine'],
+      unlocks: ['RTX A6000', 'NVIDIA L4', 'RTX 6000 Ada', 'Qwen-Image', 'Qwen-Image-Edit'],
     }),
   },
   { name: 'signups', copy: signupsTip(12, 3) },
@@ -239,13 +239,22 @@ describe('tooltip copy strings', () => {
   })
 
   it('level chip', () => {
-    const tip = levelChipTip({ level: 4, levelTitle: 'Guidance Scale', xp: 1655, ceiling: 2050, unlocks: ['Wan 2.2 5B', 'FLUX.1 Kontext'] })
+    // `unlocks` arrives with the hardware names first, then the models; the meta keeps that order.
+    const tip = levelChipTip({ level: 4, levelTitle: 'Guidance Scale', xp: 1655, ceiling: 2050, unlocks: ['RTX 5090', 'Radeon Pro W7900', 'Wan 2.2 5B'] })
     expect(tip.title).toBe('Level 4 · Guidance Scale')
-    expect(tip.description).toBe('1,655 of 2,050 XP. XP comes from credits earned, posts, achievements, contracts and Graph nodes.')
-    expect(tip.meta).toBe('Level 5 unlocks Wan 2.2 5B, FLUX.1 Kontext')
+    expect(tip.description).toBe('1,655 of 2,050 XP. XP comes from posting, contracts, the Graph, achievements and every new card.')
+    expect(tip.meta).toBe('Level 5 unlocks RTX 5090, Radeon Pro W7900, Wan 2.2 5B')
     const max = levelChipTip({ level: 30, levelTitle: 'Honorary Maintainer', xp: 12_400, ceiling: null, unlocks: [] })
-    expect(max.description).toBe('12,400 XP. Top of the table. XP comes from credits earned, posts, achievements, contracts and Graph nodes.')
+    expect(max.description).toBe('12,400 XP. Top of the table. XP comes from posting, contracts, the Graph, achievements and every new card.')
     expect(max.meta).toBeUndefined()
+    const many = levelChipTip({
+      level: 7,
+      levelTitle: 'VRAM Negotiator',
+      xp: 2900,
+      ceiling: 3150,
+      unlocks: ['RTX A6000', 'NVIDIA L4', 'RTX 6000 Ada', 'Qwen-Image', 'Qwen-Image-Edit'],
+    })
+    expect(many.meta).toBe('Level 8 unlocks RTX A6000, NVIDIA L4, RTX 6000 Ada and 2 more')
   })
 
   it('signups chip', () => {

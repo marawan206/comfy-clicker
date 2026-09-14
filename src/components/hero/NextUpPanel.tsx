@@ -6,9 +6,10 @@
  * take a Graph node, push the level bar) with a bar, an ETA and a route to the thing itself.
  * Row two is the achievement the player is closest to, with its real numbers.
  *
- * Both selectors return strings (`goalKey` plus the whole-number percent, `id:pct`), so the 20 Hz
- * loop only re-renders this panel when a percent actually moves. The views themselves are derived
- * with `useMemo` keyed on those strings, the same pattern `QueueMini` and `FlagshipRig` use.
+ * Both selectors return strings (`goalKey` plus the numbers the row prints: the whole-number
+ * percent, the ETA or XP figure, `id:pct`), so the 20 Hz loop only re-renders this panel when one
+ * of those moves. The views themselves are derived with `useMemo` keyed on those strings, the
+ * same pattern `QueueMini` and `FlagshipRig` use.
  *
  * Finishing a row is the point of the panel: when the goal is met or the achievement lands, the
  * row flips to a done state for 900 ms with a check, an electric border and a burst of credits at
@@ -64,8 +65,8 @@ function openCenter(tab: 'studio' | 'feed' | 'contracts'): void {
   window.dispatchEvent(new CustomEvent<string>(CENTER_TAB_EVENT, { detail: tab }))
 }
 
-function openStats(): void {
-  window.dispatchEvent(new CustomEvent<string>(OPEN_MODAL_EVENT, { detail: 'stats' }))
+function openLevel(): void {
+  window.dispatchEvent(new CustomEvent<string>(OPEN_MODAL_EVENT, { detail: 'level' }))
 }
 
 /** Park the node the map should open on, then let the caller push the route. */
@@ -86,7 +87,7 @@ interface GoalView {
   key: string
   icon: ReactNode
   label: string
-  /** The model a purchase would unlock, or null. */
+  /** What the goal opens: the model a card would run natively, the names the next level unlocks. Null when nothing. */
   sub: string | null
   /** Credits attached to the goal (a contract reward), rendered in amber. */
   reward: number | null
@@ -184,18 +185,20 @@ function buildGoalView(goal: Goal): GoalView {
         where: 'Opens the Graph',
         aria: `Unlock ${goal.title} on the Graph for ${nodePrice(goal)}`,
       }
-    case 'level':
+    case 'level': {
+      const unlocks = goal.unlocks.length > 0 ? `unlocks ${goal.unlocks.join(', ')}` : null
       return {
         key,
         icon,
         label: `Level ${goal.level} · ${formatInt(goal.xpToGo)} XP to go`,
-        sub: null,
+        sub: unlocks,
         reward: null,
         pct: goal.pct,
         eta: null,
-        where: 'Opens Stats',
-        aria: `Level ${goal.level} is ${goal.pct} percent done, ${formatInt(goal.xpToGo)} XP to go`,
+        where: 'Opens your level',
+        aria: `Level ${goal.level} is ${goal.pct} percent done, ${formatInt(goal.xpToGo)} XP to go${unlocks ? `, ${unlocks}` : ''}`,
       }
+    }
   }
 }
 
@@ -214,7 +217,9 @@ function useNextGoal(): Goal | null {
     const goal = nextGoal(s, d, st.catalog)
     if (!goal) return ''
     if (goal.kind === 'buy') return `${goalKey(goal)}|${goal.pct}|${goal.etaSec}`
-    if (goal.kind === 'level') return `${goalKey(goal)}|${goal.pct}`
+    // The rung's names ride along so a changed table re-renders the row, and the XP figure so
+    // the label never quotes a number the hero bar has already moved past.
+    if (goal.kind === 'level') return `${goalKey(goal)}|${goal.pct}|${goal.xpToGo}|${goal.unlocks.join(',')}`
     return goalKey(goal)
   })
   // `key` encodes everything the view reads; the goal is rebuilt only when it changes.
@@ -452,7 +457,7 @@ export function NextUpPanel() {
         router.push('/map')
         return
       case 'level':
-        openStats()
+        openLevel()
     }
   }, [goal, router])
 

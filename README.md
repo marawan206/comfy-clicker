@@ -31,8 +31,9 @@ The twist is what you *spend* on:
 - **The Graph**: a node-graph progression map, ComfyUI style, with techniques (LoRA training, distillation), infrastructure
   (cooling, substations, reserved capacity), regions and prestige nodes.
 - **Rebrand**: the prestige loop: reset the run, keep the map, earn Comfy Points.
-- **Levels**: your level comes from everything you have ever done, and it decides which checkpoints you may install.
-  SD 1.5 at level 1, FLUX around level 4, the 160 GB video monster at level 12.
+- **Levels**: XP comes from what you do (posting, contracts, the Graph, achievements, every card you have never owned),
+  and the level gates both cards and checkpoints, one rung per level. A used 3060 at level 2, a 4090 at 4, the PRO 6000
+  at 7, a B200 at 10; SD 1.5 at level 1, FLUX around level 4, the 160 GB video monster at level 12.
 - **Seed Roulette**: wager credits on a random seed, once every three minutes, plus a free spin a day. The odds are
   printed on the node.
 

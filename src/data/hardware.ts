@@ -18,8 +18,9 @@
  *   workstation aisle) catches them up. Tail prices step ×1.5–3 per rung so that a rung is
  *   exhausted in hours, not minutes: with tier upgrades worth ×16 per unit, the number of units a
  *   rung yields, not its first-unit payback, is what sets the pace. `scripts/balance.ts` is the
- *   referee: PRO 6000 inside 15 min, a cloud node inside 25, no region inside three hours of
- *   continuous play, regions on days 2–4 of a one-hour-a-day week, orbit and the swarm beyond it.
+ *   referee: PRO 6000 inside 60 min, a cloud node inside 4 h, no region inside three hours of
+ *   continuous play, regions from day five of a one-hour-a-day fortnight, orbit and the swarm
+ *   beyond it.
  *
  * The pace of the ladder is the player level. Every unit carries a `minLevel` (level 1 when
  * omitted) and the store refuses it below that with `Needs level N · you are level M`, exactly

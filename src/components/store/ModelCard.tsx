@@ -146,9 +146,9 @@ const GB = (gb: number): string => (Number.isFinite(gb) ? `${Math.round(gb * 10)
 
 type CardState = 'ready' | 'locked' | 'needs-setup' | 'api-locked' | 'level-locked'
 
-/** Open the Stats modal, where the XP bar and its breakdown live. */
-function openStats(): void {
-  window.dispatchEvent(new CustomEvent<'stats'>(OPEN_MODAL_EVENT, { detail: 'stats' }))
+/** Open the Level screen: the bar, every way to earn XP, and the roadmap of what each level opens. */
+function openLevel(): void {
+  window.dispatchEvent(new CustomEvent<'level'>(OPEN_MODAL_EVENT, { detail: 'level' }))
 }
 
 /** One model in the store: art, kind, VRAM against your best card, setup and quantization. */
@@ -228,9 +228,9 @@ export const ModelCard = memo(function ModelCard({ id }: { id: string }) {
         {state === 'level-locked' ? (
           <button
             type="button"
-            onClick={openStats}
+            onClick={openLevel}
             aria-label={`${card.name} needs level ${card.levelNeed}. How do I level up?`}
-            title="XP comes from credits earned, posts and achievements"
+            title="XP comes from posting, contracts, the Graph, achievements and every new card"
             className="inline-flex h-8 items-center gap-1.5 rounded-[0.5rem] border-2 border-charcoal-200 bg-charcoal-500 px-2.5 text-xs font-bold text-smoke-100 shadow-[0_3px_0_#0e0e0f] hover:border-electric-400"
           >
             <TrendingUp size={13} aria-hidden="true" />

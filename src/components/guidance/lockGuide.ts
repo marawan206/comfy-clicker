@@ -14,6 +14,7 @@ import { unitCost } from '@/game/economy'
 import { formatCps, formatDuration, formatInt, formatNum } from '@/game/format'
 import { causeEta, describeCause, type LockCause } from '@/game/guidance'
 import { withArticle } from '@/game/hardware'
+import { levelProgress } from '@/game/level'
 import { mapNodeCost } from '@/game/map'
 import { setupFee } from '@/game/quantize'
 import { FAMILY_LABELS } from '@/game/state'
@@ -226,7 +227,7 @@ export function stepFor(cause: LockCause, store: GuideStore): GuideStep {
         detail: `You are at ${formatInt(cause.have)}.`,
       }
       if (cause.key === 'level') {
-        step.action = { type: 'modal', id: 'stats' }
+        step.action = { type: 'modal', id: 'level' }
       } else if (CLICK_STATS.has(cause.key)) {
         step.action = { type: 'hero' }
       } else {
@@ -243,8 +244,8 @@ export function stepFor(cause: LockCause, store: GuideStore): GuideStep {
     case 'level':
       return {
         label: `Reach level ${cause.need}`,
-        detail: `You are level ${cause.have}. XP comes from credits earned, posts and achievements.`,
-        action: { type: 'modal', id: 'stats' },
+        detail: `You are level ${cause.have}. ${formatInt(levelProgress(store.state).xpToGo)} XP to go: post, finish a contract, unlock a Graph node.`,
+        action: { type: 'modal', id: 'level' },
       }
     case 'vram': {
       const steps = cause.fixes.map((fix) => {

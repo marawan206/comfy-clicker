@@ -6,7 +6,13 @@
  * crosses two thresholds on the same tick (the reward credits can push them over the next one)
  * gets two events a frame apart. Showing two cards in a row would read as a bug, so the banner
  * merges anything that arrives while it is already up: the headline becomes `Level 4 to 6`, the
- * credits add up and the unlock tiles concatenate in level order.
+ * credits add up and the unlock tiles, cards and checkpoints alike, concatenate in level order.
+ *
+ * A level opens a rung of cards and the checkpoints those cards run, so the card shows both: a
+ * `New in the store` row of hardware tiles over a `New checkpoints` row of model tiles, or one
+ * unlabelled row when the rung has only one kind. `Show me` opens the Hardware shelf on the first
+ * new card (the card is what the level was gating), or the Models tab when the rung is checkpoints
+ * only; `Checkpoints` sits beside it when there are both.
  *
  * Mounted in `Overlays`, which every route carries, so a level earned while reading the Graph is
  * still announced where it happened. Confetti and the electric flash are `FxCanvas`'s job (it maps
@@ -20,9 +26,10 @@ import { Art } from '@/components/common/Art'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { runGuideAction } from '@/components/guidance/navigate'
 import { ModalButton, useReducedMotionPref } from '@/components/overlays/ModalBase'
+import { buildIndex } from '@/game/catalog'
 import { formatNum } from '@/game/format'
 import { levelTitle } from '@/game/level'
-import type { ModelDef } from '@/game/types'
+import type { HardwareDef, ModelDef } from '@/game/types'
 import { useGameEvents, useGameStore } from '@/state/useGame'
 
 /** How long the card stays before it dismisses itself. */
@@ -33,9 +40,45 @@ interface Run {
   from: number
   to: number
   credits: number
+  /** Model ids the run opened, in level order. */
   unlocked: string[]
+  /** Hardware ids the run opened, in level order. */
+  hardware: string[]
   /** Bumped on every merge so the dismiss timer restarts and the entry animation replays. */
   nonce: number
+}
+
+/** One unlock tile: the asset id `Art` resolves and the name printed under it. */
+interface TileItem {
+  id: string
+  art: string
+  name: string
+}
+
+/** Defs for the ids that resolve, in the order given; an id the catalog no longer knows is skipped. */
+function resolve<T extends { id: string }>(ids: readonly string[], byId: Record<string, T>): T[] {
+  const out: T[] = []
+  for (const id of ids) {
+    const def = byId[id]
+    if (def) out.push(def)
+  }
+  return out
+}
+
+function TileRow({ label, items }: { label?: string; items: TileItem[] }) {
+  return (
+    <div>
+      {label ? <p className="mb-1.5 text-[11px] font-semibold tracking-[0.08em] text-smoke-600 uppercase">{label}</p> : null}
+      <ul className="flex flex-wrap items-start justify-center gap-3">
+        {items.map((t) => (
+          <li key={t.id} className="flex w-[76px] flex-col items-center gap-1">
+            <Art id={t.art} size={40} alt="" />
+            <span className="text-[11px] leading-tight font-semibold text-smoke-600">{t.name}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 export function LevelUpBanner() {
@@ -55,12 +98,20 @@ export function LevelUpBanner() {
     if (event.type !== 'levelUp') return
     setRun((prev) =>
       prev === null
-        ? { from: event.level, to: event.level, credits: event.credits, unlocked: [...event.unlocked], nonce: 1 }
+        ? {
+            from: event.level,
+            to: event.level,
+            credits: event.credits,
+            unlocked: [...event.unlocked],
+            hardware: [...event.hardware],
+            nonce: 1,
+          }
         : {
             from: Math.min(prev.from, event.level),
             to: Math.max(prev.to, event.level),
             credits: prev.credits + event.credits,
             unlocked: [...prev.unlocked, ...event.unlocked],
+            hardware: [...prev.hardware, ...event.hardware],
             nonce: prev.nonce + 1,
           },
     )
@@ -81,23 +132,31 @@ export function LevelUpBanner() {
     }
   }, [run])
 
-  const models: ModelDef[] = useMemo(() => {
-    if (!run) return []
-    const byId = new Map(store.catalog.models.map((m) => [m.id, m]))
-    const out: ModelDef[] = []
-    for (const id of run.unlocked) {
-      const def = byId.get(id)
-      if (def) out.push(def)
-    }
-    return out
+  const { hardware, models } = useMemo((): { hardware: HardwareDef[]; models: ModelDef[] } => {
+    if (!run) return { hardware: [], models: [] }
+    const index = buildIndex(store.catalog)
+    return { hardware: resolve(run.hardware, index.hardwareById), models: resolve(run.unlocked, index.modelById) }
   }, [run, store])
 
-  const showMe = useCallback(() => {
+  const showHardware = useCallback(() => {
+    const first = hardware[0]
+    dismiss()
+    if (!first) return
+    runGuideAction({ type: 'store', tab: 'hardware', family: first.family, focusId: first.id }, router)
+  }, [hardware, dismiss, router])
+
+  const showModels = useCallback(() => {
     const first = models[0]
     dismiss()
     if (!first) return
     runGuideAction({ type: 'store', tab: 'models', focusId: first.id }, router)
   }, [models, dismiss, router])
+
+  const hasHardware = hardware.length > 0
+  const hasModels = models.length > 0
+  const both = hasHardware && hasModels
+  // The shelf first: a card is what the level was gating, and the checkpoint runs on it.
+  const showMe = hasHardware ? showHardware : showModels
 
   const range = run !== null && run.to > run.from
 
@@ -131,15 +190,21 @@ export function LevelUpBanner() {
             </p>
             <p className="mt-1 text-sm font-semibold text-smoke-100">{levelTitle(run.to)}</p>
 
-            {models.length > 0 ? (
-              <ul className="mt-4 flex flex-wrap items-start justify-center gap-3">
-                {models.map((m) => (
-                  <li key={m.id} className="flex w-[76px] flex-col items-center gap-1">
-                    <Art id={`model-${m.id}`} size={40} alt="" />
-                    <span className="text-[11px] leading-tight font-semibold text-smoke-600">{m.name}</span>
-                  </li>
-                ))}
-              </ul>
+            {hasHardware || hasModels ? (
+              <div className="mt-4 flex flex-col gap-3">
+                {hasHardware ? (
+                  <TileRow
+                    label={both ? 'New in the store' : undefined}
+                    items={hardware.map((h) => ({ id: h.id, art: `hw-${h.id}`, name: h.name }))}
+                  />
+                ) : null}
+                {hasModels ? (
+                  <TileRow
+                    label={both ? 'New checkpoints' : undefined}
+                    items={models.map((m) => ({ id: m.id, art: `model-${m.id}`, name: m.name }))}
+                  />
+                ) : null}
+              </div>
             ) : (
               <p className="mt-3 text-xs text-smoke-600">No new model at this one. The credits are real.</p>
             )}
@@ -149,7 +214,7 @@ export function LevelUpBanner() {
             </p>
 
             <div className="mt-4 flex items-center justify-center gap-2">
-              {models.length > 0 ? (
+              {hasHardware || hasModels ? (
                 <ModalButton
                   tone="primary"
                   size="sm"
@@ -160,6 +225,18 @@ export function LevelUpBanner() {
                   }}
                 >
                   Show me
+                </ModalButton>
+              ) : null}
+              {both ? (
+                <ModalButton
+                  tone="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    showModels()
+                  }}
+                >
+                  Checkpoints
                 </ModalButton>
               ) : null}
               <ModalButton
