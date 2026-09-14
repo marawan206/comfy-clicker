@@ -11,7 +11,8 @@ RP/CP balance helpers in `map.ts` (`MAP_NODES`). Everything else (`trendMult`, `
 Two behavioural exceptions are deliberate, both documented at the function that makes them and
 both pinned by a test, because both read as bugs: `click` answers a refusal from the auto-clicker
 guard with a `clickBlocked` **event** instead of the usual silent `error` (see actions.ts), and
-`applySpin` moves `state.credits` only, never `lifetimeCredits` or `seasonCredits` (see gamble.ts).
+`applySpin` and `applyFlip` move `state.credits` only, never `lifetimeCredits` or `seasonCredits`
+(see gamble.ts).
 
 ## Catalog: `src/data/index.ts`
 ```ts
@@ -19,7 +20,8 @@ export interface Catalog {
   hardware: HardwareDef[]; models: ModelDef[]; precisions: Record<Precision, PrecisionDef>
   upgrades: UpgradeDef[]; mapNodes: MapNodeDef[]; achievements: AchievementDef[]
   hashtags: HashtagDef[]; contracts: ContractDef[]; events: EventDef[]
-  gamble: GambleOutcomeDef[]        // seed roulette segments; weights are probabilities, summing to 1
+  gamble: GambleOutcomeDef[]        // Lounge wheel segments; weights are probabilities, summing to 1
+  citizens: CitizenFlavor           // handle pools for the players who run published workflows
 }
 export const CATALOG: Catalog          // assembled from the data files
 ```
@@ -46,7 +48,7 @@ the orbital datacenter and the Dyson swarm carry `max: 1`. Tail families grow ×
 `formatInt(n)`: grouped integer, no suffix (prices and `9,120 / 10,000` pairs). `formatNum(n, digits = 2)`: `< 1000` → grouped integer; else 3 significant digits with suffixes `K M B T Qa Qi Sx Sp Oc No`; `formatCps(n)` (1 decimal below 10, else formatNum + "/s"), `formatDuration(sec)` (`0:42`, `3:50`, `1h 02m`, `2d 4h`), `formatPct(x)` (`+25%`), `formatWatts(w)` (`650 W`, `1.2 kW`, `3.4 MW`), `formatCompactDate(ts)`.
 
 ## state.ts
-`createInitialState(now, guestId): GameState`: owns `pc-4c8t: 1`, `models.sd15 = { precisions: ['native'], setup: true }`, everything else empty/zero, `contracts.nextRotateAt = now`, `events.nextAt = now + EVENT_MIN_GAP_MS`, `daily = { lastClaimDay: null, streak: 0, claimed: [] }`, `gamble = { nextSpinAt: now, freeSpinDay: null, winStreak: 0, dryStreak: 0, pot: 0 }`, `stats.levelSeen = 1` with the other eleven counters at 0, `settings = { sfx, particles, autosave } true and { reducedMotion, projector } false`, `weekOverride: null`, `liveTrending: null`.
+`createInitialState(now, guestId): GameState`: owns `pc-4c8t: 1`, `models.sd15 = { precisions: ['native'], setup: true }`, everything else empty/zero, `contracts.nextRotateAt = now`, `events.nextAt = now + EVENT_MIN_GAP_MS`, `daily = { lastClaimDay: null, streak: 0, claimed: [] }`, `gamble = { freeSpinDay: null, winStreak: 0, dryStreak: 0, coinStreak: 0, pot: 0 }`, `citizens = { drops: [], feed: [] }`, `stats.levelSeen = 1` with the other eleven counters at 0, `settings = { sfx, particles, autosave } true and { reducedMotion, projector } false`, `weekOverride: null`, `liveTrending: null`.
 `statValue(state, key: StatKey, derived?): number`; `level` calls `playerLevel(state)`, `ratioed`, `dislikes` and `spins` read `state.stats`. `STAT_LABELS`, and `FAMILY_LABELS: Record<HardwareFamily, string>`, the one table of family words shared by lock reasons (`hardware.ts`) and unlock hints (`unlock.ts`); each label is the stem of the store tab label in `HARDWARE_FAMILIES` (`CPU`, `Apple`, `NVIDIA`, `AMD`, `workstation`, `datacenter`, `cloud node`, `region`).
 `state.ts` imports `playerLevel` from `level.ts`, so `level.ts` may never import `state.ts`.
 
@@ -79,13 +81,13 @@ Level gating is a `ModelDef.minLevel` **field**, not an `UnlockCond`: a level-lo
 `activeEffects(state, catalog): Effect[]`: from owned upgrades (incl. virtual tier upgrades), unlocked map nodes, active events (see events.ts `eventEffects`).
 `computeDerived(state, catalog): Derived`:
 - `rawCps = Σ count × baseCps × rigMult[id] × familyMult[family]`; `globalMult = Π(1+globalMult effects) × (1 + RP_MULT_PER_POINT × rp) × (1 + ACHIEVEMENT_MULT × achievements) × cpMult`; `cpMult = 1 + CP_MULT_PER_POINT × cp × Π cpMult effects`; `cps = rawCps × globalMult × throttleMult(powerDraw, powerBudget)`.
-- `powerDraw = Σ count × watts`, `powerBudget = POWER_BUDGET_BASE + Σ powerBudget effects`, `throttled = powerDraw > powerBudget`. The throttle is **proportional**: `throttleMult = min(1, powerBudget / powerDraw)` (power.ts), so past the breaker a unit only adds income if its cps/W beats the rack's average.
+- `powerDraw = Σ count × watts`, `powerBudget = POWER_BUDGET_BASE + Σ powerBudget effects`, `throttled = powerDraw > powerBudget`. The breaker is a **cliff**: `throttleMult = throttled ? 0 : 1` (power.ts), so past it every rig that needs watts stops and passive income is zero until the rack fits the circuit. `clickValue` keeps its flat part, so clicking is the way back out.
 - `bestVram/bestTier` over owned units (regions = Infinity); `bestHardwareId` = the owned unit with the highest `hardware.speedScore` (effective tier minus the tiers its MPS ×2 / ROCm ×1.25 tax is worth), ties → VRAM → price; `hasGpu` = any owned unit that is not `cpuOnly` and not `mps`.
 - `clickValue = ((1 + clickFlat) × Π clickMult × globalMult + clickCpsPct × cps)`.
 - `concurrency = 1 + Σ concurrency`, `speedMult = Π speedMult`, `likesMult = Π likesMult`, `payoutBonus = Σ payoutRatio`, `followRate = FOLLOW_RATE_BASE × Π followRate`, `viralChance = VIRAL_CHANCE_BASE + Σ`, `flopChance = max(0.02, FLOP_CHANCE_BASE − Σ)`, `offlineCapHours = OFFLINE_CAP_HOURS_BASE + Σ` (Infinity if any Infinity), `offlineEfficiency = max(OFFLINE_EFFICIENCY, offlineEfficiency effects)`, flags from effect kinds, `unlockedFamilies` (cpu/apple/nvidia-consumer/workstation/datacenter/cloud-node/region always; `amd-consumer` needs `unlockFamily`), `tagLikes`, `familyGenTime`, `coolingTier`, `weekSpeed = Π weekSpeed`.
 
 ## power.ts
-`powerDraw(state, catalog)`, `powerBudget(effects)`, `isThrottled(draw, budget)`, `throttleMult(draw, budget) = min(1, budget / draw)` (1 within budget, 0 with no budget), `powerHeadroom`, `powerLoad`, `projectPurchase(def, n, derived): { draw, budget, throttled, trips, mult }`, `wouldThrottle`, `unitsWithinBudget`.
+`powerDraw(state, catalog)`, `powerBudget(effects)`, `isThrottled(draw, budget)`, `throttleMult(draw, budget)` (1 within budget, 0 past it), `powerHeadroom`, `powerLoad`, `projectPurchase(def, n, derived): { draw, budget, throttled, trips, mult }`, `wouldThrottle`, `unitsWithinBudget`.
 
 ## hardware.ts
 `canBuy(def, state, derived, catalog, n = 1): { ok: boolean; reason?: string }`: family locked (ROCm), unlock cond, max, credits.
@@ -159,48 +161,71 @@ test pins that the two agree. `pct` is a whole number 0..100 and `etaSec` whole 
 (`Infinity` at cps 0), so a bar re-renders at most a hundred times per target.
 
 ## gamble.ts
-Seed Roulette: the KSampler spin. Outcomes are `Catalog.gamble` (`src/data/gamble.ts`), where
-`weight` **is** the probability and the table sums to exactly 1, so `weightedPick` draws it directly
-and `spinEv = Σ weight × mult` = **1.038** (something back 66 %, a profit 18.8 %).
+The Latent Lounge: two tables, one bank. **The wheel** is the KSampler spin; outcomes are
+`Catalog.gamble` (`src/data/gamble.ts`), where `weight` **is** the probability and the table sums to
+exactly 1, so `weightedPick` draws it directly and `spinEv = Σ weight × mult` = **0.954**. **The
+coin** is one flip: your side pays `COIN_PAYOUT` and lands `COIN_WIN_CHANCE` of the time, so it
+returns **0.96**.
 
 | id | label | mult | weight |
 |---|---|---|---|
-| `nan` | NaN latent | 0 | 0.34 |
+| `nan` | NaN latent | 0 | 0.355 |
 | `half` | Half denoised | 0.5 | 0.3 |
-| `same` | Same seed, same image | 1 | 0.172 |
+| `same` | Same seed, same image | 1 | 0.17 |
 | `clean` | Clean sample | 2 | 0.12 |
-| `batch` | Batch of four | 4 | 0.05 |
-| `golden` | Golden seed | 10 | 0.015 |
+| `batch` | Batch of four | 4 | 0.042 |
+| `golden` | Golden seed | 10 | 0.01 |
 | `s42` | Seed 42 | 42 | 0.003 |
 
-Three rules keep it unfarmable: the cooldown is a single timestamp in the save
-(`gamble.nextSpinAt`), so eight hours away still yields exactly one ready spin; the wager is priced
-in seconds of income, so it scales with the rig rather than with patience; and payouts move
-`state.credits` only.
-Constants: `SPIN_MIN_LEVEL = 2`, `SPIN_COOLDOWN_MS = 180_000`, `SPIN_MIN_SECS = 30`,
-`SPIN_MAX_SECS = 300`, `SPIN_MIN_WAGER = 50`, `SPIN_FREE_SECS = 120`, `SPIN_FREE_MIN = 200`,
-`SPIN_PITY_DRY = 3`, `SPIN_HOT_STREAK = 3`, `SPIN_HOT_MULT = 1.5`, `SPIN_POT_FRACTION = 0.02`.
-`spinEv(outcomes)` (weighted mean, 0 for an empty table), `wagerBounds(state, derived)`
-(`min = max(50, round(30 × cps))`, `max = min(floor(credits), max(min, round(300 × cps)))`),
-`freeStake(derived) = max(200, round(120 × cps))`, `freeSpinAvailable(state, now)` (UTC `dayKey`,
-the same clock as the daily reward), `msUntilSpin(state, now)`, `isHot(state)`, `pityDue(state)`,
-`canSpin(state, derived, now, wager: number | 'free')`, `rollOutcome(outcomes, rng, pity)`,
-`applySpin(state, derived, catalog, now, rng, wager): GameEvent[]`.
-`canSpin` checks in the order the copy reads, and the balance **before** the ceiling (the ceiling is
-already capped by the balance, so a broke player must be told they cannot afford it rather than told
-to bet less): `Unlocks at level 2` · `Free spin already used today` · `Sampler is cooling down · 2:41`
-· `Bet at least 50 credits` · `Not enough credits` · `Bet at most 1,200 credits right now`.
-`applySpin` deducts the stake, sets `nextSpinAt = now + SPIN_COOLDOWN_MS` and adds
-`round(0.02 × wager)` to the pot (a free spin does none of those three, only stamping `freeSpinDay`),
-pays `round(stake × mult × (hot ? 1.5 : 1))` plus, on `s42`, the whole pot on top, updates `dryStreak` /
-`winStreak` (a result under ×2 breaks it, `same` included) / `stats.spins` / `stats.spinNet`, raises `jackpot42`, `nanStreak3` or `hotSeed`, and
-emits exactly one `spin` carrying the segment's **printed** multiplier (`hot` and `payout` carry the
-x1.5). `rollOutcome` with `pity` converts a losing draw once into the cheapest winning segment,
-after drawing, so the rng sequence is identical either way.
+There is **no cooldown and no ceiling on a bet**: any amount from `BET_MIN` up to the whole bank, as
+often as the player likes. What keeps that safe is the only invariant that matters here, pinned by
+`gamble.test.ts` over 50k simulated bets a table with the pity reroll, the hot sampler and the
+minted pot included: **both tables pay back less than 1 per credit staked**. If a future table
+crosses 1 the Lounge has become an income source and the change is wrong. The other rule is that
+payouts move `state.credits` only.
+Constants: `LOUNGE_MIN_LEVEL = 2`, `BET_MIN = 10`, `FREE_SPIN_SECS = 120`, `FREE_SPIN_MIN = 200`,
+`SPIN_PITY_DRY = 3`, `SPIN_HOT_STREAK = 3`, `SPIN_HOT_MULT = 1.5`, `SPIN_POT_FRACTION = 0.02`,
+`COIN_WIN_CHANCE = 0.48`, `COIN_PAYOUT = 2`.
+`spinEv(outcomes)` (weighted mean, 0 for an empty table), `coinEv()`, `betBounds(state)`
+(`{ min: BET_MIN, max: floor(credits) }`), `freeStake(derived) = max(200, round(120 × cps))`,
+`freeSpinAvailable(state, now)` (UTC `dayKey`, the same clock as the daily reward), `isHot(state)`,
+`pityDue(state)`, `canBet(state, derived, now, wager: number | 'free')`,
+`rollOutcome(outcomes, rng, pity)`, `applySpin(state, derived, catalog, now, rng, wager)`,
+`applyFlip(state, derived, now, rng, wager)`.
+`canBet` checks in the order the copy reads: `Unlocks at level 2` · `Free spin already used today`
+· `Bet at least 10 credits` · `Not enough credits`.
+`applySpin` deducts the stake and adds `round(0.02 × wager)` to the pot (a free spin does neither,
+only stamping `freeSpinDay`), pays `round(stake × mult × (hot ? 1.5 : 1))` plus, on `s42`, the whole
+pot on top, updates `dryStreak` / `winStreak` (a result under ×2 breaks it, `same` included) /
+`stats.spins` / `stats.spinNet`, raises `jackpot42`, `nanStreak3` or `hotSeed`, and emits exactly one
+`spin` carrying the segment's **printed** multiplier (`hot` and `payout` carry the x1.5).
+`rollOutcome` with `pity` converts a losing draw once into the cheapest winning segment, after
+drawing, so the rng sequence is identical either way.
+`applyFlip` takes no free stake and has no pity, no streak bonus and no jackpot: it deducts, feeds
+the same pot, rolls `rng() < COIN_WIN_CHANCE`, pays `round(stake × COIN_PAYOUT)` on your side,
+moves `gamble.coinStreak` / `stats.flips` / `stats.spinNet`, raises `coinFive` at
+`COIN_STREAK_TARGET = 5`, and emits one `flip{side,wager,payout,streak}`.
 **Documented exception.** Payouts move `state.credits` and nothing else. `lifetimeCredits` feeds XP
 and therefore the player level, `seasonCredits` feeds prestige and the leaderboard; crediting either
-here would make the roulette an XP farm and let a lucky seed buy a rank. `applyOffline` never
-touches `gamble`, and `hydrate` clamps `nextSpinAt` to `now + SPIN_COOLDOWN_MS`.
+here would make the Lounge an XP farm and let a lucky seed buy a rank. `applyOffline` never touches
+`gamble`.
+
+## citizens.ts
+Invented players running the workflows this save has published. A publish (`recordHubPublish` with
+the hub id and name) calls `addDrop`, which puts a *drop* on `state.citizens.drops`; every tick
+`runCitizens` advances each one. A due run pays `runRoyalty = max(CITIZEN_ROYALTY_MIN,
+round(CITIZEN_ROYALTY_SECS × cps × heat))` through `addCredits` (royalties are income, so lifetime
+and season totals do move, exactly as a real hub run does), bumps `stats.hubRuns` and `hubRep` by
+one, decays `heat` by `CITIZEN_HEAT_DECAY`, reschedules `nextRunAt = now + nextGapMs(heat, rng)` and
+pushes a `CitizenVisit` onto `state.citizens.feed` (kept to `CITIZEN_FEED_MAX`). Handles come from
+`Catalog.citizens` (`src/data/citizens.ts`).
+Three rules hold the economy still: **one run per drop per tick**, so a tab closed for eight hours
+comes back to one due run and never a backlog; **heat only ever falls**, by the decay and by the
+`CITIZEN_TREND_MS` deadline, so a drop pays about 43 seconds of income over ~31 runs and ~43 minutes
+and then is `cold` for good; and **royalties scale with cps**, so the feature reads the same at every
+rig size. `hydrate` clamps a `nextRunAt` from a clock that ran ahead to `now + CITIZEN_TREND_MS`.
+`citizenHandle(rng, catalog)`, `nextGapMs(heat, rng)`, `runRoyalty(derived, heat)`, `hotDrops(state)`,
+`isCold(drop, now)`, `addDrop(state, now, rng, id, name)`, `runCitizens(state, derived, catalog, now, rng)`.
 
 ## clickGuard.ts
 Layers two and three of the auto-clicker guard (layer one is `src/lib/input.ts`: an untrusted event
@@ -261,17 +286,17 @@ A ratioed post runs the same clock with the sign flipped: `state.credits = max(0
 - daily: `dayKey(now) = YYYY-MM-DD UTC`; `canClaim(state, now)`; `claimDaily(state, derived, now): GameEvent[]`: streak continues if last claim was yesterday (or two days ago with `streakGrace`), else resets to 1; day n (1..7 cycle) reward `max(DAILY_MIN_CREDITS, cps × DAILY_BASE_SECS × n)`, day 3 `rp += 1`, day 7 `cp += 1`.
 - prestige: `canRebrand(state, catalog)` (owns any `cloud-node` or `region`); `rebrandCp(lifetimeSeasonCredits) = floor((seasonCredits / REBRAND_CP_DIVISOR) ** REBRAND_CP_EXP)`; `creditsForCp(cp)` (inverse); `rebrand(state, catalog, now): GameEvent[]`: reset credits/seasonCredits/hardware/hardwareTiers/upgrades(non-prestige)/models(keep sd15)/queue/posts/**followers, followersFrac**/contracts/events; keep achievements, mapNodes (all), rp, cp, cpSpent, loras, hubRep, daily, flags, lifetimeFollowers/lifetimeLikes/signups; apply `startHardware` effects; `season += 1`, `stats.rebrands += 1`. The Rebrand dialog must list followers among the losses.
 - achievements: `checkAchievements(state, derived, catalog): GameEvent[]`, granting in catalog order and re-running while a pass granted something (up to 4 passes), so a count-based row lands in the same call. `AchievementDef.reward` is a one-off credit payout handed over on grant, moving the three credit counters inline (importing `addCredits` back would close a cycle; keep them in step with it), and the `achievement` event carries it as `reward` (0 when there is none).
-- offline: `applyOffline(state, derived, catalog, now): { elapsedSec, gain, events }`: `elapsed = (now − lastTickAt)/1000`; if `≤ SHORT_GAP_S` full-rate catch-up without report; else `capped = min(elapsed, offlineCapHours × 3600)`, `gain = cps × capped × derived.offlineEfficiency` (`OFFLINE_EFFICIENCY = 0.5`; `Comfy Cloud: Always On` raises it to 1; the cap starts at 8 h and tops out at 48 h across every source); replay finishes jobs whose `endsAt ≤ now` sequentially, expiring random events as it passes their end; settle posts fully; **`progressContracts` on the resulting events**; `stats.offlineClaims += 1` only past `SHORT_GAP_S` (a tab switch never claims); emit `weekRollover` if the trending week changed while away (and `primeTickMemo` so the tick stays quiet); `checkAchievements`, then `settleLevelUps`. It never touches `state.gamble`, so eight hours away is one ready spin, not a backlog.
+- offline: `applyOffline(state, derived, catalog, now): { elapsedSec, gain, events }`: `elapsed = (now − lastTickAt)/1000`; if `≤ SHORT_GAP_S` full-rate catch-up without report; else `capped = min(elapsed, offlineCapHours × 3600)`, `gain = cps × capped × derived.offlineEfficiency` (`OFFLINE_EFFICIENCY = 0.5`; `Comfy Cloud: Always On` raises it to 1; the cap starts at 8 h and tops out at 48 h across every source); replay finishes jobs whose `endsAt ≤ now` sequentially, expiring random events as it passes their end; settle posts fully; **`progressContracts` on the resulting events**; `stats.offlineClaims += 1` only past `SHORT_GAP_S` (a tab switch never claims); emit `weekRollover` if the trending week changed while away (and `primeTickMemo` so the tick stays quiet); `checkAchievements`, then `settleLevelUps`. It never touches `state.gamble` or `state.citizens`, so eight hours away is one due citizen run, not a backlog.
 
 ## engine.ts / actions.ts
 `tick(state, derived, catalog, dtSec, now, rng): GameEvent[]`: income `cps × dt`, `playedSec`, `advanceQueue`, `settlePosts`, `expireEvents`, `maybeStartEvent`, `progressContracts`, `rotateContracts` when due, achievements then `settleLevelUps` at most once per whole played second, week rollover detection (`weekRollover` event with new tags), cps power-of-10 milestones (`milestone`), breaker flip (`powerThrottle`), `lastTickAt = now`. `DERIVED_EVENT_TYPES` / `needsDerived(events)` tell the caller when to recompute `Derived`: the store should use `needsDerived` rather than its own list. `levelUp` is **not** in that set: the reward is credits, and nothing `computeDerived` reads moves. `resetTickMemo(state)`, `primeTickMemo(state, derived, now)`.
-`GameEvent` (types.ts) is the whole vocabulary the UI sees: `click{value,lucky?}`, `purchase`, `upgrade`, `mapUnlock`, `jobStarted`, `postCreated`, `postResolved{viral,flop,ratioed}`, `achievement{id,reward}`, `offline{gain,elapsedSec}`, `contractDone`, `eventStart`, `eventEnd`, `daily{day,credits}`, `rebrand{cp}`, `powerThrottle{on}`, `signup{total}`, `weekRollover{tags}`, `easterEgg{id}`, `milestone{cps}`, `levelUp{level,credits,unlocked}`, `clickBlocked{reason,until}`, `spin{outcome,mult,wager,payout,free,hot}`, `reward{id,credits}`. `src/audio/sfxMap.ts` switches over it with a `never` default, so a new member fails the build until someone decides what it sounds like.
+`GameEvent` (types.ts) is the whole vocabulary the UI sees: `click{value,lucky?}`, `purchase`, `upgrade`, `mapUnlock`, `jobStarted`, `postCreated`, `postResolved{viral,flop,ratioed}`, `achievement{id,reward}`, `offline{gain,elapsedSec}`, `contractDone`, `eventStart`, `eventEnd`, `daily{day,credits}`, `rebrand{cp}`, `powerThrottle{on}`, `signup{total}`, `weekRollover{tags}`, `easterEgg{id}`, `milestone{cps}`, `levelUp{level,credits,unlocked}`, `clickBlocked{reason,until}`, `spin{outcome,mult,wager,payout,free,hot}`, `flip{side,wager,payout,streak}`, `citizenRun{handle,workflowName,credits}`, `reward{id,credits}`. `src/audio/sfxMap.ts` switches over it with a `never` default, so a new member fails the build until someone decides what it sounds like.
 `actions.ts`: every action is `(ctx: ActionContext, ...args) => ActionResult` with `ActionContext = { state, derived, catalog, now, rng }` and `ActionResult = { events: GameEvent[]; dirty: boolean; error?: string }` (`dirty` ⇒ caller recomputes derived; validation failures return `{ events: [], dirty: false, error }` and leave the state untouched):
-`click(ctx)`, `buyHardware(ctx, id, n: BuyCount = 1)` with `BuyCount = 1 | 10 | 100 | 'max'`, `buyUpgrade(ctx, id)`, `unlockMapNode(ctx, id)`, `quantize(ctx, modelId, precision)`, `setupModel(ctx, modelId)` (the player level is the first gate after "already set up", and the only place it is checked), `trainLora(ctx, tagId)` (cost = 20 min of cps, min 500), `queueJob(ctx, input: QueueJobInput)` (re-exported `JobInput`; diffs `CREATE_JOB_FLAGS` around `createJob` and emits one `easterEgg` per newly raised prompt flag; also progresses contracts for any job it finishes on the way in), `claimContract(ctx, i)`, `claimDaily(ctx)`, `spin(ctx, wager: number | 'free')`, `rebrand(ctx)`, `resolveEvent(ctx, defId)`, `toggleSetting(ctx, key: keyof GameSettings, value?: boolean)`, `setFlag(ctx, key)`, `upscalePost(ctx, postId)` (cost `UPSCALE_COST_FRACTION` = 30% of the post's **original** `post.cost`, adds a second wave of 40% likes at the post's own credits/like; refused on a ratio first, with its own reason, then on flops), `grantGift(ctx, kind)`, `declineGift(ctx, kind)`, `completeTutorial(ctx)`. `upscaleCost(post, ctx)`, `loraCost(derived)`, `clickRate(state, now)`.
+`click(ctx)`, `buyHardware(ctx, id, n: BuyCount = 1)` with `BuyCount = 1 | 10 | 100 | 'max'`, `buyUpgrade(ctx, id)`, `unlockMapNode(ctx, id)`, `quantize(ctx, modelId, precision)`, `setupModel(ctx, modelId)` (the player level is the first gate after "already set up", and the only place it is checked), `trainLora(ctx, tagId)` (cost = 20 min of cps, min 500), `queueJob(ctx, input: QueueJobInput)` (re-exported `JobInput`; diffs `CREATE_JOB_FLAGS` around `createJob` and emits one `easterEgg` per newly raised prompt flag; also progresses contracts for any job it finishes on the way in), `claimContract(ctx, i)`, `claimDaily(ctx)`, `spin(ctx, wager: number | 'free')`, `flip(ctx, wager: number)`, `rebrand(ctx)`, `resolveEvent(ctx, defId)`, `toggleSetting(ctx, key: keyof GameSettings, value?: boolean)`, `setFlag(ctx, key)`, `upscalePost(ctx, postId)` (cost `UPSCALE_COST_FRACTION` = 30% of the post's **original** `post.cost`, adds a second wave of 40% likes at the post's own credits/like; refused on a ratio first, with its own reason, then on flops), `grantGift(ctx, kind)`, `declineGift(ctx, kind)`, `completeTutorial(ctx)`. `upscaleCost(post, ctx)`, `loraCost(derived)`, `clickRate(state, now)`.
 
 **`click`.** `evaluateClick` runs first. On an accepted click, one in `1 / LUCKY_CLICK_CHANCE` (0.005) pays `LUCKY_CLICK_MULT` (×10), bumps `stats.luckyClicks`, raises `luckySeed` and marks the `click` event `lucky: true`; the roll happens on accepted clicks only, so a refused click cannot burn the lucky seed. **Documented exception**: a refused click returns `{ events: [{ type: 'clickBlocked', reason, until }], dirty: false }` and **no** `error`, because the button has to be able to say why it went quiet. It must still move nothing: no credits, no `totalClicks`, no `recordClick`, no `applyClickToJobs` and above all no `click` event, so contracts, the combo meter and the click-frenzy egg all see a click that never happened.
 
-**`spin`.** `canSpin` owns every rule and every rejection string; `applySpin` owns the roll, the pity meter, the hot streak and the pot. `dirty: false` (nothing in `Derived` reads a spin). Never reachable from the click path or a hotkey, so a wager is always a deliberate press, and it does **not** call `noteSpend`: a bank that lands on zero because a seed ate the wager is not "Out Of Credits, Not Ideas".
+**`spin` / `flip`.** `canBet` owns every rule and every rejection string; `applySpin` and `applyFlip` own the rolls. `dirty: false` (nothing in `Derived` reads a bet). Never reachable from the click path or a hotkey, so a wager is always a deliberate press, and neither calls `noteSpend`: a bank that lands on zero because a seed ate the wager is not "Out Of Credits, Not Ideas".
 
 **`setFlag`.** UI discovery flags only. `UI_FLAGS = konami, ticker-seven, seed42, rickroll, title-25, grand-tour, night-shift, ctrl-enter` (other keys are still accepted; the list documents the ones nothing in `src/game` sets). Set once, emits `easterEgg`, then runs `checkAchievements` immediately so the egg, the achievement it unlocks and that achievement's credits land on the same click instead of up to a second later; `dirty` is true exactly when something was granted. A repeat is a validation failure, so nothing is announced twice.
 
@@ -280,17 +305,18 @@ A ratioed post runs the same clock with the sign flipped: `state.credits = max(0
 **`completeTutorial`.** Sets `flags['tutorial-done']` (`TUTORIAL_FLAG`). Idempotent, silent, `dirty: false`. Deliberately **not** `setFlag`: that one is for discovery flags and announces an `easterEgg`, and a veteran save that never saw the tour gets the flag set quietly on boot, which must not fire a toast.
 
 ## save.ts / loop.ts
-`serialize(state): string`; `loadSave(raw: string | null, now, guestId, catalog = CATALOG): { state, corrupt, migratedFrom }`: **this is how the caller learns about corruption**: the store must call `loadSave` and stash the raw blob under `SAVE_CORRUPT_KEY` (`SAVE_KEY + '.corrupt'`) when `corrupt` is true; `deserialize(raw, now, guestId, catalog = CATALOG): GameState` is the convenience wrapper that always returns a state. Zod schema (`saveSchema`), `MIGRATIONS: Record<number, (s: unknown) => unknown>` up to SAVE_VERSION, unknown ids dropped, missing or invalid fields filled from `createInitialState` (a record field that is not a record falls back whole, so the starter PC and SD 1.5 survive; `hydrate` additionally guarantees both). Hydration normalises queued jobs (a running job always has `endsAt = startedAt + durationMs`, a pending one has none, `clickBonusMs ≤ CLICK_JOB_BONUS_CAP × durationMs`) and pulls timestamps from a clock that ran ahead back to `now` (`lastTickAt`, `events.nextAt ≤ now + EVENT_MAX_GAP_MS`, `contracts.nextRotateAt ≤ now + CONTRACT_ROTATE_MS`, `gamble.nextSpinAt ≤ now + SPIN_COOLDOWN_MS`, `stats.clickLockUntil ≤ now + CLICK_LOCKOUT_MAX_MS`, `liveTrending.fetchedAt`, post `createdAt`, job timestamps shifted together, active events). **Every new state field needs a schema entry with a fallback**, so an old blob still loads: `stats.levelSeen` (missing ⇒ set to `playerLevel(state)`, the retroactive level with no back-pay and no toast storm), the ten other new counters, `settings.autosave` (fallback true), the whole `gamble` object, and on a post `ratioed`, `mismatchedTags`, `nearViral` and a **signed** `followersGained` (a ratio drives followers away). `exportString(state)` = `'CC1|' + base64(utf8 json)` (chunked, no call-stack spread), `importString(s)`.
+`serialize(state): string`; `loadSave(raw: string | null, now, guestId, catalog = CATALOG): { state, corrupt, migratedFrom }`: **this is how the caller learns about corruption**: the store must call `loadSave` and stash the raw blob under `SAVE_CORRUPT_KEY` (`SAVE_KEY + '.corrupt'`) when `corrupt` is true; `deserialize(raw, now, guestId, catalog = CATALOG): GameState` is the convenience wrapper that always returns a state. Zod schema (`saveSchema`), `MIGRATIONS: Record<number, (s: unknown) => unknown>` up to SAVE_VERSION, unknown ids dropped, missing or invalid fields filled from `createInitialState` (a record field that is not a record falls back whole, so the starter PC and SD 1.5 survive; `hydrate` additionally guarantees both). Hydration normalises queued jobs (a running job always has `endsAt = startedAt + durationMs`, a pending one has none, `clickBonusMs ≤ CLICK_JOB_BONUS_CAP × durationMs`) and pulls timestamps from a clock that ran ahead back to `now` (`lastTickAt`, `events.nextAt ≤ now + EVENT_MAX_GAP_MS`, `contracts.nextRotateAt ≤ now + CONTRACT_ROTATE_MS`, `stats.clickLockUntil ≤ now + CLICK_LOCKOUT_MAX_MS`, `citizens.drops[].nextRunAt ≤ now + CITIZEN_TREND_MS`, `liveTrending.fetchedAt`, post `createdAt`, job timestamps shifted together, active events). **Every new state field needs a schema entry with a fallback**, so an old blob still loads: `stats.levelSeen` (missing ⇒ set to `playerLevel(state)`, the retroactive level with no back-pay and no toast storm), the ten other new counters, `settings.autosave` (fallback true), the whole `gamble` and `citizens` objects, and on a post `ratioed`, `mismatchedTags`, `nearViral` and a **signed** `followersGained` (a ratio drives followers away). `exportString(state)` = `'CC1|' + base64(utf8 json)` (chunked, no call-stack spread), `importString(s)`.
 `startLoop({ tick, render, onLongGap }): () => void`: rAF accumulator, fixed STEP_S, `MAX_CATCHUP_S = 5`, beyond that calls `onLongGap(elapsedSec, now)`; the next frame is always requested (try/finally) so a throwing tick or listener cannot silently stop the loop.
 
 ## Tests (`src/game/__tests__`)
-Vitest, node env. Use `CATALOG` for integration-style tests and tiny inline catalogs for unit tests. Required: economy (cost formulas; payback strictly decreasing up to the RTX PRO 6000 and strictly increasing after it along the non-Apple, non-Radeon ladder), pacing sim (`scripts/balance.ts` exports `simulate(strategy, seconds)` and `projectWeek(strategy)`, models the power throttle and the CP gates; climb strategy reaches `rtx-pro-6000` < 15 min and a cloud node < 25 min at 3 clicks/s, owns no region inside 3 h of continuous play, and neither the orbital datacenter nor the Dyson swarm by day 7 of a one-hour-a-day week), virality EV bands (untagged native EV/cost in [1.05, 1.6] for local models and [0.95, 1.1] net of the surcharge for API models, over 20k rolls; viral rate 4–6%; reach multipliers leave credits unchanged), hardware gating (3060 can't run flux-dev native, can at fp8; cpu can't run sdxl; amd needs ROCm; api needs apiNodes; `bestRunnable` prefers the faster real gen time), power throttle (proportional), quantize fees (setup + FP8 always undercuts the native rig), hashtags (deterministic per week, rollover, spam rule), studio queue/concurrency, offline (cap, efficiency, contracts progressed, events expired, rollover announced once), save roundtrip + corrupt blob + normalisation, map graph (acyclic, every node reachable from `core-root`, unique positions), module boundaries, format.
+Vitest, node env. Use `CATALOG` for integration-style tests and tiny inline catalogs for unit tests. Required: economy (cost formulas; payback strictly decreasing up to the RTX PRO 6000 and strictly increasing after it along the non-Apple, non-Radeon ladder), pacing sim (`scripts/balance.ts` exports `simulate(strategy, seconds)` and `projectWeek(strategy)`, models the power throttle and the CP gates; climb strategy reaches `rtx-pro-6000` < 15 min and a cloud node < 25 min at 3 clicks/s, owns no region inside 3 h of continuous play, and neither the orbital datacenter nor the Dyson swarm by day 7 of a one-hour-a-day week), virality EV bands (untagged native EV/cost in [1.05, 1.6] for local models and [0.95, 1.1] net of the surcharge for API models, over 20k rolls; viral rate 4–6%; reach multipliers leave credits unchanged), hardware gating (3060 can't run flux-dev native, can at fp8; cpu can't run sdxl; amd needs ROCm; api needs apiNodes; `bestRunnable` prefers the faster real gen time), power breaker (cps 0 past the budget), quantize fees (setup + FP8 always undercuts the native rig), hashtags (deterministic per week, rollover, spam rule), studio queue/concurrency, offline (cap, efficiency, contracts progressed, events expired, rollover announced once), save roundtrip + corrupt blob + normalisation, map graph (acyclic, every node reachable from `core-root`, unique positions), module boundaries, format.
 
-Added with the level, goals, roulette, guard and ratio work (25 files under `src/game/__tests__`, 48 across the repo):
+Added with the level, goals, Lounge, guard and ratio work (25 files under `src/game/__tests__`, 48 across the repo):
 - `level.test.ts`: `LEVEL_XP` strictly increasing with `LEVEL_XP[0] === 0`; `levelForXp` inverts `xpForLevel` at every threshold and one XP below it; a fresh state is level 1 at xp 0; `xpBreakdown` sums to `playerXp`; `settleLevelUps` pays `max(100 × L, round(90 × cps))` once per level in order, is silent on a second call and never runs past MAX_LEVEL; a blob without `levelSeen` hydrates to the derived level and the next tick pays nothing; a rebrand never demotes.
 - `models-data.test.ts`: every model has an integer `minLevel` in 1..12; `sd15` is 1; every level 2 to 12 unlocks at least one model; every API model is ≥ 7; every video model is ≥ 5; `minLevel` never falls as VRAM rises within a local kind.
 - `goals.test.ts`: `condProgress` per condition type (`all` as the minimum, `any` as the maximum, clamped, binary labels equal to `describeUnlock`); `nextAchievements` excludes hidden, earned and complete rows and ranks correctly; `nextGoal`'s priority order over fixture states; `goalKey` and `isGoalDone` per kind; `saveTarget` agrees with the store hook.
-- `gamble.test.ts`: weights sum to 1 and ids are unique; `spinEv()` is in [1.02, 1.06]; 200k `mulberry32` rolls land on the analytic EV; the economic invariant `(3600 / SPIN_COOLDOWN_MS × 1000) × (spinEv() − 1) × SPIN_MAX_SECS ≤ 0.07 × 3600`; every rejection path with its exact copy; `applySpin` deducts, pays `round(wager × mult)`, sets the cooldown and emits exactly one `spin`; **`lifetimeCredits` and `seasonCredits` never move**; the free spin deducts nothing and leaves the cooldown alone; pity converts the third NaN; hot pays ×1.5 after three wins; eight offline hours leave exactly one ready spin; `hydrate` clamps a far-future `nextSpinAt`; a blob without `gamble` loads the defaults.
+- `gamble.test.ts`: weights sum to 1 and ids are unique; `spinEv()` is 0.954 and `coinEv()` 0.96, both under 1; 200k `mulberry32` rolls land on the analytic EV; the economic invariant, 50k simulated bets a table returning under 1 per credit staked; every rejection path with its exact copy; `applySpin` deducts, pays `round(wager × mult)` and emits exactly one `spin`; **`lifetimeCredits` and `seasonCredits` never move**; the free spin deducts nothing; pity converts the third NaN; hot pays ×1.5 after three wins; the coin pays double on your side at the measured rate and streaks to `coinFive`; a blob without `gamble` loads the defaults.
+- `citizens.test.ts`: a handle is built from the catalog pools and is deterministic per rng; gaps grow as heat falls; a due run pays a royalty, a run and a point of rep and lands in the feed; at most one run per drop however long the tab was closed; a drop cools with every run, is cold past `CITIZEN_TREND_MS`, and pays out under 90 seconds of income over its whole life; the board keeps the newest drop and the feed keeps `CITIZEN_FEED_MAX` entries.
 - `clickGuard.test.ts`: 15 clicks in a second pay and the 16th is refused with `rate` while moving nothing; 25 clicks at a flat 100 ms trip `cadence` with a 10 s lock and the flag; jittered human cadences trip nothing; 100 clicks at a flat 333 ms trip nothing (slow regularity is allowed); the 10 / 30 / 60 escalation and the decay; the click-frenzy egg still reachable; `cadence([])` is zeros; the hydrate clamp.
 - `hashtags.test.ts` / `virality.test.ts`: `explicit` excludes keyword hits and `mismatchedTypeTags` returns catalog order; a ratioed roll has the flop band, no viral, trend 1, the dislike formula, the spark still armed and the flag set; `settlePosts` drains the bank, floors at 0, leaves the lifetime counters alone, bumps the three stats, drops followers without going negative and emits one `postResolved` with `ratioed: true`; a correctly typed tag pays exactly what an untagged post pays; `upscalePost` refuses a ratio.
 - `actions-new.test.ts`: a blocked click moves nothing at all; the lucky seed tags the event and never burns on a refused click; `setupModel` refuses below `minLevel` with the exact string and `queueJob` does not re-check it; the spin rejection copy passes straight through; the founder card racks free without throttling and the Sonam credits go through the normal path; `completeTutorial` announces no easter egg; a rewarded achievement pays exactly once; the four `createJob` prompt eggs.

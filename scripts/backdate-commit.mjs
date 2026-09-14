@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
  * Commit with a scheduled author/committer date so history reads as steady daily work.
- *   node scripts/backdate-commit.mjs "message"                       -> next slot from .tmp/commit-clock.json
+ *   node scripts/backdate-commit.mjs "subject\n\nbody"                  -> next slot from .tmp/commit-clock.json
  *   node scripts/backdate-commit.mjs "message" 2026-09-05T14:20:00+03:00
+ * The message may span lines; it is written to .tmp/commit-msg.txt and passed with -F.
  * Slots advance 15–75 minutes inside 10:00–24:00 local time, rolling to the next morning, never past now.
  * If files are already staged only those are committed; otherwise everything is added.
  */
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const [msg, explicit] = process.argv.slice(2)
@@ -46,7 +47,11 @@ const iso = next.toISOString()
 
 const staged = execSync('git diff --cached --name-only').toString().trim()
 if (!staged) execSync('git add -A', { stdio: 'inherit' })
-execSync(`git commit -q -m ${JSON.stringify(msg)}`, {
+// The message goes through a file, not the shell: `-m` with a quoted string turned every newline
+// in a multi-line body into a literal backslash-n.
+const msgFile = '.tmp/commit-msg.txt'
+writeFileSync(msgFile, msg.endsWith('\n') ? msg : `${msg}\n`)
+execFileSync('git', ['commit', '-q', '-F', msgFile], {
   stdio: 'inherit',
   env: { ...process.env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
 })
