@@ -370,7 +370,7 @@ function NextUp({ list }: { list: readonly NextAchievement[] }) {
           >
             <AchievementGlyph icon={a.icon} size={16} className="shrink-0 text-smoke-600" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-semibold text-smoke-100">{a.name}</span>
+              <span className="block text-xs font-semibold leading-snug text-smoke-100">{a.name}</span>
               <span className="mt-0.5 block h-1 w-full overflow-hidden rounded-full bg-charcoal-700">
                 <span
                   className={cn('block h-full w-full origin-left', a.fraction >= 0.9 ? 'bg-electric-400' : 'bg-slot-mask')}

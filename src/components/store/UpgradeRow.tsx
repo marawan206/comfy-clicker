@@ -138,17 +138,20 @@ function UpgradeRowImpl({ id }: Props) {
         <UpgradeIcon icon={def.icon} size={20} />
       </div>
 
+      {/* Nothing in this column clips. The row is about 210 px wide in the store and narrower
+          still inside the breaker banner, while a third of the upgrade descriptions are longer
+          than one line at that width, so they wrap and the row grows to fit. */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-[13px] font-semibold text-smoke-100">{def.name}</span>
+        <div className="flex flex-wrap items-center gap-x-1.5">
+          <span className="min-w-0 text-[13px] font-semibold text-smoke-100">{def.name}</span>
           {hw && (
             <span className="shrink-0 rounded-[0.3em] bg-charcoal-700 px-1 text-[10px] font-bold text-smoke-600">
               {hw.short} · T{tier?.tier}
             </span>
           )}
         </div>
-        <p className="truncate text-[11px] text-smoke-600">{def.desc}</p>
-        {effects && <p className="truncate text-[11px] font-semibold text-electric-400/90">{effects}</p>}
+        <p className="text-[11px] leading-snug text-smoke-600">{def.desc}</p>
+        {effects && <p className="text-[11px] font-semibold leading-snug text-electric-400/90">{effects}</p>}
       </div>
 
       <div className={cn('flex shrink-0 items-center gap-1 text-[14px] font-extrabold tabular-nums tracking-tight', row.affordable ? 'text-credits' : 'text-slot-vae')}>

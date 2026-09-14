@@ -65,7 +65,7 @@ export function ModelsTab() {
                 {label}
                 <span className="text-[10px] font-semibold tabular-nums text-smoke-800">{ids.length}</span>
               </h3>
-              <p className="hidden min-w-0 truncate text-[11px] text-smoke-800 lg:block" title={blurb}>{blurb}</p>
+              <p className="hidden min-w-0 text-right text-[11px] leading-snug text-smoke-800 lg:block">{blurb}</p>
             </header>
             <ul className="flex flex-col gap-2">
               {ids.map((modelId) => (

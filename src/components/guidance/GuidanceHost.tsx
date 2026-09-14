@@ -207,9 +207,9 @@ export function GuidanceHost() {
                         type="button"
                         onClick={() => run(step.alt as GuideStep)}
                         disabled={!step.alt.action}
-                        className="mt-1 flex w-full items-center justify-between gap-2 text-[11px] font-semibold text-electric-400 underline-offset-2 hover:underline disabled:text-smoke-700 disabled:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
+                        className="mt-1 flex w-full items-start justify-between gap-2 text-[11px] font-semibold text-electric-400 underline-offset-2 hover:underline disabled:text-smoke-700 disabled:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
                       >
-                        <span className="min-w-0 truncate">or {step.alt.label.toLowerCase()}</span>
+                        <span className="min-w-0 text-left leading-snug">or {step.alt.label.toLowerCase()}</span>
                         {step.alt.cost !== undefined ? <Price cost={step.alt.cost} currency={step.alt.currency ?? 'credits'} /> : null}
                       </button>
                     ) : null}

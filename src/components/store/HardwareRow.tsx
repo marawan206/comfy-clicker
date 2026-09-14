@@ -102,8 +102,8 @@ function HardwareRowImpl({ id, amount, isNew, onSeen }: Props) {
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-[13px] font-semibold text-smoke-100">{def.name}</span>
+        <div className="flex flex-wrap items-center gap-x-1.5">
+          <span className="min-w-0 text-[13px] font-semibold text-smoke-100">{def.name}</span>
           {def.cardsPerUnit && <span className="shrink-0 text-[10px] font-semibold text-smoke-700">{def.cardsPerUnit}× cards</span>}
           {isNew && (
             <motion.span
@@ -124,9 +124,9 @@ function HardwareRowImpl({ id, amount, isNew, onSeen }: Props) {
         </div>
 
         {locked ? (
-          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slot-vae/90">
-            <Lock size={11} aria-hidden="true" />
-            <span className="truncate">{row.lockReason}</span>
+          <div className="mt-0.5 flex items-start gap-1 text-[11px] leading-snug text-slot-vae/90">
+            <Lock size={11} className="mt-px shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{row.lockReason}</span>
           </div>
         ) : (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] tabular-nums text-smoke-600">

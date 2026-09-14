@@ -47,9 +47,11 @@ export function UpgradesTab() {
       )}
       {groups.map((group) => (
         <section key={group.id} aria-label={group.label}>
-          <header className="sticky top-0 z-10 -mx-2 flex items-baseline justify-between gap-2 border-b border-charcoal-400/70 bg-charcoal-600/95 px-4 pt-2.5 pb-1.5 backdrop-blur-sm">
-            <h3 className="text-[11px] font-semibold tracking-[0.08em] text-smoke-600 uppercase">{group.label}</h3>
-            <span className="truncate text-[10px] text-smoke-800">{group.blurb}</span>
+          <header className="sticky top-0 z-10 -mx-2 flex items-baseline justify-between gap-3 border-b border-charcoal-400/70 bg-charcoal-600/95 px-4 pt-2.5 pb-1.5 backdrop-blur-sm">
+            <h3 className="shrink-0 text-[11px] font-semibold tracking-[0.08em] text-smoke-600 uppercase">{group.label}</h3>
+            {/* The blurb wraps rather than clipping: half a sentence under an ellipsis says less
+                than nothing, and the header is sticky so a second line costs a few pixels once. */}
+            <span className="min-w-0 text-right text-[10px] leading-snug text-smoke-800">{group.blurb}</span>
           </header>
           <ul className="pt-1.5">
             <AnimatePresence initial={false}>
