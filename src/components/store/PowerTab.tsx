@@ -27,7 +27,7 @@ export function PowerTab() {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
       <div className="pt-3">
-        <PowerMeter />
+        <PowerMeter inStore />
       </div>
 
       <section className="mt-4" aria-label="Power and cooling upgrades">

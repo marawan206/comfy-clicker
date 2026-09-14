@@ -6,6 +6,21 @@ the data file and regenerate, so the game and the repo always say the same thing
 Versions are semver. A release bumps the minor, a hotfix bumps the patch, and the major stays
 at 0 until the game is feature complete. See `docs/RELEASING.md`.
 
+## 0.2.1 · Two dead ends
+
+Hotfix · 2026-09-14
+
+The breaker banner now sells you the supply, and the save key stops stacking cards.
+
+### Added
+
+- Each supply in the banner says what it adds and whether it clears the breaker on its own
+
+### Fixed
+
+- Buy a PSU did nothing from inside the Power tab. The tripped banner now lists the supplies on sale and you buy one from it
+- Pressing S repeatedly stacked a new toast per press. One card now stays up and its timer extends three seconds past the last press
+
 ## 0.2.0 · The Latent Lounge
 
 Release · 2026-09-14

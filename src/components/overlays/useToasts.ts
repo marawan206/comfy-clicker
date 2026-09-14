@@ -4,6 +4,11 @@
  * `<ToastHost>` renders the first TOAST_MAX_VISIBLE entries and owns each visible toast's
  * auto-dismiss timer (so a toast's clock starts when it is actually shown, and pauses on hover).
  * The rest wait in order and slide in as earlier ones dismiss.
+ *
+ * A toast raised with a `key` that is already on screen is **refreshed, not replaced**: same id,
+ * same card, same place in the queue, new content and a fresh timer. Spamming the save key used to
+ * animate a new card in for every press; now one card sits there and its clock is pushed out with
+ * each press. `refreshedAt` is what the host watches to re-arm the timer.
  */
 import { useSyncExternalStore, type ReactNode } from 'react'
 import type { Cue } from '@/audio/sfxMap'
@@ -47,6 +52,8 @@ export interface Toast {
   sound?: Cue | false
   action?: { label: string; onClick: () => void }
   createdAt: number
+  /** Bumped every time a same-key toast refreshes this one; the host re-arms its timer on it. */
+  refreshedAt: number
 }
 
 type Listener = () => void
@@ -60,14 +67,20 @@ function emit(): void {
   for (const l of listeners) l()
 }
 
-/** Queue a toast. Returns its id so a caller can dismiss it early. */
+/**
+ * Queue a toast, or refresh the one already holding this `key`. Returns its id so a caller can
+ * dismiss it early; a refreshed toast keeps the id it already had.
+ */
 export function toast(message: string, opts: ToastOptions = {}): number {
+  const now = Date.now()
+  const existing = opts.key ? toasts.find((t) => t.key === opts.key) : undefined
   const item: Toast = {
-    id: nextId++,
+    id: existing?.id ?? nextId++,
     message,
     tone: opts.tone ?? 'default',
     durationMs: opts.durationMs ?? TOAST_DURATION_MS,
-    createdAt: Date.now(),
+    createdAt: existing?.createdAt ?? now,
+    refreshedAt: now,
   }
   if (opts.title !== undefined) item.title = opts.title
   if (opts.description !== undefined) item.description = opts.description
@@ -75,7 +88,9 @@ export function toast(message: string, opts: ToastOptions = {}): number {
   if (opts.key !== undefined) item.key = opts.key
   if (opts.sound !== undefined) item.sound = opts.sound
   if (opts.action !== undefined) item.action = opts.action
-  toasts = opts.key ? [...toasts.filter((t) => t.key !== opts.key), item] : [...toasts, item]
+  // A refresh keeps its place in the queue: a toast that has been on screen for four seconds must
+  // not jump to the back of the line and outlive everything raised after it.
+  toasts = existing ? toasts.map((t) => (t.id === existing.id ? item : t)) : [...toasts, item]
   emit()
   return item.id
 }
@@ -99,7 +114,12 @@ function subscribe(listener: Listener): () => void {
   }
 }
 
-const getSnapshot = (): Toast[] => toasts
+/** The queue as it stands, oldest first. Read by the hook, and by tests that have no React. */
+export function getToasts(): Toast[] {
+  return toasts
+}
+
+const getSnapshot = getToasts
 const getServerSnapshot = (): Toast[] => EMPTY
 
 /** Every queued toast, oldest first; the host shows the first TOAST_MAX_VISIBLE. */

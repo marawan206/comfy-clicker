@@ -49,6 +49,18 @@ export const CHANGE_ORDER: readonly ChangeKind[] = ['added', 'changed', 'balance
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '0.2.1',
+    date: '2026-09-14',
+    kind: 'hotfix',
+    title: 'Two dead ends',
+    summary: 'The breaker banner now sells you the supply, and the save key stops stacking cards.',
+    changes: [
+      { kind: 'fixed', text: 'Buy a PSU did nothing from inside the Power tab. The tripped banner now lists the supplies on sale and you buy one from it' },
+      { kind: 'added', text: 'Each supply in the banner says what it adds and whether it clears the breaker on its own' },
+      { kind: 'fixed', text: 'Pressing S repeatedly stacked a new toast per press. One card now stays up and its timer extends three seconds past the last press' },
+    ],
+  },
+  {
     version: '0.2.0',
     date: '2026-09-14',
     kind: 'release',

@@ -37,6 +37,11 @@ import type { SavedDetail } from '@/hooks/useHotkeys'
 export type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' | 'patch'
 const MODAL_IDS: ReadonlySet<string> = new Set<ModalId>(['settings', 'stats', 'daily', 'rebrand', 'lounge', 'patch'])
 const SAVED_EVENT = 'comfy:saved'
+/**
+ * How long the save card stays up. Every press refreshes the same card rather than stacking a new
+ * one (see `useToasts`), so holding S keeps one toast alive three seconds past the last press.
+ */
+const SAVE_TOAST_MS = 3_000
 
 /** Dispatch helper for anything that wants to open a modal without importing the overlays. */
 export function openModal(id: ModalId): void {
@@ -67,7 +72,7 @@ export function Overlays() {
           icon: <Save className="text-smoke-600" />,
           tone: 'default',
           key: 'saved',
-          durationMs: 2000,
+          durationMs: SAVE_TOAST_MS,
         })
         return
       }
@@ -77,7 +82,7 @@ export function Overlays() {
         icon: <Save className="text-electric-400" />,
         tone: 'electric',
         key: 'saved',
-        durationMs: 2500,
+        durationMs: SAVE_TOAST_MS,
       })
     }
     window.addEventListener(OPEN_MODAL_EVENT, onOpen)
