@@ -6,6 +6,14 @@ the data file and regenerate, so the game and the repo always say the same thing
 Versions are semver. A release bumps the minor, a hotfix bumps the patch, and the major stays
 at 0 until the game is feature complete. See `docs/RELEASING.md`.
 
+## 0.2.4 · New face on the button
+
+Hotfix · 2026-09-14
+
+### Changed
+
+- The Generate button wears the Comfy mark on its own instead of the blue tile. The header, the map and the splash keep the tile
+
 ## 0.2.3 · Readable and pressable
 
 Hotfix · 2026-09-14

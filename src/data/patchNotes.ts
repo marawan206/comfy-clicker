@@ -49,6 +49,15 @@ export const CHANGE_ORDER: readonly ChangeKind[] = ['added', 'changed', 'balance
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '0.2.4',
+    date: '2026-09-14',
+    kind: 'hotfix',
+    title: 'New face on the button',
+    changes: [
+      { kind: 'changed', text: 'The Generate button wears the Comfy mark on its own instead of the blue tile. The header, the map and the splash keep the tile' },
+    ],
+  },
+  {
     version: '0.2.3',
     date: '2026-09-14',
     kind: 'hotfix',
