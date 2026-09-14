@@ -70,7 +70,11 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
   const cloud = useCloudSync() !== 'offline'
 
   const saveNow = () => {
-    store.save()
+    if (!store.save()) {
+      const wait = Math.max(1, Math.ceil(store.msUntilManualSave() / 1000))
+      toast(`Already saved · again in ${wait}s`, { title: 'Save', description: 'Autosave is still running underneath.', icon: <Save className="text-smoke-600" />, key: 'saved' })
+      return
+    }
     toast('Saved', { title: 'Save', description: 'Progress lives in this browser. Export a code to move it.', icon: <Save className="text-electric-400" />, tone: 'electric', key: 'saved' })
   }
 
