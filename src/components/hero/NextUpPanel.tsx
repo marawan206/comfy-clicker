@@ -314,7 +314,7 @@ function DoneRow({ label, kicker, reduced }: { label: string; kicker: string; re
       <span className="grid size-7 shrink-0 place-items-center rounded-[0.354em] bg-electric-400 text-charcoal-800">
         <Check size={16} strokeWidth={3} aria-hidden="true" />
       </span>
-      <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-smoke-100">{label}</span>
+      <span className="min-w-0 flex-1 text-[13px] font-bold leading-snug text-smoke-100">{label}</span>
       <span className="shrink-0 text-[11px] font-extrabold uppercase tracking-[0.08em] text-electric-400">{kicker}</span>
     </motion.div>
   )
@@ -336,7 +336,9 @@ function GoalRow({ view, onGo, reduced }: { view: GoalView; onGo: () => void; re
         {view.icon}
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-smoke-100">{view.label}</span>
+            {/* The label carries a hardware name and a price, so it wraps rather than ending in an
+                ellipsis halfway through the thing the player is being told to save for. */}
+            <span className="min-w-0 flex-1 text-[13px] font-bold leading-snug text-smoke-100">{view.label}</span>
             {view.reward !== null && (
               <span className="flex shrink-0 items-center gap-1 text-xs font-extrabold tabular-nums text-credits">
                 <CreditsIcon size={11} aria-hidden="true" />+{formatNum(view.reward)}
@@ -344,7 +346,7 @@ function GoalRow({ view, onGo, reduced }: { view: GoalView; onGo: () => void; re
             )}
           </span>
           <Bar pct={view.pct} tone="electric" reduced={reduced} />
-          {view.sub && <span className="mt-0.5 block truncate text-[11px] text-smoke-600">{view.sub}</span>}
+          {view.sub && <span className="mt-0.5 block text-[11px] leading-snug text-smoke-600">{view.sub}</span>}
         </span>
         {view.eta ? (
           <span className="shrink-0 text-[11px] font-semibold tabular-nums text-smoke-600">{view.eta}</span>
@@ -380,9 +382,11 @@ function AchievementRow({ view, reduced }: { view: NextAchievement; reduced: boo
           <AchievementGlyph icon={view.icon} size={15} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-1.5">
-            <span className="min-w-0 shrink-0 truncate text-xs font-semibold text-smoke-100">{view.name}</span>
-            <span className="min-w-0 flex-1 truncate text-right text-[11px] font-semibold tabular-nums text-smoke-600">{view.label}</span>
+          <span className="flex flex-wrap items-baseline gap-x-1.5">
+            {/* `shrink-0 truncate` never truncated anything: the name was laid out at its full
+                width and pushed the progress figure out of the row instead. Both wrap now. */}
+            <span className="min-w-0 text-xs font-semibold leading-snug text-smoke-100">{view.name}</span>
+            <span className="ml-auto shrink-0 text-[11px] font-semibold tabular-nums text-smoke-600">{view.label}</span>
           </span>
           <Bar pct={pct} tone={almost ? 'electric' : 'mask'} reduced={reduced} />
         </span>
@@ -396,11 +400,11 @@ function AchievementRow({ view, reduced }: { view: NextAchievement; reduced: boo
 
 function EmptyRow({ icon, text }: { icon: ReactNode; text: string }) {
   return (
-    <div className="flex items-center gap-2.5 px-2 py-1 text-xs text-smoke-600">
+    <div className="flex items-start gap-2.5 px-2 py-1 text-xs text-smoke-600">
       <span className="grid size-7 shrink-0 place-items-center rounded-[0.354em] border border-charcoal-400 bg-charcoal-700 text-smoke-800">
         {icon}
       </span>
-      <span className="min-w-0 flex-1 truncate">{text}</span>
+      <span className="min-w-0 flex-1 leading-snug">{text}</span>
     </div>
   )
 }

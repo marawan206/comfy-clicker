@@ -49,6 +49,19 @@ export const CHANGE_ORDER: readonly ChangeKind[] = ['added', 'changed', 'balance
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '0.2.3',
+    date: '2026-09-14',
+    kind: 'hotfix',
+    title: 'Readable and pressable',
+    summary: 'Text wraps instead of stopping at an ellipsis, and the logo admits it is a button.',
+    changes: [
+      { kind: 'fixed', text: 'Store text was cut off at one line, and 10 of the 38 upgrade descriptions did not fit in one. Descriptions, blurbs, model names, lock reasons and the Next up rows all wrap now' },
+      { kind: 'changed', text: 'The Comfy logo answers a hover and a keyboard focus, and it carries the same tooltip as the Generate pill, which says the two are one button' },
+      { kind: 'changed', text: 'A save with no clicks on it yet shows a ring around the logo until the first press' },
+      { kind: 'changed', text: 'The tour used to ring the logo on its own, which taught that the pill was something else. It rings both and says so' },
+    ],
+  },
+  {
     version: '0.2.2',
     date: '2026-09-14',
     kind: 'hotfix',

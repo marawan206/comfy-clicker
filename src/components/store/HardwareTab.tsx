@@ -90,9 +90,7 @@ export function HardwareTab({ focus = null }: Props) {
             />
           ))}
         </div>
-        <p className="min-w-0 truncate text-[11px] text-smoke-700" title={meta?.blurb}>
-          {meta?.blurb}
-        </p>
+        <p className="min-w-0 text-[11px] leading-snug text-smoke-700">{meta?.blurb}</p>
         <div className="flex justify-end">
           <BuyAmount value={amount} onChange={(n) => setStoredAmount(String(n))} className="shrink-0" />
         </div>

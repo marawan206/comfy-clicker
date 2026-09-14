@@ -210,7 +210,7 @@ describe('tooltip copy strings', () => {
   it('generate button', () => {
     expect(generateButtonTip(1.2)).toEqual({
       title: 'Generate',
-      description: 'One click, one credit. Also shaves 150 ms off the running job.',
+      description: 'The logo and the pill are the same button. One click, one credit, and 150 ms off the running job.',
       meta: '+1.2 per click',
       shortcut: 'Space',
       tone: 'electric',

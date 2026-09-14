@@ -210,11 +210,13 @@ export const ModelCard = memo(function ModelCard({ id }: { id: string }) {
       <div className="flex items-start gap-3">
         <Art id={`model-${id}`} size={56} className={dimArt ? 'opacity-60 grayscale' : undefined} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-bold text-smoke-100">{card.name}</h3>
+          <div className="flex flex-wrap items-center gap-x-2">
+            <h3 className="min-w-0 text-sm font-bold text-smoke-100">{card.name}</h3>
             <KindBadge kind={card.kind} api={card.api} levelNeed={card.levelNeed} />
           </div>
-          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-smoke-700">{card.flavor}</p>
+          {/* Authored copy, 88 characters at the longest, so it wraps. Half a joke under an
+              ellipsis is not a joke. */}
+          <p className="mt-0.5 text-[11px] leading-snug text-smoke-700">{card.flavor}</p>
         </div>
       </div>
 
@@ -368,7 +370,7 @@ function StatusLine({ state, card }: { state: CardState; card: ModelCardState })
   return (
     <p className="flex items-start gap-1.5 text-[11px] text-slot-vae/80" title={card.lockNative ?? undefined}>
       <Lock size={12} className="mt-px shrink-0" aria-hidden="true" />
-      <span className="line-clamp-2">{card.lockNative ?? 'Nothing you own can run this'}</span>
+      <span className="min-w-0">{card.lockNative ?? 'Nothing you own can run this'}</span>
     </p>
   )
 }

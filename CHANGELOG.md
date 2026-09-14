@@ -6,6 +6,22 @@ the data file and regenerate, so the game and the repo always say the same thing
 Versions are semver. A release bumps the minor, a hotfix bumps the patch, and the major stays
 at 0 until the game is feature complete. See `docs/RELEASING.md`.
 
+## 0.2.3 · Readable and pressable
+
+Hotfix · 2026-09-14
+
+Text wraps instead of stopping at an ellipsis, and the logo admits it is a button.
+
+### Changed
+
+- The Comfy logo answers a hover and a keyboard focus, and it carries the same tooltip as the Generate pill, which says the two are one button
+- A save with no clicks on it yet shows a ring around the logo until the first press
+- The tour used to ring the logo on its own, which taught that the pill was something else. It rings both and says so
+
+### Fixed
+
+- Store text was cut off at one line, and 10 of the 38 upgrade descriptions did not fit in one. Descriptions, blurbs, model names, lock reasons and the Next up rows all wrap now
+
 ## 0.2.2 · The Lounge in one screen
 
 Hotfix · 2026-09-14
