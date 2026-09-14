@@ -1,22 +1,33 @@
 'use client'
 /**
  * Power draw against the breaker budget. The bar shifts from calm blue through amber to red as
- * the rack approaches the limit; once tripped, every rig stops earning and a banner offers the
- * Power tab of the store. `compact` renders the header chip ("⚡ 640/650 W").
+ * the rack approaches the limit; once tripped, every rig stops earning and the banner turns into
+ * the fix: the supplies that are actually for sale, cheapest first, each saying whether it clears
+ * the breaker on its own, bought straight from the banner. `compact` renders the header chip
+ * ("⚡ 640/650 W"), and `inStore` drops the "Open the Power tab" link for the copy of the meter
+ * that already lives in that tab.
  */
+import { useMemo } from 'react'
 import { AlertTriangle, Zap } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useGame, useGameShallow } from '@/state/useGame'
+import { useGame, useGameShallow, useGameStore } from '@/state/useGame'
 import { formatWatts } from '@/game/format'
 import { Panel } from '@/components/common/Panel'
 import { Tooltip } from '@/components/common/Tooltip'
 import { powerTip } from '@/components/common/tooltipCopy'
-import { openStoreTab } from '@/components/store/storeHooks'
+import { openStoreTab, useVisibleUpgrades } from '@/components/store/storeHooks'
+import { UpgradeRow } from '@/components/store/UpgradeRow'
+import { buildIndex } from '@/game/catalog'
 import { cn } from '@/lib/utils'
 
 export interface PowerMeterProps {
   compact?: boolean
+  /** True for the meter rendered inside the store's Power tab, where a link to that tab is noise. */
+  inStore?: boolean
 }
+
+/** Supplies offered in the tripped banner. Three is a choice; the whole ladder is a shop. */
+const PSU_CHOICES = 3
 
 const CALM = '#64b5f6'
 const AMBER = '#ffa931'
@@ -65,7 +76,7 @@ function usePower(): PowerSlice {
   }))
 }
 
-export function PowerMeter({ compact = false }: PowerMeterProps) {
+export function PowerMeter({ compact = false, inStore = false }: PowerMeterProps) {
   const { draw, budget, throttled } = usePower()
   const reducedSetting = useGame((s) => s.settings.reducedMotion)
   const reduced = Boolean(useReducedMotion()) || reducedSetting
@@ -147,26 +158,89 @@ export function PowerMeter({ compact = false }: PowerMeterProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduced ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-            className="flex items-center gap-3 rounded-xl border-2 border-slot-vae/60 bg-slot-vae/10 px-3 py-2"
+            className="flex flex-col gap-2 rounded-xl border-2 border-slot-vae/60 bg-slot-vae/10 px-3 py-2"
           >
-            <AlertTriangle size={18} className="shrink-0 text-slot-vae" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-smoke-100">Breaker tripped</p>
-              <p className="text-xs text-smoke-600">
-                Every rig is <span className="font-semibold text-slot-vae">off</span>. Passive income is zero until the rack fits the circuit. Clicks
-                still pay.
-              </p>
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-slot-vae" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-smoke-100">Breaker tripped</p>
+                <p className="text-xs text-smoke-600">
+                  Every rig is <span className="font-semibold text-slot-vae">off</span> and passive income is zero until the rack fits the circuit.
+                  Clicks still pay.
+                </p>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => openStoreTab('power')}
-              className="shrink-0 cursor-pointer rounded-lg bg-electric-400 px-3 py-1.5 text-xs font-bold text-charcoal-800 shadow-[0_3px_0_#0e0e0f] outline-none hover:brightness-105 focus-visible:ring-2 focus-visible:ring-electric-400 focus-visible:ring-offset-2 focus-visible:ring-offset-charcoal-600 active:translate-y-0.5 active:shadow-[0_1px_0_#0e0e0f]"
-            >
-              Buy a PSU
-            </button>
+            <BreakerFix draw={draw} budget={budget} inStore={inStore} />
           </motion.div>
         )}
       </AnimatePresence>
     </Panel>
+  )
+}
+
+/**
+ * The way out of a tripped breaker, in the banner rather than one tab away.
+ *
+ * "Buy a PSU" used to switch the store to its Power tab, which did nothing visible when the meter
+ * was already in that tab and never said which supply to buy. These are the supplies actually on
+ * sale, cheapest first, each tagged with what it adds and whether it clears the breaker on its own.
+ * The rows are the store's own `UpgradeRow`, so buying, the price, the "not enough credits"
+ * popover and the disabled styling all behave exactly as they do in the store.
+ */
+function BreakerFix({ draw, budget, inStore }: { draw: number; budget: number; inStore: boolean }) {
+  const store = useGameStore()
+  const ids = useVisibleUpgrades('power')
+  const options = useMemo(() => {
+    const { upgradeById } = buildIndex(store.catalog)
+    return ids
+      .map((id) => {
+        const def = upgradeById[id]
+        const watts = def ? def.effects.reduce((sum, e) => (e.kind === 'powerBudget' ? sum + e.value : sum), 0) : 0
+        return { id, watts }
+      })
+      // Cooling upgrades share the Power tab but add no watts, so they are not a fix for this.
+      .filter((o) => o.watts > 0)
+      .sort((a, b) => a.watts - b.watts)
+      .slice(0, PSU_CHOICES)
+  }, [ids, store])
+
+  const over = Math.max(0, draw - budget)
+
+  if (options.length === 0) {
+    return (
+      <p className="text-xs text-smoke-600">
+        Nothing bigger is on sale yet. Keep clicking Generate, the next supply shows up as the rack grows.
+      </p>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-[11px] text-smoke-600 tabular-nums">
+        Needs <span className="font-bold text-slot-vae">{formatWatts(over)}</span> more. Pick a supply:
+      </p>
+      {options.map((o) => (
+        <div key={o.id} className="relative">
+          <UpgradeRow id={o.id} />
+          <span
+            className={cn(
+              'pointer-events-none absolute top-1 right-2 rounded-[0.354em] px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+              o.watts >= over ? 'bg-electric-400 text-charcoal-800' : 'bg-charcoal-700 text-smoke-600',
+            )}
+          >
+            {o.watts >= over ? 'clears it' : `${formatWatts(o.watts)} short of it`}
+          </span>
+        </div>
+      ))}
+      {inStore ? null : (
+        <button
+          type="button"
+          onClick={() => openStoreTab('power')}
+          className="self-start text-[11px] font-semibold text-electric-400 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400"
+        >
+          Open the Power tab
+        </button>
+      )}
+    </div>
   )
 }
