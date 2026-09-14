@@ -6,6 +6,21 @@ the data file and regenerate, so the game and the repo always say the same thing
 Versions are semver. A release bumps the minor, a hotfix bumps the patch, and the major stays
 at 0 until the game is feature complete. See `docs/RELEASING.md`.
 
+## 0.2.5 · Checkpoints on shelves
+
+Hotfix · 2026-09-14
+
+The Models tab picks a kind instead of making you scroll past every image model to reach Audio.
+
+### Changed
+
+- Models are split into Image, Video, 3D, Audio and API nodes, one shelf at a time, with the count on each chip
+- A kind you have never seen gets a dot, so your first video model announces itself instead of waiting to be scrolled past
+
+### Fixed
+
+- Anything that points you at one model, the level-up card, a lock hint, the Studio model list, now opens the shelf that model is on
+
 ## 0.2.4 · New face on the button
 
 Hotfix · 2026-09-14

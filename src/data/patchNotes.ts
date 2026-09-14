@@ -49,6 +49,18 @@ export const CHANGE_ORDER: readonly ChangeKind[] = ['added', 'changed', 'balance
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '0.2.5',
+    date: '2026-09-14',
+    kind: 'hotfix',
+    title: 'Checkpoints on shelves',
+    summary: 'The Models tab picks a kind instead of making you scroll past every image model to reach Audio.',
+    changes: [
+      { kind: 'changed', text: 'Models are split into Image, Video, 3D, Audio and API nodes, one shelf at a time, with the count on each chip' },
+      { kind: 'changed', text: 'A kind you have never seen gets a dot, so your first video model announces itself instead of waiting to be scrolled past' },
+      { kind: 'fixed', text: 'Anything that points you at one model, the level-up card, a lock hint, the Studio model list, now opens the shelf that model is on' },
+    ],
+  },
+  {
     version: '0.2.4',
     date: '2026-09-14',
     kind: 'hotfix',
