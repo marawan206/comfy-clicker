@@ -65,6 +65,20 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'repeat',
     cond: stat('clicks', 100_000),
   },
+  {
+    id: 'clicks-combo-50',
+    name: 'Sampler on Fire',
+    desc: 'A 50-click combo. Every click in it paid double.',
+    icon: 'flame',
+    cond: stat('bestCombo', 50),
+  },
+  {
+    id: 'clicks-combo-100',
+    name: 'CFG Overdrive',
+    desc: 'A 100-click combo. Triple pay, and the mouse is still warm.',
+    icon: 'zap',
+    cond: stat('bestCombo', 100),
+  },
 
   // ---- credits & income --------------------------------------------------
   {

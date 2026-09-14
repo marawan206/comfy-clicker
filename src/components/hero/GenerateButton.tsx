@@ -5,6 +5,10 @@
  * floating "+N" and a burst of credit diamonds at the pointer. Space is handled by `useHotkeys`;
  * keyboard clicks still get the squash and a centred float via the store's `click` event.
  *
+ * The combo rides on the same event: past the first tier the float carries the multiplier
+ * (`+24 · ×2`), the burst grows with the tier, and the click that reaches a tier gets a bigger
+ * burst, a rising cash cue and, from the double-pay tier, a screen flash in the tier's colour.
+ *
  * There are two controls here and they are one button. The square is the click target and the pill
  * under it is the same click with a word on it, which is not obvious the first time: a QA reader
  * took the square for artwork and the pill for something that queued a job, the way the Studio's
@@ -25,7 +29,9 @@ import Image from 'next/image'
 import { Play } from 'lucide-react'
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from 'motion/react'
 import { useGame, useGameEvents, useGameStore } from '@/state/useGame'
+import { comboTier, isComboTierUp } from '@/game/combo'
 import { formatNum } from '@/game/format'
+import { formatMult } from '@/components/hero/ComboMeter'
 import { fx } from '@/components/fx/fxBus'
 import { Tooltip } from '@/components/common/Tooltip'
 import { generateButtonTip } from '@/components/common/tooltipCopy'
@@ -42,6 +48,23 @@ const LOGO = 300
 const MAX_RIPPLES = 6
 /** `electric-400`: the lucky-seed float, the one click in two hundred that pays ten times. */
 const ELECTRIC = '#f0ff41'
+/** The aura's pink: the top combo tier. */
+const PINK = '#ff9cf9'
+
+/** What one accepted click was worth, straight off the engine's `click` event. */
+interface ClickFeedback {
+  value: number
+  lucky: boolean
+  combo: number
+  mult: number
+}
+
+/** Float colour for a click: pink at the top tier, electric from double pay, the credits amber below. */
+function comboColor(tier: number): string | undefined {
+  if (tier >= 4) return PINK
+  if (tier >= 3) return ELECTRIC
+  return undefined
+}
 
 /**
  * `formatNum` rounds everything under 1000 to a whole number, which turns a halved 0.5 click
@@ -101,17 +124,28 @@ export function GenerateButton() {
 
   /** Feedback for a click at a viewport point, whatever produced it. Never called for a refusal. */
   const feedback = useCallback(
-    (clientX: number, clientY: number, value: number, lucky: boolean) => {
+    (clientX: number, clientY: number, { value, lucky, combo, mult }: ClickFeedback) => {
       squash()
       ripple(clientX, clientY)
+      const tier = comboTier(combo)
+      const color = comboColor(tier)
       if (lucky) {
         fx.floatText(clientX, clientY - 14, `+${formatClickValue(value)} · seed 42`, ELECTRIC)
         fx.burst(clientX, clientY, 12)
         playCue({ name: 'cash' })
         return
       }
-      fx.floatText(clientX, clientY - 12, `+${formatClickValue(value)}`)
-      fx.burst(clientX, clientY)
+      const tag = mult > 1 ? ` · ${formatMult(mult)}` : ''
+      fx.floatText(clientX, clientY - 12, `+${formatClickValue(value)}${tag}`, color)
+      if (isComboTierUp(combo)) {
+        // The click that raised the multiplier: a bigger burst, a cue a step higher per tier, and
+        // from double pay a wash of the tier's colour over the whole screen.
+        fx.burst(clientX, clientY, 8 + tier * 4)
+        if (tier >= 3) fx.flash(color)
+        playCue({ name: 'cash', rate: 1 + tier * 0.15 })
+        return
+      }
+      fx.burst(clientX, clientY, tier > 0 ? 3 + tier * 2 : undefined)
     },
     [squash, ripple],
   )
@@ -124,9 +158,8 @@ export function GenerateButton() {
       // Past the rate cap: the click paid nothing, so it draws nothing.
       if (result.events.some((e) => e.type === 'clickBlocked')) return
       const event = result.events.find((e) => e.type === 'click')
-      const value = event && event.type === 'click' ? event.value : store.derived.clickValue
-      const lucky = event !== undefined && event.type === 'click' && event.lucky === true
-      feedback(clientX, clientY, value, lucky)
+      if (!event || event.type !== 'click') return
+      feedback(clientX, clientY, { value: event.value, lucky: event.lucky === true, combo: event.combo, mult: event.mult })
     },
     [store, feedback],
   )
@@ -156,7 +189,12 @@ export function GenerateButton() {
     if (event.type !== 'click' || fromPointer.current) return
     const rect = buttonRef.current?.getBoundingClientRect()
     if (!rect) return
-    feedback(rect.left + rect.width / 2, rect.top + rect.height * 0.42, event.value, event.lucky === true)
+    feedback(rect.left + rect.width / 2, rect.top + rect.height * 0.42, {
+      value: event.value,
+      lucky: event.lucky === true,
+      combo: event.combo,
+      mult: event.mult,
+    })
   })
 
   useEffect(() => {

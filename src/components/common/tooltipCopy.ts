@@ -89,7 +89,7 @@ function lines(...parts: (string | null | undefined | false)[]): string | undefi
 export function generateButtonTip(clickValue: number): TooltipCopy {
   return {
     title: 'Generate',
-    description: 'The logo and the pill are the same button. One click, one credit, and 150 ms off the running job.',
+    description: 'The logo and the pill are the same button. One click, one credit, 150 ms off the job, and a streak pays more: ×2 at 50 clicks, ×3 at 100.',
     meta: `+${clickValueText(clickValue)} per click`,
     shortcut: 'Space',
     tone: 'electric',

@@ -11,6 +11,7 @@ import { GIFTS } from '@/data/gifts'
 import { checkAchievements } from '@/game/achievements'
 import { buildIndex } from '@/game/catalog'
 import { evaluateClick } from '@/game/clickGuard'
+import { advanceCombo, comboMult } from '@/game/combo'
 import {
   LUCKY_CLICK_CHANCE,
   LUCKY_CLICK_MULT,
@@ -221,7 +222,10 @@ export function upscaleCost(post: Post, ctx: Pick<ActionContext, 'derived' | 'ca
  *
  * One click in `1 / LUCKY_CLICK_CHANCE` pays `LUCKY_CLICK_MULT` times over and raises
  * `LUCKY_SEED_FLAG` (the "Lucky Seed" achievement keys off it). The roll happens on accepted
- * clicks only, so a refused one cannot burn the lucky seed.
+ * clicks only, so a refused one cannot burn the lucky seed. An accepted click also joins the
+ * combo (`advanceCombo`, combo.ts): from the first tier in `COMBO_TIERS` the streak's multiplier
+ * rides on top of the lucky one, and the event carries `combo` and `mult` so the pill and the
+ * float can say so.
  *
  * **Deliberate deviation from the contract.** Every other action answers a validation failure with
  * `{ events: [], dirty: false, error }`. A click refused by the auto-clicker guard instead returns
@@ -241,7 +245,9 @@ export function click(ctx: ActionContext): ActionResult {
   }
 
   const lucky = chance(rng, LUCKY_CLICK_CHANCE)
-  const value = Math.max(0, derived.clickValue) * (lucky ? LUCKY_CLICK_MULT : 1)
+  const combo = advanceCombo(state, now)
+  const mult = comboMult(combo)
+  const value = Math.max(0, derived.clickValue) * (lucky ? LUCKY_CLICK_MULT : 1) * mult
   addCredits(state, value)
   state.totalClicks += 1
   if (lucky) {
@@ -250,7 +256,7 @@ export function click(ctx: ActionContext): ActionResult {
   }
   recordClick(state, now)
   applyClickToJobs(state, now)
-  const events: GameEvent[] = [lucky ? { type: 'click', value, lucky: true } : { type: 'click', value }]
+  const events: GameEvent[] = [lucky ? { type: 'click', value, combo, mult, lucky: true } : { type: 'click', value, combo, mult }]
   pushEvents(events, progressContracts(state, events, catalog))
   return ok(events, false)
 }

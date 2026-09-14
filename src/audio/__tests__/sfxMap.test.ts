@@ -60,7 +60,7 @@ const EVENT_TYPES = [
 
 /** One or more representative events per type. A missing key is a compile error. */
 const SAMPLES: Record<GameEvent['type'], GameEvent[]> = {
-  click: [{ type: 'click', value: 12 }, { type: 'click', value: 40, lucky: true }],
+  click: [{ type: 'click', value: 12, combo: 1, mult: 1 }, { type: 'click', value: 40, combo: 12, mult: 1.25, lucky: true }],
   purchase: [
     { type: 'purchase', hardwareId: 'rtx4090', count: 1 },
     { type: 'purchase', hardwareId: 'rtx4090', count: 10 },

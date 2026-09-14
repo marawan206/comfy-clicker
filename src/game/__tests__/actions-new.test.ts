@@ -176,7 +176,7 @@ describe('click: the lucky seed', () => {
     const result = click(ctxFor(state, { rng: lucky }))
 
     const event = result.events[0]
-    expect(event).toEqual({ type: 'click', value: derived.clickValue * LUCKY_CLICK_MULT, lucky: true })
+    expect(event).toEqual({ type: 'click', value: derived.clickValue * LUCKY_CLICK_MULT, combo: 1, mult: 1, lucky: true })
     expect(state.credits).toBeCloseTo(derived.clickValue * LUCKY_CLICK_MULT, 6)
     expect(state.stats.luckyClicks).toBe(1)
     expect(state.flags[LUCKY_SEED_FLAG]).toBe(true)
@@ -187,7 +187,7 @@ describe('click: the lucky seed', () => {
     const derived = computeDerived(state, CATALOG)
     const result = click(ctxFor(state, { rng: plain }))
 
-    expect(result.events[0]).toEqual({ type: 'click', value: derived.clickValue })
+    expect(result.events[0]).toEqual({ type: 'click', value: derived.clickValue, combo: 1, mult: 1 })
     expect(state.stats.luckyClicks).toBe(0)
     expect(state.flags[LUCKY_SEED_FLAG]).toBeUndefined()
   })

@@ -191,6 +191,22 @@ export const COIN_PAYOUT = 2
 export const CLICK_CAP_PER_SEC = 20
 
 // ---------------------------------------------------------------------------
+// Click combo (src/game/combo.ts)
+// ---------------------------------------------------------------------------
+/** Two accepted clicks belong to the same streak when no more than this many ms pass between them. */
+export const COMBO_GAP_MS = 400
+/**
+ * Streak tiers. From `at` clicks in one streak every click pays `mult` times, until the streak
+ * breaks. The pill restyles per tier, and the click that reaches one is the loud one.
+ */
+export const COMBO_TIERS: ReadonlyArray<{ at: number; mult: number }> = [
+  { at: 10, mult: 1.25 },
+  { at: 25, mult: 1.5 },
+  { at: 50, mult: 2 },
+  { at: 100, mult: 3 },
+]
+
+// ---------------------------------------------------------------------------
 // Ratioed posts (src/game/virality.ts)
 // ---------------------------------------------------------------------------
 /** A ratioed post collects this many times the likes it would have earned, as dislikes. */

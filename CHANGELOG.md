@@ -16,6 +16,7 @@ XP is a ledger of things you did, every card has a rung, and the store stops sel
 
 - A level bar under the Generate button: it floats the XP a thing just paid, fills and flashes on a level-up, and names what the next level opens
 - The Level screen, from the bar, the header chip, a locked card or Stats: every way to earn XP with a button to it, where your XP came from, and the whole roadmap with your rung marked
+- Combos pay. Keep clicks under 400 ms apart and from the tenth every click pays 1.25 times, from the 25th 1.5, from the 50th double, from the 100th triple. The pill shows the multiplier, a tier-up bursts and flashes, and two achievements sit at 50 and 100
 
 ### Changed
 

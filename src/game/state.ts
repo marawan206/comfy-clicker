@@ -79,6 +79,7 @@ export function createInitialState(now: number, guestId: string): GameState {
       clickStrikes: 0,
       clickStrikeAt: 0,
       luckyClicks: 0,
+      bestCombo: 0,
       landedStreak: 0,
       bestLandedStreak: 0,
       xpBy: {},
@@ -136,6 +137,7 @@ export const STAT_LABELS: Record<StatKey, string> = {
   achievements: 'achievements',
   streak: 'day streak',
   level: 'level',
+  bestCombo: 'click combo',
   ratioed: 'ratioed posts',
   dislikes: 'dislikes',
   spins: 'spins',
@@ -192,6 +194,8 @@ export function statValue(state: GameState, key: StatKey, _derived?: Derived): n
       return state.daily.streak
     case 'level':
       return playerLevel(state)
+    case 'bestCombo':
+      return state.stats.bestCombo
     case 'ratioed':
       return state.stats.ratioed
     case 'dislikes':

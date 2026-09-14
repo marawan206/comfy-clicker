@@ -166,6 +166,7 @@ export type StatKey =
   | 'achievements'
   | 'streak'
   | 'level'
+  | 'bestCombo'
   | 'ratioed'
   | 'dislikes'
   | 'spins'
@@ -521,6 +522,8 @@ export interface GameStats {
   clickStrikeAt: number
   /** Clicks that rolled the lucky-seed multiplier. */
   luckyClicks: number
+  /** Longest click streak (accepted clicks no more than COMBO_GAP_MS apart); the combo achievements' stat. */
+  bestCombo: number
   /** Consecutive posts that landed (no flop, no ratio). */
   landedStreak: number
   bestLandedStreak: number
@@ -621,7 +624,8 @@ export interface Derived {
 // Events emitted by the engine for the UI/FX layer
 // ---------------------------------------------------------------------------
 export type GameEvent =
-  | { type: 'click'; value: number; lucky?: boolean }
+  /** `combo` is the streak this click is in, `mult` the tier multiplier already inside `value`. */
+  | { type: 'click'; value: number; combo: number; mult: number; lucky?: boolean }
   | { type: 'purchase'; hardwareId: string; count: number }
   | { type: 'upgrade'; id: string }
   | { type: 'mapUnlock'; id: string }

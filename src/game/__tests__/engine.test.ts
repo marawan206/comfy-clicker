@@ -229,8 +229,8 @@ describe('crossedMilestones / needsDerived', () => {
   })
 
   it('flags batches that change what computeDerived reads', () => {
-    expect(needsDerived([{ type: 'click', value: 1 }])).toBe(false)
-    expect(needsDerived([{ type: 'click', value: 1 }, { type: 'purchase', hardwareId: 'x', count: 1 }])).toBe(true)
+    expect(needsDerived([{ type: 'click', value: 1, combo: 1, mult: 1 }])).toBe(false)
+    expect(needsDerived([{ type: 'click', value: 1, combo: 1, mult: 1 }, { type: 'purchase', hardwareId: 'x', count: 1 }])).toBe(true)
     expect(needsDerived([{ type: 'signup', total: 1 }])).toBe(true)
     expect(needsDerived([])).toBe(false)
   })
@@ -315,7 +315,7 @@ describe('actions', () => {
     const result = click(ctxFor(state, CATALOG, derivedWith({ clickValue: 2.5 })))
     expect(result.error).toBeUndefined()
     expect(result.dirty).toBe(false)
-    expect(result.events).toEqual([{ type: 'click', value: 2.5 }])
+    expect(result.events).toEqual([{ type: 'click', value: 2.5, combo: 1, mult: 1 }])
     expect(state.credits).toBe(2.5)
     expect(state.lifetimeCredits).toBe(2.5)
     expect(state.seasonCredits).toBe(2.5)

@@ -264,7 +264,7 @@ describe('contracts: rotation', () => {
 })
 
 describe('contracts: progress', () => {
-  const clicks = (n: number): GameEvent[] => Array.from({ length: n }, () => ({ type: 'click', value: 1 }))
+  const clicks = (n: number): GameEvent[] => Array.from({ length: n }, () => ({ type: 'click', value: 1, combo: 1, mult: 1 }))
 
   it('counts clicks from events and completes exactly once', () => {
     const state = fresh()

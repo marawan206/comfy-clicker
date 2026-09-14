@@ -249,6 +249,7 @@ const statsSchema = z.object({
   clickStrikes: fallback(count),
   clickStrikeAt: fallback(money),
   luckyClicks: fallback(count),
+  bestCombo: fallback(count),
   landedStreak: fallback(count),
   bestLandedStreak: fallback(count),
   // The activity XP ledger. Absent altogether in a save from before it: `hydrate` seeds it then.
