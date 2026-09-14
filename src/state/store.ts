@@ -448,6 +448,7 @@ export class GameStore {
   claimDaily = (): ActionResult => this.run((ctx) => actions.claimDaily(ctx), SAVE)
   rebrand = (): ActionResult => this.run((ctx) => actions.rebrand(ctx), SAVE)
   spin = (wager: number | 'free'): ActionResult => this.run((ctx) => actions.spin(ctx, wager), SAVE)
+  flip = (wager: number): ActionResult => this.run((ctx) => actions.flip(ctx, wager), SAVE)
   upscalePost = (postId: string): ActionResult => this.run((ctx) => actions.upscalePost(ctx, postId), SAVE)
   toggleSetting = (key: keyof GameState['settings'], value?: boolean): ActionResult =>
     this.run((ctx) => actions.toggleSetting(ctx, key, value), SAVE)

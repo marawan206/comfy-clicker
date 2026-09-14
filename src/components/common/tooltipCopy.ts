@@ -124,12 +124,11 @@ export interface IncomeTipState {
 /** The `+2.8/s` line next to the counter; throttled it explains the breaker instead. */
 export function incomeTip({ cps, throttled, draw, budget }: IncomeTipState): TooltipCopy {
   if (throttled) {
-    const pct = draw > 0 ? Math.round((budget / draw) * 100) : 100
     return {
-      title: 'Throttled',
-      description: `Draw ${formatInt(draw)} is over the ${formatInt(budget)} budget. Income runs at ${pct}% until it fits.`,
+      title: 'Breaker tripped',
+      description: `Draw ${formatInt(draw)} is over the ${formatInt(budget)} budget. The rack is off and earns nothing until it fits. Clicks still pay.`,
       tone: 'locked',
-      lock: 'Buy a PSU in the Power tab, or shed a card',
+      lock: 'Buy a PSU in the Power tab',
     }
   }
   return {
@@ -174,7 +173,7 @@ export function levelChipTip({ level, levelTitle, xp, ceiling, unlocks }: LevelT
 export function signupsTip(signups: number, rp: number): TooltipCopy {
   return {
     title: 'Comfy Cloud signups',
-    description: 'Each signup is a Research Point: +1% income forever, and RP buys Graph nodes.',
+    description: 'Each signup is a Research Point: +1% income forever. Spend them on the Graph.',
     meta: rp > 0 ? `${formatInt(rp)} RP unspent` : `${formatInt(signups)} so far, all spent`,
   }
 }
@@ -221,7 +220,7 @@ export interface PowerTipState {
 export function powerTip({ draw, budget, throttled }: PowerTipState): TooltipCopy {
   return {
     title: 'Power',
-    description: `${wattsPair(draw, budget)}. Past the breaker, income scales by budget over draw.`,
+    description: `${wattsPair(draw, budget)}. Past the breaker every rig stops and passive income is zero.`,
     tone: throttled ? 'locked' : 'default',
     lock: throttled ? 'Breaker tripped · buy a PSU in the Power tab' : null,
   }
@@ -477,7 +476,7 @@ export function trendingCountdownTip(msLeft: number, weekMinutes: number): Toolt
 // 15. Nav tiles
 // ---------------------------------------------------------------------------
 
-export type NavTileId = 'map' | 'hub' | 'leaderboard' | 'seed' | 'help' | 'stats' | 'settings' | 'projector'
+export type NavTileId = 'map' | 'hub' | 'leaderboard' | 'lounge' | 'help' | 'stats' | 'settings' | 'projector'
 
 const NAV_TILE_COPY: Record<NavTileId, TooltipCopy> = {
   map: {
@@ -494,9 +493,9 @@ const NAV_TILE_COPY: Record<NavTileId, TooltipCopy> = {
     description: 'Top 100 cloud saves by lifetime credits. Sign in to appear.',
     tone: 'credits',
   },
-  seed: {
-    title: 'Seed Roulette',
-    description: 'Wager credits on a random seed. One spin every three minutes, one free a day.',
+  lounge: {
+    title: 'The Latent Lounge',
+    description: 'Bet any credits on the wheel or the coin. No cooldown, one free spin a day.',
   },
   help: {
     title: 'Tutorial',
@@ -523,4 +522,4 @@ export function navTileTip(id: NavTileId): TooltipCopy {
 }
 
 /** Every nav tile id in header order, for tests and for the nav itself. */
-export const NAV_TILE_IDS: readonly NavTileId[] = ['map', 'hub', 'leaderboard', 'seed', 'help', 'stats', 'settings', 'projector']
+export const NAV_TILE_IDS: readonly NavTileId[] = ['map', 'hub', 'leaderboard', 'lounge', 'help', 'stats', 'settings', 'projector']

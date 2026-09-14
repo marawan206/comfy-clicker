@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useAffordableNodeCount } from '@/components/map/mapHooks'
 import { TUTORIAL_FLAG } from '@/game/actions'
-import { SPIN_MIN_LEVEL } from '@/game/constants'
+import { LOUNGE_MIN_LEVEL } from '@/game/constants'
 import { dayKey } from '@/game/daily'
 import { playerLevel } from '@/game/level'
 import { useNow } from '@/hooks/useNow'
@@ -312,12 +312,12 @@ export function useStatsUnseen(): number {
 }
 
 // ---------------------------------------------------------------------------
-// Seed: the free spin
+// Lounge: the free spin
 // ---------------------------------------------------------------------------
 
-/** Whether the Seed Roulette tile should be in the header at all. */
-export function useSeedUnlocked(): boolean {
-  return useGame((s) => playerLevel(s) >= SPIN_MIN_LEVEL)
+/** Whether the Latent Lounge tile should be in the header at all. */
+export function useLoungeUnlocked(): boolean {
+  return useGame((s) => playerLevel(s) >= LOUNGE_MIN_LEVEL)
 }
 
 /** Whether today's free spin is still there. A UTC day, so a 30 s clock is plenty. */
@@ -364,7 +364,7 @@ export interface NavBadges {
   hubUnseen: number
   rank: number | null
   statsUnseen: number
-  seedUnlocked: boolean
+  loungeUnlocked: boolean
   freeSpin: boolean
   tourPending: boolean
 }
@@ -375,12 +375,12 @@ export function useNavBadges(): NavBadges {
   const hub = useHubUnseen()
   const rank = useBoardRank()
   const statsUnseen = useStatsUnseen()
-  const seedUnlocked = useSeedUnlocked()
+  const loungeUnlocked = useLoungeUnlocked()
   const freeSpin = useFreeSpinReady()
   const tourPending = useTourPending()
   return useMemo(
-    () => ({ visited: visitedSet, affordable, hubUnseen: hub, rank, statsUnseen, seedUnlocked, freeSpin, tourPending }),
-    [visitedSet, affordable, hub, rank, statsUnseen, seedUnlocked, freeSpin, tourPending],
+    () => ({ visited: visitedSet, affordable, hubUnseen: hub, rank, statsUnseen, loungeUnlocked, freeSpin, tourPending }),
+    [visitedSet, affordable, hub, rank, statsUnseen, loungeUnlocked, freeSpin, tourPending],
   )
 }
 

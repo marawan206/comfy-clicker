@@ -474,6 +474,10 @@ export function FxCanvas() {
         // Golden seed and up. Anything smaller is a number changing, not an event.
         if (event.mult >= SPIN_CONFETTI_MULT) engine.handle({ kind: 'confetti' })
         break
+      case 'flip':
+        // A doubled bet is worth a wash of colour; a lost one is already a number falling.
+        if (event.payout > 0) engine.handle({ kind: 'flash', color: COLOR_ELECTRIC })
+        break
       case 'reward':
         engine.handle({ kind: 'confetti' })
         break

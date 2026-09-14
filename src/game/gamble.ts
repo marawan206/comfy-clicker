@@ -1,35 +1,37 @@
 /**
- * Seed Roulette: the KSampler spin.
+ * The Latent Lounge: two bets, one bank.
  *
- * You wager credits, the seed decides. The table in `src/data/gamble.ts` has an expected value of
- * 1.038, so a spin is worth taking and nowhere near worth grinding: with one paid spin every three
- * minutes and a wager capped at five minutes of income, the whole system can add at most a couple
- * of percent to an hour of income (`gamble.test.ts` pins that with an invariant).
+ * **The wheel** is the KSampler spin. You stake credits, the seed decides, and the table in
+ * `src/data/gamble.ts` pays back 0.954 on the credit before the pity reroll and the hot sampler
+ * push it to roughly 0.98.
  *
- * Three rules keep it from being farmable.
- * 1. The cooldown is a single timestamp in the save (`gamble.nextSpinAt`), so closing the tab,
- *    reloading or sleeping for eight hours all yield exactly one ready spin, never a backlog.
- * 2. The wager is priced in seconds of income, so it scales with the rig instead of with patience.
+ * **The coin** is one flip against the house. Your side pays COIN_PAYOUT, Comfy's side takes the
+ * stake, and your side lands COIN_WIN_CHANCE of the time. Same shape, tighter edge, no memory.
+ *
+ * There is no cooldown and no ceiling on a wager. That is deliberate and it is only safe because
+ * every bet here is below break-even: a player may bet the whole bank as often as they like, and
+ * the long run still bends down. The three rules that keep it that way:
+ * 1. Both tables pay back less than 1 (`gamble.test.ts` pins it, pot and pity included).
+ * 2. The bet is a plain credit amount. No seconds of income, no presets in minutes, no tiers.
  * 3. Payouts move `state.credits` only. See `applySpin`.
  *
  * Pure: no React, no DOM, no `Date.now()`. Every entry point takes `now` and, where it rolls, an
  * `Rng`, so the whole module replays exactly in tests.
  */
 import {
-  SPIN_COOLDOWN_MS,
-  SPIN_FREE_MIN,
-  SPIN_FREE_SECS,
+  BET_MIN,
+  COIN_PAYOUT,
+  COIN_WIN_CHANCE,
+  FREE_SPIN_MIN,
+  FREE_SPIN_SECS,
+  LOUNGE_MIN_LEVEL,
   SPIN_HOT_MULT,
   SPIN_HOT_STREAK,
-  SPIN_MAX_SECS,
-  SPIN_MIN_LEVEL,
-  SPIN_MIN_SECS,
-  SPIN_MIN_WAGER,
   SPIN_PITY_DRY,
   SPIN_POT_FRACTION,
 } from '@/game/constants'
 import { dayKey } from '@/game/daily'
-import { formatDuration, formatInt } from '@/game/format'
+import { formatInt } from '@/game/format'
 import { playerLevel } from '@/game/level'
 import { weightedPick } from '@/game/rng'
 import type { Catalog, Derived, GambleOutcomeDef, GameEvent, GameState, Rng } from '@/game/types'
@@ -42,17 +44,24 @@ export const JACKPOT_FLAG = 'jackpot42'
 export const NAN_STREAK_FLAG = 'nanStreak3'
 /** Raised when the sampler goes hot. Hidden achievement `seed-hot`. */
 export const HOT_SEED_FLAG = 'hotSeed'
+/** Raised by a coin that lands on your side five times running. Hidden achievement `coin-five`. */
+export const COIN_STREAK_FLAG = 'coinFive'
+/** Coin wins in a row that raise the flag. */
+export const COIN_STREAK_TARGET = 5
+
+/** Which side of the coin came up. */
+export type CoinSide = 'you' | 'comfy'
 
 /** The losing segment: a zero multiplier eats the wager and feeds the pity meter. */
 const isLoss = (o: GambleOutcomeDef): boolean => !(o.mult > 0)
 /** A "win" for the hot sampler: x2 or better. x1 (`same`) breaks the streak like a loss does. */
 const isWin = (o: GambleOutcomeDef): boolean => o.mult >= 2
 
-export type SpinCheck =
+export type BetCheck =
   | { ok: true; stake: number; free: boolean }
   | { ok: false; reason: string }
 
-/** Income per second, floored at 0, so a broken `Derived` cannot produce a negative wager. */
+/** Income per second, floored at 0, so a broken `Derived` cannot produce a negative free stake. */
 function safeCps(derived: Derived): number {
   return Number.isFinite(derived.cps) && derived.cps > 0 ? derived.cps : 0
 }
@@ -73,41 +82,34 @@ export function spinEv(outcomes: readonly GambleOutcomeDef[]): number {
   return weight > 0 ? sum / weight : 0
 }
 
-/**
- * Wager bounds in credits. Both ends are seconds of income, so the bet stays meaningful as the rig
- * grows: `min` is 30 seconds (never below SPIN_MIN_WAGER), `max` is 5 minutes, capped by the
- * credits actually on hand. `max` can fall below `min` when the player is broke; `canSpin` reports
- * that as "Not enough credits" rather than as a bound.
- */
-export function wagerBounds(state: GameState, derived: Derived): { min: number; max: number } {
-  const cps = safeCps(derived)
-  const min = Math.max(SPIN_MIN_WAGER, Math.round(SPIN_MIN_SECS * cps))
-  const affordable = Number.isFinite(state.credits) ? Math.max(0, Math.floor(state.credits)) : 0
-  const max = Math.min(affordable, Math.max(min, Math.round(SPIN_MAX_SECS * cps)))
-  return { min, max }
+/** Expected payout multiplier of one coin flip. Printed in the modal next to the button. */
+export function coinEv(): number {
+  return COIN_WIN_CHANCE * COIN_PAYOUT
 }
 
-/** House stake on the daily free spin: 2 minutes of income, never below SPIN_FREE_MIN. */
+/**
+ * Bet bounds in credits: BET_MIN up to the whole bank. Both games use them, the slider tracks
+ * them, and `max` below `min` means the player cannot cover the smallest bet on the table.
+ */
+export function betBounds(state: GameState): { min: number; max: number } {
+  const bank = Number.isFinite(state.credits) ? Math.max(0, Math.floor(state.credits)) : 0
+  return { min: BET_MIN, max: bank }
+}
+
+/** House stake on the daily free spin: 2 minutes of income, never below FREE_SPIN_MIN. */
 export function freeStake(derived: Derived): number {
-  return Math.max(SPIN_FREE_MIN, Math.round(SPIN_FREE_SECS * safeCps(derived)))
+  return Math.max(FREE_SPIN_MIN, Math.round(FREE_SPIN_SECS * safeCps(derived)))
 }
 
 /**
  * Whether today's free spin is still there. Days are UTC calendar days (`dayKey`), the same clock
- * the daily reward uses. This asks only about the day; the level gate lives in `canSpin`.
+ * the daily reward uses. This asks only about the day; the level gate lives in `canBet`.
  */
 export function freeSpinAvailable(state: GameState, now: number): boolean {
   return state.gamble.freeSpinDay !== dayKey(now)
 }
 
-/** Milliseconds left on the paid cooldown, 0 when a spin is ready. */
-export function msUntilSpin(state: GameState, now: number): number {
-  const next = state.gamble.nextSpinAt
-  if (!Number.isFinite(next)) return 0
-  return Math.max(0, next - now)
-}
-
-/** True once `winStreak` has reached SPIN_HOT_STREAK: the next payout is multiplied by x1.5. */
+/** True once `winStreak` has reached SPIN_HOT_STREAK: the next wheel payout is multiplied by x1.5. */
 export function isHot(state: GameState): boolean {
   return state.gamble.winStreak >= SPIN_HOT_STREAK
 }
@@ -118,21 +120,18 @@ export function pityDue(state: GameState): boolean {
 }
 
 /**
- * Validate a spin. `wager` is a credit amount, or `'free'` for the daily house spin.
- *
- * The order of the checks is the order of the copy: the gate, then the day or the cooldown, then
- * the floor, then the balance, then the ceiling. Checking the balance before the ceiling matters,
- * because `wagerBounds().max` is already capped by the balance: without it a broke player would be
- * told to bet less rather than told they cannot afford it.
+ * Validate a bet. `wager` is a credit amount, or `'free'` for the daily house spin (the wheel
+ * only). The order of the checks is the order of the copy: the gate, then the day, then the
+ * floor, then the balance.
  */
-export function canSpin(
+export function canBet(
   state: GameState,
   derived: Derived,
   now: number,
   wager: number | 'free',
-): SpinCheck {
-  if (playerLevel(state) < SPIN_MIN_LEVEL) {
-    return { ok: false, reason: `Unlocks at level ${SPIN_MIN_LEVEL}` }
+): BetCheck {
+  if (playerLevel(state) < LOUNGE_MIN_LEVEL) {
+    return { ok: false, reason: `Unlocks at level ${LOUNGE_MIN_LEVEL}` }
   }
 
   if (wager === 'free') {
@@ -140,16 +139,10 @@ export function canSpin(
     return { ok: true, stake: freeStake(derived), free: true }
   }
 
-  const left = msUntilSpin(state, now)
-  if (left > 0) {
-    return { ok: false, reason: `Sampler is cooling down · ${formatDuration(Math.ceil(left / 1000))}` }
-  }
-
-  const { min, max } = wagerBounds(state, derived)
+  const { min } = betBounds(state)
   const stake = Number.isFinite(wager) ? Math.floor(wager) : 0
   if (stake < min) return { ok: false, reason: `Bet at least ${formatInt(min)} credits` }
   if (stake > state.credits) return { ok: false, reason: 'Not enough credits' }
-  if (stake > max) return { ok: false, reason: `Bet at most ${formatInt(max)} credits right now` }
 
   return { ok: true, stake, free: false }
 }
@@ -176,13 +169,13 @@ export function rollOutcome(
 }
 
 /**
- * Take a spin. Returns exactly one `spin` event, or none when the spin is not legal (the action
- * layer calls `canSpin` first for the message; this re-check only keeps the engine honest).
+ * Spin the wheel. Returns exactly one `spin` event, or none when the bet is not legal (the action
+ * layer calls `canBet` first for the message; this re-check only keeps the engine honest).
  *
  * **Payouts move `state.credits` and nothing else.** This looks like a missing line next to every
  * other credit path in the engine, and it is deliberate: `lifetimeCredits` feeds XP and so the
  * player level, and `seasonCredits` feeds prestige and the leaderboard. Crediting either here
- * would turn the roulette into an XP farm and let a lucky seed buy a leaderboard rank, so a spin
+ * would turn the Lounge into an XP farm and let a lucky seed buy a leaderboard rank, so a bet
  * moves the spendable balance only. Do not "fix" it.
  */
 export function applySpin(
@@ -193,7 +186,7 @@ export function applySpin(
   rng: Rng,
   wager: number | 'free',
 ): GameEvent[] {
-  const check = canSpin(state, derived, now, wager)
+  const check = canBet(state, derived, now, wager)
   if (!check.ok) return []
   if (catalog.gamble.length === 0) return []
 
@@ -201,11 +194,10 @@ export function applySpin(
   const g = state.gamble
 
   if (free) {
-    // The house is paying, so the stake is never deducted and the paid cooldown is untouched.
+    // The house is paying, so the stake is never deducted.
     g.freeSpinDay = dayKey(now)
   } else {
     state.credits -= stake
-    g.nextSpinAt = now + SPIN_COOLDOWN_MS
     g.pot += Math.round(SPIN_POT_FRACTION * stake)
   }
 
@@ -252,4 +244,44 @@ export function applySpin(
       hot,
     },
   ]
+}
+
+/**
+ * Flip the coin. Your side pays COIN_PAYOUT × the stake, Comfy's side keeps it, and there is no
+ * free flip: the coin is the simple bet, so it has no pity meter, no streak bonus and no pot.
+ * `coinStreak` is bookkeeping for one hidden achievement and pays nothing by itself.
+ *
+ * Same rule as the wheel: `state.credits` and nothing else.
+ */
+export function applyFlip(
+  state: GameState,
+  derived: Derived,
+  now: number,
+  rng: Rng,
+  wager: number,
+): GameEvent[] {
+  const check = canBet(state, derived, now, wager)
+  if (!check.ok || check.free) return []
+
+  const { stake } = check
+  const g = state.gamble
+  state.credits -= stake
+  g.pot += Math.round(SPIN_POT_FRACTION * stake)
+
+  const win = rng() < COIN_WIN_CHANCE
+  const side: CoinSide = win ? 'you' : 'comfy'
+  const payout = win ? Math.round(stake * COIN_PAYOUT) : 0
+  if (payout > 0) state.credits += payout
+
+  if (win) {
+    g.coinStreak += 1
+    if (g.coinStreak >= COIN_STREAK_TARGET) state.flags[COIN_STREAK_FLAG] = true
+  } else {
+    g.coinStreak = 0
+  }
+
+  state.stats.flips += 1
+  state.stats.spinNet += payout - stake
+
+  return [{ type: 'flip', side, wager: stake, payout, streak: g.coinStreak }]
 }

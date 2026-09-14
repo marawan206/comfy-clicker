@@ -129,24 +129,31 @@ export const LEVEL_TITLES: readonly string[] = [
 ]
 
 // ---------------------------------------------------------------------------
-// Seed roulette (src/game/gamble.ts)
+// The Latent Lounge (src/game/gamble.ts)
 // ---------------------------------------------------------------------------
-export const SPIN_MIN_LEVEL = 2
-export const SPIN_COOLDOWN_MS = 180_000
-/** Wager bounds in seconds of income, floored at SPIN_MIN_WAGER credits. */
-export const SPIN_MIN_SECS = 30
-export const SPIN_MAX_SECS = 300
-export const SPIN_MIN_WAGER = 50
+/** Level at which the Lounge tile appears. */
+export const LOUNGE_MIN_LEVEL = 2
+/**
+ * Smallest bet the table takes, in credits. There is no ceiling and no cooldown: the only limit
+ * on a wager is the bank, which is what makes the house edge below the thing that has to be right.
+ */
+export const BET_MIN = 10
 /** The house stake on the daily free spin. */
-export const SPIN_FREE_SECS = 120
-export const SPIN_FREE_MIN = 200
+export const FREE_SPIN_SECS = 120
+export const FREE_SPIN_MIN = 200
 /** Consecutive NaN results after which the next one is rerolled once. */
 export const SPIN_PITY_DRY = 3
 /** Consecutive x2-or-better results that flip the sampler to "fixed". */
 export const SPIN_HOT_STREAK = 3
 export const SPIN_HOT_MULT = 1.5
-/** Share of every paid wager that joins the x42 pot. */
+/** Share of every paid wager that joins the x42 pot. Minted, not raked: the table pays for it. */
 export const SPIN_POT_FRACTION = 0.02
+/**
+ * Coin flip. Your side pays double and lands a little under half the time; the gap is the house
+ * edge, and the modal prints both numbers next to the button.
+ */
+export const COIN_WIN_CHANCE = 0.48
+export const COIN_PAYOUT = 2
 
 // ---------------------------------------------------------------------------
 // Click guard (src/game/clickGuard.ts)
@@ -178,3 +185,24 @@ export const LUCKY_CLICK_MULT = 10
 
 /** Debounce on the save written after a state-changing action. */
 export const SAVE_DEBOUNCE_MS = 1_500
+
+/** Cooldown on a save the player asks for by hand (the S key, the Save now button). */
+export const MANUAL_SAVE_COOLDOWN_MS = 8_000
+
+// ---------------------------------------------------------------------------
+// Citizens (src/game/citizens.ts)
+// ---------------------------------------------------------------------------
+/** Gap between two citizen runs of the same workflow, before heat scales it. */
+export const CITIZEN_MIN_GAP_MS = 12_000
+export const CITIZEN_MAX_GAP_MS = 45_000
+/** One run's royalty: seconds of income × heat, never below CITIZEN_ROYALTY_MIN credits. */
+export const CITIZEN_ROYALTY_SECS = 3
+export const CITIZEN_ROYALTY_MIN = 5
+/** Heat left after a run, and the level at which the workflow stops trending for good. */
+export const CITIZEN_HEAT_DECAY = 0.94
+export const CITIZEN_COLD_HEAT = 0.15
+/** A workflow goes cold on its own after this long, however few runs it collected. */
+export const CITIZEN_TREND_MS = 45 * 60_000
+/** Workflows tracked at once (oldest cold one drops first) and runs kept for the activity list. */
+export const CITIZEN_MAX_DROPS = 6
+export const CITIZEN_FEED_MAX = 14

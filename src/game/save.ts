@@ -14,6 +14,7 @@ import { z } from 'zod'
 import { CATALOG, type Catalog } from '@/data'
 import { buildIndex } from '@/game/catalog'
 import {
+  CITIZEN_TREND_MS,
   CLICK_JOB_BONUS_CAP,
   CLICK_LOCKOUT_MAX_MS,
   CONTRACT_ROTATE_MS,
@@ -21,13 +22,12 @@ import {
   POST_WINDOW_MS,
   SAVE_KEY,
   SAVE_VERSION,
-  SPIN_COOLDOWN_MS,
   TIER_UPGRADE_THRESHOLDS,
 } from '@/game/constants'
 import { DAILY_CLAIMED_KEEP } from '@/game/daily'
 import { playerLevel } from '@/game/level'
 import { STARTER_HARDWARE_ID, STARTER_MODEL_ID, createInitialState } from '@/game/state'
-import type { ActiveContract, ActiveEvent, GameState, Job, Post, Precision } from '@/game/types'
+import type { ActiveContract, ActiveEvent, CitizenDrop, CitizenVisit, GameState, Job, Post, Precision } from '@/game/types'
 
 export const SAVE_CORRUPT_KEY = `${SAVE_KEY}.corrupt`
 /** Export codes start with this so a pasted string can be recognised. */
@@ -223,6 +223,7 @@ const statsSchema = z.object({
   ratioed: fallback(count),
   dislikes: fallback(money),
   spins: fallback(count),
+  flips: fallback(count),
   // Roulette profit is signed.
   spinNet: fallback(z.number()),
   clickLockUntil: fallback(money),
@@ -234,11 +235,32 @@ const statsSchema = z.object({
 })
 
 const gambleSchema = z.object({
-  nextSpinAt: fallback(money),
   freeSpinDay: fallback(z.string().nullable()),
   winStreak: fallback(count),
   dryStreak: fallback(count),
+  coinStreak: fallback(count),
   pot: fallback(money),
+})
+
+/** One workflow on the citizens' board. A drop whose heat is unreadable falls back to cold. */
+const citizenDropSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  publishedAt: z.number(),
+  runs: count.catch(0),
+  royalties: money.catch(0),
+  heat: z.number().min(0).max(1).catch(0),
+  nextRunAt: z.number().catch(0),
+  cold: z.boolean().catch(true),
+})
+
+const citizenVisitSchema = z.object({
+  id: z.string().min(1),
+  at: z.number(),
+  handle: z.string(),
+  workflowId: z.string(),
+  workflowName: z.string(),
+  credits: money.catch(0),
 })
 
 const settingsSchema = z.object({
@@ -289,6 +311,12 @@ export const saveSchema = z.object({
   ),
   daily: fallback(dailySchema),
   gamble: fallback(gambleSchema),
+  citizens: fallback(
+    z.object({
+      drops: fallback(arrayOf(citizenDropSchema)),
+      feed: fallback(arrayOf(citizenVisitSchema)),
+    }),
+  ),
   stats: fallback(statsSchema),
   settings: fallback(settingsSchema),
   flags: fallback(recordOf(z.boolean())),
@@ -360,11 +388,15 @@ function normaliseJob(job: Job, now: number): Job {
 function hydrate(data: SaveData, now: number, guestId: string, catalog: Catalog): GameState {
   const idx = buildIndex(catalog)
   const state = createInitialState(now, guestId)
-  const { meta, contracts, events, daily, gamble, stats, settings, ...top } = data
+  const { meta, contracts, events, daily, gamble, citizens, stats, settings, ...top } = data
   fill(state, top as Partial<GameState>)
   fill(state.meta, meta)
   fill(state.daily, daily)
   fill(state.gamble, gamble)
+  if (citizens) {
+    if (citizens.drops) state.citizens.drops = citizens.drops as CitizenDrop[]
+    if (citizens.feed) state.citizens.feed = citizens.feed as CitizenVisit[]
+  }
   fill(state.stats, stats)
   fill(state.settings, settings)
   if (contracts) {
@@ -383,9 +415,12 @@ function hydrate(data: SaveData, now: number, guestId: string, catalog: Catalog)
   if (state.meta.lastTickAt > now) state.meta.lastTickAt = now
   state.events.nextAt = Math.min(state.events.nextAt, now + EVENT_MAX_GAP_MS)
   state.contracts.nextRotateAt = Math.min(state.contracts.nextRotateAt, now + CONTRACT_ROTATE_MS)
-  // A roulette cooldown or a click lockout from a clock that ran ahead would otherwise outlast
-  // its own rules; neither may ever reach further than one full period from now.
-  state.gamble.nextSpinAt = Math.min(state.gamble.nextSpinAt, now + SPIN_COOLDOWN_MS)
+  // A citizen run scheduled by a clock that ran ahead would otherwise never come due.
+  for (const drop of state.citizens.drops) {
+    if (drop.nextRunAt > now + CITIZEN_TREND_MS) drop.nextRunAt = now + CITIZEN_TREND_MS
+  }
+  // A click lockout from a clock that ran ahead would otherwise outlast its own rules; it may
+  // never reach further than one full period from now.
   state.stats.clickLockUntil = Math.min(state.stats.clickLockUntil, now + CLICK_LOCKOUT_MAX_MS)
   // A save from before levels: award the level the stats already earned, without paying for it.
   if (stats?.levelSeen === undefined) state.stats.levelSeen = playerLevel(state)

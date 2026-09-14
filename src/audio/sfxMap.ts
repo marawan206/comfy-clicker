@@ -270,6 +270,14 @@ export function cueForEvent(event: GameEvent, ctx: CueContext = {}): Cue | null 
       if (event.mult <= 0) return cue('lose')
       return cue('spin')
 
+    case 'flip':
+      return event.payout > 0 ? cue('cash', 1.1) : cue('lose')
+
+    // A citizen running your workflow is a background hum, not an event: the royalty lands in the
+    // counter and the activity list says who it was. Silence on purpose.
+    case 'citizenRun':
+      return null
+
     case 'reward':
       return { name: 'cash', then: { name: 'achievement', delayMs: 150 } }
 

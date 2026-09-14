@@ -3,12 +3,12 @@ import { CATALOG, createCatalog, type Catalog } from '@/data'
 import { HARDWARE } from '@/data/hardware'
 import { MODELS } from '@/data/models'
 import {
+  CITIZEN_TREND_MS,
   CLICK_LOCKOUT_MAX_MS,
   LEVEL_REWARD_PER_LEVEL,
   LEVEL_REWARD_SECS,
   LEVEL_XP,
   MAX_LEVEL,
-  SPIN_COOLDOWN_MS,
   XP_CREDITS,
 } from '@/game/constants'
 import { computeDerived, createEmptyDerived } from '@/game/derived'
@@ -295,7 +295,7 @@ describe('save', () => {
     state.stats.landedStreak = 5
     state.stats.bestLandedStreak = 9
     state.settings.autosave = false
-    state.gamble = { nextSpinAt: T0 + 60_000, freeSpinDay: '2026-09-14', winStreak: 2, dryStreak: 1, pot: 375 }
+    state.gamble = { freeSpinDay: '2026-09-14', winStreak: 2, dryStreak: 1, coinStreak: 4, pot: 375 }
 
     const back = deserialize(serialize(state), T0, GUEST)
     expect(back.stats).toMatchObject({
@@ -320,18 +320,21 @@ describe('save', () => {
     delete (blob.settings as Record<string, unknown>).autosave
     const back = deserialize(JSON.stringify(blob), T0, GUEST)
     expect(back.settings.autosave).toBe(true)
-    expect(back.gamble).toEqual({ nextSpinAt: T0, freeSpinDay: null, winStreak: 0, dryStreak: 0, pot: 0 })
+    expect(back.gamble).toEqual({ freeSpinDay: null, winStreak: 0, dryStreak: 0, coinStreak: 0, pot: 0 })
     expect(back.stats.ratioed).toBe(0)
     expect(back.stats.landedStreak).toBe(0)
   })
 
-  it('clamps a roulette cooldown and a click lockout from a clock that ran ahead', () => {
+  it('clamps a click lockout and a citizen run from a clock that ran ahead', () => {
     const state = createInitialState(T0, GUEST)
-    state.gamble.nextSpinAt = T0 + 30 * 86_400_000
     state.stats.clickLockUntil = T0 + 30 * 86_400_000
+    state.citizens.drops = [
+      { id: 'w1', name: 'Hands, fixed', publishedAt: T0, runs: 2, royalties: 40, heat: 0.8, nextRunAt: T0 + 30 * 86_400_000, cold: false },
+    ]
     const back = deserialize(serialize(state), T0, GUEST)
-    expect(back.gamble.nextSpinAt).toBe(T0 + SPIN_COOLDOWN_MS)
     expect(back.stats.clickLockUntil).toBe(T0 + CLICK_LOCKOUT_MAX_MS)
+    expect(back.citizens.drops[0]!.nextRunAt).toBe(T0 + CITIZEN_TREND_MS)
+    expect(back.citizens.drops[0]!.name).toBe('Hands, fixed')
   })
 
   it('keeps a negative followersGained on a ratioed post', () => {

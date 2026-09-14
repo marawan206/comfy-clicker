@@ -38,8 +38,8 @@ import { useNow } from '@/hooks/useNow'
 import { cn } from '@/lib/utils'
 import { useGame, useGameEvents, useGameShallow, useGameStore } from '@/state/useGame'
 
-/** Modal ids the header raises. `seed` and `help` belong to the overlays and tutorial work. */
-type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'seed' | 'help'
+/** Modal ids the header raises. `lounge` and `help` belong to the overlays and tutorial work. */
+type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' | 'help'
 
 function openModal(id: ModalId): void {
   window.dispatchEvent(new CustomEvent<ModalId>('comfy:open-modal', { detail: id }))
@@ -433,7 +433,7 @@ function Nav() {
         onClick={() => markVisited('leaderboard')}
       />
       {/* Seed Roulette joins the header at level 2, which is also where the engine unlocks it. */}
-      {badges.seedUnlocked ? <NavTile meta={navTile('seed')} dot={badges.freeSpin} motionOff={off} onClick={() => open('seed', 'seed')} /> : null}
+      {badges.loungeUnlocked ? <NavTile meta={navTile('lounge')} dot={badges.freeSpin} motionOff={off} onClick={() => open('lounge', 'lounge')} /> : null}
 
       <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-charcoal-400 sm:block" />
 

@@ -2,20 +2,19 @@ import { describe, expect, it } from 'vitest'
 
 import { CATALOG, createCatalog } from '@/data'
 import {
+  BET_MIN,
+  COIN_PAYOUT,
+  COIN_WIN_CHANCE,
   FLOP_CHANCE_BASE,
   FOLLOW_RATE_BASE,
+  FREE_SPIN_MIN,
+  FREE_SPIN_SECS,
+  LOUNGE_MIN_LEVEL,
   OFFLINE_CAP_HOURS_BASE,
   OFFLINE_EFFICIENCY,
   POWER_BUDGET_BASE,
-  SPIN_COOLDOWN_MS,
-  SPIN_FREE_MIN,
-  SPIN_FREE_SECS,
   SPIN_HOT_MULT,
   SPIN_HOT_STREAK,
-  SPIN_MAX_SECS,
-  SPIN_MIN_LEVEL,
-  SPIN_MIN_SECS,
-  SPIN_MIN_WAGER,
   SPIN_PITY_DRY,
   SPIN_POT_FRACTION,
   VIRAL_CHANCE_BASE,
@@ -23,19 +22,22 @@ import {
 import { dayKey } from '@/game/daily'
 import { computeDerived } from '@/game/derived'
 import {
+  COIN_STREAK_FLAG,
+  COIN_STREAK_TARGET,
   HOT_SEED_FLAG,
   JACKPOT_FLAG,
   NAN_STREAK_FLAG,
+  applyFlip,
   applySpin,
-  canSpin,
+  betBounds,
+  canBet,
+  coinEv,
   freeSpinAvailable,
   freeStake,
   isHot,
-  msUntilSpin,
   pityDue,
   rollOutcome,
   spinEv,
-  wagerBounds,
 } from '@/game/gamble'
 import { applyOffline } from '@/game/offline'
 import { mulberry32 } from '@/game/rng'
@@ -94,7 +96,7 @@ function makeDerived(over: Partial<Derived> = {}): Derived {
 function spinState(over: { credits?: number; level?: number } = {}): GameState {
   const s = createInitialState(T0, 'guest')
   s.credits = over.credits ?? 100_000
-  s.stats.levelSeen = over.level ?? SPIN_MIN_LEVEL
+  s.stats.levelSeen = over.level ?? LOUNGE_MIN_LEVEL
   return s
 }
 
@@ -137,11 +139,11 @@ describe('outcome table', () => {
 })
 
 describe('spinEv', () => {
-  it('sits just above break-even', () => {
+  it('pays back less than it takes', () => {
     const ev = spinEv(CATALOG.gamble)
-    expect(ev).toBeGreaterThanOrEqual(1.02)
-    expect(ev).toBeLessThanOrEqual(1.06)
-    expect(ev).toBeCloseTo(1.038, 6)
+    expect(ev).toBeLessThan(1)
+    expect(ev).toBeGreaterThanOrEqual(0.9)
+    expect(ev).toBeCloseTo(0.954, 6)
   })
 
   it('normalises a fixture table that does not sum to 1', () => {
@@ -164,57 +166,64 @@ describe('spinEv', () => {
       total += o.mult
       if (o.id === 's42') jackpots += 1
     }
-    // Measured: 1.0477275 against an analytic 1.038, a gap of 0.0097; s42 landed 0.315 % of the time.
     expect(Math.abs(total / rolls - analytic)).toBeLessThan(0.02)
     const rate = jackpots / rolls
     expect(rate).toBeGreaterThanOrEqual(0.002)
     expect(rate).toBeLessThanOrEqual(0.004)
   })
 
+  it('leaves the coin below break-even too', () => {
+    expect(coinEv()).toBeCloseTo(COIN_WIN_CHANCE * COIN_PAYOUT, 10)
+    expect(coinEv()).toBeLessThan(1)
+  })
+
   /**
-   * The economic ceiling. Spinning the maximum wager the instant every cooldown expires, for a
-   * whole hour, must not add more than 7 % to that hour of income. This is the number that makes
-   * the roulette a hook rather than a strategy; if a future table or cooldown breaks it, the
-   * roulette has become an income source and the change is wrong.
+   * The invariant the whole Lounge rests on. There is no cooldown and no ceiling on a bet, so the
+   * only thing stopping a player from farming the tables is that they lose money on average. This
+   * simulates the real loop (pity reroll, hot sampler, the 2 % minted into the pot, jackpots
+   * paying it back) and insists a credit put on either table comes back worth less. If a future
+   * table crosses 1, the Lounge has become an income source and the change is wrong.
    */
-  it('cannot add more than 7 % to an hour of income', () => {
-    const spinsPerHour = (3600 / SPIN_COOLDOWN_MS) * 1000
-    const edge = spinsPerHour * (spinEv(CATALOG.gamble) - 1) * SPIN_MAX_SECS
-    expect(edge).toBeLessThanOrEqual(0.07 * 3600)
+  it('cannot be farmed: a long session loses credits on both tables', () => {
+    const wheel = spinState({ credits: 1e12 })
+    const d = makeDerived({ cps: 4 })
+    const r = mulberry32(7)
+    const bet = 1_000
+    const spins = 50_000
+    for (let i = 0; i < spins; i++) applySpin(wheel, d, CATALOG, T0 + i, r, bet)
+    // Credits staked minus credits returned, per credit staked, with the pot still owed.
+    const wheelReturn = (wheel.stats.spinNet + spins * bet) / (spins * bet)
+    expect(wheelReturn).toBeLessThan(1)
+    expect(wheelReturn).toBeGreaterThan(0.9)
+
+    const coin = spinState({ credits: 1e12 })
+    const cr = mulberry32(11)
+    const flips = 50_000
+    for (let i = 0; i < flips; i++) applyFlip(coin, d, T0 + i, cr, bet)
+    const coinReturn = (coin.stats.spinNet + flips * bet) / (flips * bet)
+    expect(coinReturn).toBeLessThan(1)
+    expect(coinReturn).toBeGreaterThan(0.9)
   })
 })
 
-describe('wagerBounds', () => {
-  it('floors at SPIN_MIN_WAGER with no income', () => {
-    const s = spinState({ credits: 100_000 })
-    expect(wagerBounds(s, makeDerived({ cps: 0 }))).toEqual({ min: SPIN_MIN_WAGER, max: SPIN_MIN_WAGER })
+describe('betBounds', () => {
+  it('runs from BET_MIN to the whole bank', () => {
+    expect(betBounds(spinState({ credits: 100_000 }))).toEqual({ min: BET_MIN, max: 100_000 })
   })
 
-  it('prices both ends in seconds of income', () => {
-    const s = spinState({ credits: 100_000 })
-    expect(wagerBounds(s, makeDerived({ cps: 4 }))).toEqual({
-      min: SPIN_MIN_SECS * 4,
-      max: SPIN_MAX_SECS * 4,
-    })
+  it('does not care about income', () => {
+    const s = spinState({ credits: 12_345 })
+    expect(betBounds(s)).toEqual(betBounds(s))
+    expect(betBounds(s).max).toBe(12_345)
   })
 
-  it('caps the ceiling at the credits on hand', () => {
-    const rich = spinState({ credits: 1e12 })
-    expect(wagerBounds(rich, makeDerived({ cps: 1e6 })).max).toBe(SPIN_MAX_SECS * 1e6)
-
-    const poor = spinState({ credits: 100_000 })
-    const bounds = wagerBounds(poor, makeDerived({ cps: 1e6 }))
-    expect(bounds.min).toBe(SPIN_MIN_SECS * 1e6)
-    expect(bounds.max).toBe(100_000)
-  })
-
-  it('never returns a negative ceiling', () => {
-    const broke = spinState({ credits: -5 })
-    expect(wagerBounds(broke, makeDerived({ cps: 0 })).max).toBe(0)
+  it('floors a fraction of a credit and never returns a negative ceiling', () => {
+    expect(betBounds(spinState({ credits: 99.9 })).max).toBe(99)
+    expect(betBounds(spinState({ credits: -5 })).max).toBe(0)
   })
 })
 
-describe('freeSpinAvailable / msUntilSpin', () => {
+describe('freeSpinAvailable', () => {
   it('gives one free spin per UTC day', () => {
     const s = spinState()
     expect(freeSpinAvailable(s, T0)).toBe(true)
@@ -223,86 +232,53 @@ describe('freeSpinAvailable / msUntilSpin', () => {
     expect(freeSpinAvailable(s, T0 + 24 * HOUR)).toBe(true)
   })
 
-  it('counts down the paid cooldown', () => {
-    const s = spinState()
-    s.gamble.nextSpinAt = T0 + SPIN_COOLDOWN_MS
-    expect(msUntilSpin(s, T0)).toBe(SPIN_COOLDOWN_MS)
-    expect(msUntilSpin(s, T0 + SPIN_COOLDOWN_MS)).toBe(0)
-    expect(msUntilSpin(s, T0 + 10 * SPIN_COOLDOWN_MS)).toBe(0)
-  })
-
   it('scales the house stake with income', () => {
-    expect(freeStake(makeDerived({ cps: 0 }))).toBe(SPIN_FREE_MIN)
-    expect(freeStake(makeDerived({ cps: 4 }))).toBe(SPIN_FREE_SECS * 4)
+    expect(freeStake(makeDerived({ cps: 0 }))).toBe(FREE_SPIN_MIN)
+    expect(freeStake(makeDerived({ cps: 4 }))).toBe(FREE_SPIN_SECS * 4)
   })
 })
 
-describe('canSpin', () => {
+describe('canBet', () => {
   const d = makeDerived({ cps: 4 })
 
-  it('accepts a wager inside the bounds', () => {
-    expect(canSpin(spinState(), d, T0, 1000)).toEqual({ ok: true, stake: 1000, free: false })
+  it('accepts any bet from the floor up to the bank', () => {
+    expect(canBet(spinState(), d, T0, BET_MIN)).toEqual({ ok: true, stake: BET_MIN, free: false })
+    expect(canBet(spinState(), d, T0, 1000)).toEqual({ ok: true, stake: 1000, free: false })
+    expect(canBet(spinState({ credits: 100_000 }), d, T0, 100_000)).toEqual({ ok: true, stake: 100_000, free: false })
+  })
+
+  it('has no cooldown: the same bet is legal twice in the same millisecond', () => {
+    const s = spinState()
+    expect(canBet(s, d, T0, 1000).ok).toBe(true)
+    applySpin(s, d, only(CLEAN_SEG), T0, rng(), 1000)
+    expect(canBet(s, d, T0, 1000).ok).toBe(true)
   })
 
   it('accepts the free spin with the house stake', () => {
-    expect(canSpin(spinState(), d, T0, 'free')).toEqual({ ok: true, stake: freeStake(d), free: true })
+    expect(canBet(spinState(), d, T0, 'free')).toEqual({ ok: true, stake: freeStake(d), free: true })
   })
 
   it('refuses below the level gate', () => {
     const s = spinState({ level: 1 })
-    expect(canSpin(s, d, T0, 1000)).toEqual({ ok: false, reason: 'Unlocks at level 2' })
-    expect(canSpin(s, d, T0, 'free')).toEqual({ ok: false, reason: 'Unlocks at level 2' })
+    expect(canBet(s, d, T0, 1000)).toEqual({ ok: false, reason: 'Unlocks at level 2' })
+    expect(canBet(s, d, T0, 'free')).toEqual({ ok: false, reason: 'Unlocks at level 2' })
   })
 
-  it('refuses while the sampler is cooling down', () => {
+  it('refuses a bet under the floor', () => {
     const s = spinState()
-    s.gamble.nextSpinAt = T0 + 161_000
-    expect(canSpin(s, d, T0, 1000)).toEqual({
-      ok: false,
-      reason: 'Sampler is cooling down · 2:41',
-    })
+    expect(canBet(s, d, T0, BET_MIN - 1)).toEqual({ ok: false, reason: `Bet at least ${BET_MIN} credits` })
+    expect(canBet(s, d, T0, Number.NaN)).toEqual({ ok: false, reason: `Bet at least ${BET_MIN} credits` })
   })
 
-  it('lets the free spin through the cooldown', () => {
-    const s = spinState()
-    s.gamble.nextSpinAt = T0 + 161_000
-    expect(canSpin(s, d, T0, 'free')).toEqual({ ok: true, stake: freeStake(d), free: true })
-  })
-
-  it('refuses a wager under the floor', () => {
-    const s = spinState()
-    expect(canSpin(s, makeDerived({ cps: 0 }), T0, 10)).toEqual({
-      ok: false,
-      reason: 'Bet at least 50 credits',
-    })
-    expect(canSpin(s, makeDerived({ cps: 0 }), T0, Number.NaN)).toEqual({
-      ok: false,
-      reason: 'Bet at least 50 credits',
-    })
-  })
-
-  it('refuses a wager over the income ceiling', () => {
-    expect(canSpin(spinState(), d, T0, 2000)).toEqual({
-      ok: false,
-      reason: 'Bet at most 1,200 credits right now',
-    })
-  })
-
-  it('refuses a wager the balance cannot cover', () => {
+  it('refuses a bet the balance cannot cover', () => {
     const s = spinState({ credits: 60 })
-    expect(canSpin(s, makeDerived({ cps: 0 }), T0, 80)).toEqual({
-      ok: false,
-      reason: 'Not enough credits',
-    })
+    expect(canBet(s, d, T0, 80)).toEqual({ ok: false, reason: 'Not enough credits' })
   })
 
   it('refuses a second free spin on the same day', () => {
     const s = spinState()
     s.gamble.freeSpinDay = dayKey(T0)
-    expect(canSpin(s, d, T0, 'free')).toEqual({
-      ok: false,
-      reason: 'Free spin already used today',
-    })
+    expect(canBet(s, d, T0, 'free')).toEqual({ ok: false, reason: 'Free spin already used today' })
   })
 })
 
@@ -332,7 +308,6 @@ describe('applySpin', () => {
       { type: 'spin', outcome: 'clean', mult: 2, wager: 1000, payout: 2000, free: false, hot: false },
     ])
     expect(s.credits).toBe(100_000 - 1000 + 2000)
-    expect(s.gamble.nextSpinAt).toBe(T0 + SPIN_COOLDOWN_MS)
     expect(s.stats.spins).toBe(1)
     expect(s.stats.spinNet).toBe(1000)
     expect(s.gamble.winStreak).toBe(1)
@@ -373,17 +348,23 @@ describe('applySpin', () => {
     expect(JSON.stringify(s)).toBe(before)
   })
 
-  it('cannot be spammed: the second spin is on cooldown', () => {
+  it('takes as many spins as the bank allows, back to back', () => {
     const s = spinState({ credits: 100_000 })
-    applySpin(s, d, only(CLEAN_SEG), T0, rng(), 1000)
-    expect(applySpin(s, d, only(CLEAN_SEG), T0, rng(), 1000)).toEqual([])
+    for (let i = 0; i < 5; i++) expect(applySpin(s, d, only(NAN_SEG), T0, rng(), 1000)).toHaveLength(1)
+    expect(s.stats.spins).toBe(5)
+    expect(s.credits).toBe(95_000)
+  })
+
+  it('stops at the bank: a bet bigger than the balance is refused', () => {
+    const s = spinState({ credits: 1_500 })
+    applySpin(s, d, only(NAN_SEG), T0, rng(), 1000)
+    expect(applySpin(s, d, only(NAN_SEG), T0, rng(), 1000)).toEqual([])
+    expect(s.credits).toBe(500)
     expect(s.stats.spins).toBe(1)
-    expect(applySpin(s, d, only(CLEAN_SEG), T0 + SPIN_COOLDOWN_MS, rng(), 1000)).toHaveLength(1)
-    expect(s.stats.spins).toBe(2)
   })
 
   describe('free spin', () => {
-    it('deducts nothing, marks the day and leaves the cooldown alone', () => {
+    it('deducts nothing and marks the day', () => {
       const s = spinState({ credits: 100_000 })
       const stake = freeStake(d)
       const events = applySpin(s, d, only(CLEAN_SEG), T0, rng(), 'free')
@@ -393,7 +374,6 @@ describe('applySpin', () => {
       ])
       expect(s.credits).toBe(100_000 + stake * 2)
       expect(s.gamble.freeSpinDay).toBe(dayKey(T0))
-      expect(s.gamble.nextSpinAt).toBe(T0)
       expect(s.gamble.pot).toBe(0)
       expect(s.stats.spinNet).toBe(stake * 2)
     })
@@ -417,14 +397,14 @@ describe('applySpin', () => {
     it('rerolls the NaN after SPIN_PITY_DRY of them and raises the flag', () => {
       const s = spinState({ credits: 100_000 })
       for (let i = 0; i < SPIN_PITY_DRY; i++) {
-        const events = applySpin(s, d, PITY_TABLE, T0 + i * SPIN_COOLDOWN_MS, rng(), 1000)
+        const events = applySpin(s, d, PITY_TABLE, T0 + i, rng(), 1000)
         expect(events[0]).toMatchObject({ outcome: 'nan' })
       }
       expect(s.gamble.dryStreak).toBe(SPIN_PITY_DRY)
       expect(s.flags[NAN_STREAK_FLAG]).toBe(true)
       expect(pityDue(s)).toBe(true)
 
-      const saved = applySpin(s, d, PITY_TABLE, T0 + SPIN_PITY_DRY * SPIN_COOLDOWN_MS, rng(), 1000)
+      const saved = applySpin(s, d, PITY_TABLE, T0 + SPIN_PITY_DRY, rng(), 1000)
       expect(saved[0]).toMatchObject({ outcome: 'half', mult: 0.5, payout: 500 })
       expect(s.gamble.dryStreak).toBe(0)
       expect(pityDue(s)).toBe(false)
@@ -435,24 +415,24 @@ describe('applySpin', () => {
     it('pays x1.5 after SPIN_HOT_STREAK wins and resets on a loss', () => {
       const s = spinState({ credits: 1_000_000 })
       for (let i = 0; i < SPIN_HOT_STREAK; i++) {
-        const events = applySpin(s, d, only(CLEAN_SEG), T0 + i * SPIN_COOLDOWN_MS, rng(), 1000)
+        const events = applySpin(s, d, only(CLEAN_SEG), T0 + i, rng(), 1000)
         expect(events[0]).toMatchObject({ payout: 2000, hot: false })
       }
       expect(s.gamble.winStreak).toBe(SPIN_HOT_STREAK)
       expect(isHot(s)).toBe(true)
       expect(s.flags[HOT_SEED_FLAG]).toBe(true)
 
-      const hot = applySpin(s, d, only(CLEAN_SEG), T0 + SPIN_HOT_STREAK * SPIN_COOLDOWN_MS, rng(), 1000)
+      const hot = applySpin(s, d, only(CLEAN_SEG), T0 + SPIN_HOT_STREAK, rng(), 1000)
       expect(hot[0]).toMatchObject({ mult: 2, payout: 1000 * 2 * SPIN_HOT_MULT, hot: true })
 
       // The losing spin was still taken while the sampler was fixed, so the event says so; a x1.5
       // share of nothing is still nothing, and the streak ends here.
-      const cold = applySpin(s, d, only(NAN_SEG), T0 + (SPIN_HOT_STREAK + 1) * SPIN_COOLDOWN_MS, rng(), 1000)
+      const cold = applySpin(s, d, only(NAN_SEG), T0 + SPIN_HOT_STREAK + 1, rng(), 1000)
       expect(cold[0]).toMatchObject({ outcome: 'nan', payout: 0, hot: true })
       expect(s.gamble.winStreak).toBe(0)
       expect(isHot(s)).toBe(false)
 
-      const after = applySpin(s, d, only(CLEAN_SEG), T0 + (SPIN_HOT_STREAK + 2) * SPIN_COOLDOWN_MS, rng(), 1000)
+      const after = applySpin(s, d, only(CLEAN_SEG), T0 + SPIN_HOT_STREAK + 2, rng(), 1000)
       expect(after[0]).toMatchObject({ payout: 2000, hot: false })
     })
 
@@ -460,7 +440,7 @@ describe('applySpin', () => {
       const s = spinState({ credits: 1_000_000 })
       applySpin(s, d, only(CLEAN_SEG), T0, rng(), 1000)
       expect(s.gamble.winStreak).toBe(1)
-      applySpin(s, d, only(HALF_SEG), T0 + SPIN_COOLDOWN_MS, rng(), 1000)
+      applySpin(s, d, only(HALF_SEG), T0 + 1, rng(), 1000)
       expect(s.gamble.winStreak).toBe(0)
       expect(s.gamble.dryStreak).toBe(0)
     })
@@ -471,7 +451,7 @@ describe('applySpin', () => {
       const s = spinState({ credits: 1_000_000 })
       applySpin(s, d, only(CLEAN_SEG), T0, rng(), 1000)
       expect(s.gamble.pot).toBe(SPIN_POT_FRACTION * 1000)
-      applySpin(s, d, only(CLEAN_SEG), T0 + SPIN_COOLDOWN_MS, rng(), 1000)
+      applySpin(s, d, only(CLEAN_SEG), T0 + 1, rng(), 1000)
       expect(s.gamble.pot).toBe(SPIN_POT_FRACTION * 2000)
     })
 
@@ -488,49 +468,121 @@ describe('applySpin', () => {
   })
 })
 
+describe('the coin', () => {
+  const d = makeDerived({ cps: 4 })
+  /** An rng that lands on your side, and one that lands on Comfy's. */
+  const yours = () => 0
+  const theirs = () => 1
+
+  it('pays double on your side and emits exactly one flip', () => {
+    const s = spinState({ credits: 10_000 })
+    const events = applyFlip(s, d, T0, yours, 1000)
+    expect(events).toEqual([{ type: 'flip', side: 'you', wager: 1000, payout: 1000 * COIN_PAYOUT, streak: 1 }])
+    expect(s.credits).toBe(10_000 - 1000 + 1000 * COIN_PAYOUT)
+    expect(s.stats.flips).toBe(1)
+    expect(s.stats.spinNet).toBe(1000)
+  })
+
+  it('keeps the stake on the Comfy side', () => {
+    const s = spinState({ credits: 10_000 })
+    const events = applyFlip(s, d, T0, theirs, 1000)
+    expect(events[0]).toMatchObject({ side: 'comfy', payout: 0, streak: 0 })
+    expect(s.credits).toBe(9_000)
+    expect(s.stats.spinNet).toBe(-1000)
+  })
+
+  it('never moves lifetimeCredits or seasonCredits', () => {
+    for (const roll of [yours, theirs]) {
+      const s = spinState({ credits: 10_000 })
+      const lifetime = s.lifetimeCredits
+      const season = s.seasonCredits
+      applyFlip(s, d, T0, roll, 1000)
+      expect(s.lifetimeCredits).toBe(lifetime)
+      expect(s.seasonCredits).toBe(season)
+    }
+  })
+
+  it('counts a streak and raises the flag at COIN_STREAK_TARGET', () => {
+    const s = spinState({ credits: 1_000_000 })
+    for (let i = 0; i < COIN_STREAK_TARGET; i++) applyFlip(s, d, T0 + i, yours, 1000)
+    expect(s.gamble.coinStreak).toBe(COIN_STREAK_TARGET)
+    expect(s.flags[COIN_STREAK_FLAG]).toBe(true)
+    applyFlip(s, d, T0, theirs, 1000)
+    expect(s.gamble.coinStreak).toBe(0)
+  })
+
+  it('feeds the same pot as the wheel', () => {
+    const s = spinState({ credits: 10_000 })
+    applyFlip(s, d, T0, theirs, 1000)
+    expect(s.gamble.pot).toBe(SPIN_POT_FRACTION * 1000)
+  })
+
+  it('refuses an illegal bet without touching the state', () => {
+    const s = spinState({ level: 1 })
+    const before = JSON.stringify(s)
+    expect(applyFlip(s, d, T0, yours, 1000)).toEqual([])
+    expect(JSON.stringify(s)).toBe(before)
+  })
+
+  it('has no free flip', () => {
+    const s = spinState()
+    expect(applyFlip(s, d, T0, yours, Number.NaN)).toEqual([])
+    expect(s.stats.flips).toBe(0)
+  })
+
+  it('lands on your side COIN_WIN_CHANCE of the time over 200k flips', () => {
+    const s = spinState({ credits: 1e12 })
+    const r = mulberry32(3)
+    const flips = 200_000
+    let wins = 0
+    for (let i = 0; i < flips; i++) {
+      const events = applyFlip(s, d, T0 + i, r, 100)
+      if ((events[0] as { side: string } | undefined)?.side === 'you') wins += 1
+    }
+    expect(Math.abs(wins / flips - COIN_WIN_CHANCE)).toBeLessThan(0.01)
+  })
+})
+
 describe('offline and save', () => {
-  it('leaves exactly one ready spin after eight hours away', () => {
+  it('leaves the free spin and the streaks alone across eight hours away', () => {
     const s = createInitialState(T0, 'guest')
     s.credits = 100_000
-    s.stats.levelSeen = SPIN_MIN_LEVEL
-    s.gamble.nextSpinAt = T0 + SPIN_COOLDOWN_MS
+    s.stats.levelSeen = LOUNGE_MIN_LEVEL
+    s.gamble.dryStreak = 2
     s.meta.lastTickAt = T0
 
     const now = T0 + 8 * HOUR
     const derived = computeDerived(s, CATALOG)
     applyOffline(s, derived, CATALOG, now)
 
-    expect(s.gamble.nextSpinAt).toBe(T0 + SPIN_COOLDOWN_MS)
-    expect(msUntilSpin(s, now)).toBe(0)
+    expect(s.gamble.dryStreak).toBe(2)
+    expect(freeSpinAvailable(s, now)).toBe(true)
 
     const d = makeDerived({ cps: 4 })
     expect(applySpin(s, d, only(CLEAN_SEG), now, rng(), 1000)).toHaveLength(1)
-    expect(applySpin(s, d, only(CLEAN_SEG), now, rng(), 1000)).toEqual([])
-    expect(s.stats.spins).toBe(1)
   })
 
-  it('clamps a cooldown written by a clock that ran ahead', () => {
+  it('round-trips the gamble block', () => {
     const s = createInitialState(T0, 'guest')
-    s.gamble.nextSpinAt = T0 + 30 * 24 * HOUR
+    s.gamble = { freeSpinDay: '2026-09-13', winStreak: 2, dryStreak: 1, coinStreak: 4, pot: 99 }
     const loaded = deserialize(serialize(s), T0, 'guest')
-    expect(loaded.gamble.nextSpinAt).toBeLessThanOrEqual(T0 + SPIN_COOLDOWN_MS)
+    expect(loaded.gamble).toEqual({ freeSpinDay: '2026-09-13', winStreak: 2, dryStreak: 1, coinStreak: 4, pot: 99 })
   })
 
-  it('loads the defaults from a save written before the roulette', () => {
+  it('loads the defaults from a save written before the Lounge', () => {
     const s = createInitialState(T0, 'guest')
-    s.gamble = { nextSpinAt: T0 + HOUR, freeSpinDay: '2026-09-13', winStreak: 2, dryStreak: 1, pot: 99 }
+    s.gamble = { freeSpinDay: '2026-09-13', winStreak: 2, dryStreak: 1, coinStreak: 4, pot: 99 }
     const blob = JSON.parse(serialize(s)) as Record<string, unknown>
     delete blob.gamble
 
     const loaded = deserialize(JSON.stringify(blob), T0, 'guest')
     expect(loaded.gamble).toEqual({
-      nextSpinAt: T0,
       freeSpinDay: null,
       winStreak: 0,
       dryStreak: 0,
+      coinStreak: 0,
       pot: 0,
     })
     expect(freeSpinAvailable(loaded, T0)).toBe(true)
-    expect(msUntilSpin(loaded, T0)).toBe(0)
   })
 })

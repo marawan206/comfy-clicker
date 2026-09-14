@@ -82,6 +82,8 @@ function StatsBody() {
     mapNodes: String(state.mapNodes.length),
     hubPublished: String(state.stats.hubPublished),
     spins: formatNum(state.stats.spins),
+    flips: formatNum(state.stats.flips),
+    hubRuns: formatNum(state.stats.hubRuns),
     spinNet: `${state.stats.spinNet >= 0 ? '+' : ''}${formatNum(state.stats.spinNet)}`,
   }))
 
@@ -118,6 +120,7 @@ function StatsBody() {
         { label: 'Lifetime likes', value: s.lifetimeLikes },
         { label: 'ComfyHub signups', value: s.signups, accent: 'text-[#7f8dff]' },
         { label: 'Workflows published', value: s.hubPublished },
+        { label: 'Workflow runs', value: s.hubRuns },
         { label: 'Contracts done', value: s.contractsDone },
       ],
     },
@@ -128,8 +131,9 @@ function StatsBody() {
         { label: 'Comfy Points', value: s.cp, accent: 'text-electric-400' },
         { label: 'CP multiplier', value: s.cpMult },
         { label: 'Graph nodes', value: s.mapNodes },
-        { label: 'Seed spins', value: s.spins, accent: 'text-slot-latent' },
-        { label: 'Roulette net', value: s.spinNet },
+        { label: 'Wheel spins', value: s.spins, accent: 'text-slot-latent' },
+        { label: 'Coin flips', value: s.flips, accent: 'text-slot-latent' },
+        { label: 'Lounge net', value: s.spinNet },
         { label: 'Season', value: s.season },
         { label: 'Rebrands', value: s.rebrands },
         { label: 'Time played', value: s.playedSec },

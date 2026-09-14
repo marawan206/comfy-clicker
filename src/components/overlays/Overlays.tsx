@@ -3,7 +3,7 @@
  * Mounts every overlay once (toasts, achievement bridge, event banners, the trending spark, the
  * easter-egg shows, the level-up banner, the guidance popover, the offline report and the modals)
  * and routes the window events the rest of the UI dispatches:
- *   `comfy:open-modal`  { detail: 'settings' | 'stats' | 'daily' | 'rebrand' | 'seed' }
+ *   `comfy:open-modal`  { detail: 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' }
  *   `comfy:close-modals`
  *   `comfy:saved`       (from the S hotkey) → a "Saved" toast
  *
@@ -22,7 +22,7 @@ import { GuidanceHost } from '@/components/guidance/GuidanceHost'
 import { LevelUpBanner } from '@/components/overlays/LevelUpBanner'
 import { CLOSE_MODALS_EVENT, OPEN_MODAL_EVENT } from '@/components/overlays/ModalBase'
 import { RebrandModal } from '@/components/overlays/RebrandModal'
-import { SeedModal } from '@/components/overlays/SeedModal'
+import { LoungeModal } from '@/components/overlays/LoungeModal'
 import { SettingsModal } from '@/components/overlays/SettingsModal'
 import { StatsModal } from '@/components/overlays/StatsModal'
 import { ToastHost } from '@/components/overlays/ToastHost'
@@ -31,8 +31,8 @@ import { toast } from '@/components/overlays/useToasts'
 import { WelcomeBackModal } from '@/components/overlays/WelcomeBackModal'
 import { useGrandTour } from '@/hooks/useEasterEggs'
 
-export type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'seed'
-const MODAL_IDS: ReadonlySet<string> = new Set<ModalId>(['settings', 'stats', 'daily', 'rebrand', 'seed'])
+export type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge'
+const MODAL_IDS: ReadonlySet<string> = new Set<ModalId>(['settings', 'stats', 'daily', 'rebrand', 'lounge'])
 const SAVED_EVENT = 'comfy:saved'
 
 /** Dispatch helper for anything that wants to open a modal without importing the overlays. */
@@ -84,7 +84,7 @@ export function Overlays() {
       <WelcomeBackModal />
       <DailyModal open={modal === 'daily'} onClose={close} onOpen={openDaily} />
       <RebrandModal open={modal === 'rebrand'} onClose={close} />
-      <SeedModal open={modal === 'seed'} onClose={close} />
+      <LoungeModal open={modal === 'lounge'} onClose={close} />
       <SettingsModal open={modal === 'settings'} onClose={close} />
       <StatsModal open={modal === 'stats'} onClose={close} />
       <ToastHost />

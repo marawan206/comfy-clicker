@@ -17,13 +17,14 @@ import {
   grantGift,
   queueJob,
   setFlag,
+  flip,
   setupModel,
   spin,
   upscalePost,
 } from '@/game/actions'
 import { checkAchievements } from '@/game/achievements'
 import { buildIndex } from '@/game/catalog'
-import { LUCKY_CLICK_CHANCE, LUCKY_CLICK_MULT, SPIN_MIN_LEVEL } from '@/game/constants'
+import { BET_MIN, LOUNGE_MIN_LEVEL, LUCKY_CLICK_CHANCE, LUCKY_CLICK_MULT } from '@/game/constants'
 import { computeDerived } from '@/game/derived'
 import { mulberry32 } from '@/game/rng'
 import { createInitialState } from '@/game/state'
@@ -251,12 +252,12 @@ describe('queueJob: an installed model stays usable above your level', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 4. Seed Roulette
+// 4. The Latent Lounge
 // ---------------------------------------------------------------------------
-describe('spin', () => {
+describe('spin / flip', () => {
   function spinnable(): GameState {
     const state = richState(10_000)
-    state.stats.levelSeen = SPIN_MIN_LEVEL
+    state.stats.levelSeen = LOUNGE_MIN_LEVEL
     return state
   }
 
@@ -264,43 +265,58 @@ describe('spin', () => {
     const state = richState(10_000)
     state.stats.levelSeen = 1
     const result = spin(ctxFor(state), 50)
-    expect(result.error).toBe(`Unlocks at level ${SPIN_MIN_LEVEL}`)
+    expect(result.error).toBe(`Unlocks at level ${LOUNGE_MIN_LEVEL}`)
     expect(result.events).toEqual([])
     expect(state.stats.spins).toBe(0)
     expect(state.credits).toBe(10_000)
   })
 
-  it('takes a paid spin, emits one spin event and starts the cooldown', () => {
+  it('takes a paid spin and emits one spin event', () => {
     const state = spinnable()
     const result = spin(ctxFor(state, { rng: () => 0 }), 50)
 
     expect(result.error).toBeUndefined()
     expect(ids(result.events)).toEqual(['spin'])
     expect(state.stats.spins).toBe(1)
-    expect(state.gamble.nextSpinAt).toBeGreaterThan(T0)
-    // A spin moves the spendable balance and nothing else.
+    // A bet moves the spendable balance and nothing else.
     expect(state.lifetimeCredits).toBe(0)
     expect(state.seasonCredits).toBe(0)
 
+    // No cooldown: the next one is legal immediately.
     const again = spin(ctxFor(state, { rng: () => 0 }), 50)
-    expect(again.error).toMatch(/^Sampler is cooling down/)
-    expect(state.stats.spins).toBe(1)
+    expect(again.error).toBeUndefined()
+    expect(state.stats.spins).toBe(2)
   })
 
-  it('the free spin costs nothing and leaves the paid cooldown alone', () => {
+  it('the free spin costs nothing and is gone for the day', () => {
     const state = spinnable()
-    const before = state.gamble.nextSpinAt
     const result = spin(ctxFor(state, { rng: () => 0 }), 'free')
 
     expect(ids(result.events)).toEqual(['spin'])
-    expect(state.gamble.nextSpinAt).toBe(before)
     expect(state.gamble.freeSpinDay).not.toBeNull()
     expect(spin(ctxFor(state), 'free').error).toBe('Free spin already used today')
   })
 
-  it('passes the wager rejection copy straight through', () => {
+  it('passes the bet rejection copy straight through', () => {
     const state = spinnable()
-    expect(spin(ctxFor(state), 1).error).toBe('Bet at least 50 credits')
+    expect(spin(ctxFor(state), 1).error).toBe(`Bet at least ${BET_MIN} credits`)
+    expect(flip(ctxFor(state), 1).error).toBe(`Bet at least ${BET_MIN} credits`)
+    expect(flip(ctxFor(state), 1e9).error).toBe('Not enough credits')
+  })
+
+  it('flips the coin and pays double on your side', () => {
+    const state = spinnable()
+    const credits = state.credits
+    const result = flip(ctxFor(state, { rng: () => 0 }), 100)
+    expect(ids(result.events)).toEqual(['flip'])
+    expect(state.stats.flips).toBe(1)
+    expect(state.credits).toBe(credits - 100 + 200)
+    expect(state.lifetimeCredits).toBe(0)
+  })
+
+  it('refuses the free stake on the coin table', () => {
+    const state = spinnable()
+    expect(flip(ctxFor(state), Number.NaN).error).toBe(`Bet at least ${BET_MIN} credits`)
   })
 })
 

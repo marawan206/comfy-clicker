@@ -1,11 +1,17 @@
 /**
- * Seed Roulette outcomes.
+ * The wheel's segments, in the Latent Lounge.
  *
- * A KSampler-themed spin: you wager credits, the seed decides. `weight` is the outcome's
- * probability and the table sums to exactly 1, so `weightedPick` draws from it directly and the
- * expected value is `Σ weight × mult` = 1.038. Something comes back 66 % of the time and 18.8 %
- * of spins turn a profit, which is enough to keep the three-minute cooldown interesting and far
- * too little to be an income source (`gamble.ts` pins the cap with an invariant test).
+ * You bet credits, the sampler decides. `weight` is the outcome's probability and the table sums
+ * to exactly 1, so `weightedPick` draws from it directly and the expected value is
+ * `Σ weight × mult` = 0.954. Something comes back 64.5 % of the time and 17.5 % of bets turn a
+ * profit.
+ *
+ * The table pays back less than it takes, and that is the whole reason there is no cooldown: a
+ * player may bet anything, as often as they like, because grinding the wheel is a slow way to go
+ * broke rather than a way to farm credits. The pity reroll and the hot sampler push the real
+ * return back up toward 0.98, the 2 % pot skim is minted on top of that, and `gamble.test.ts`
+ * pins the whole lot under break-even. If a future table crosses 1, the Lounge has become an
+ * income source and the change is wrong.
  */
 import type { GambleOutcomeDef } from '@/game/types'
 
@@ -14,7 +20,7 @@ export const GAMBLE_OUTCOMES: GambleOutcomeDef[] = [
     id: 'nan',
     label: 'NaN latent',
     mult: 0,
-    weight: 0.34,
+    weight: 0.355,
     line: 'NaN. Black image. The seed owes you nothing.',
   },
   {
@@ -28,7 +34,7 @@ export const GAMBLE_OUTCOMES: GambleOutcomeDef[] = [
     id: 'same',
     label: 'Same seed, same image',
     mult: 1,
-    weight: 0.172,
+    weight: 0.17,
     line: 'Same seed, same image. Nothing happened, technically.',
   },
   {
@@ -42,14 +48,14 @@ export const GAMBLE_OUTCOMES: GambleOutcomeDef[] = [
     id: 'batch',
     label: 'Batch of four',
     mult: 4,
-    weight: 0.05,
+    weight: 0.042,
     line: 'Batch of four and every one landed.',
   },
   {
     id: 'golden',
     label: 'Golden seed',
     mult: 10,
-    weight: 0.015,
+    weight: 0.01,
     line: 'Golden seed. Write it down.',
   },
   {

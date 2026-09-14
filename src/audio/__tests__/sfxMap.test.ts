@@ -48,6 +48,8 @@ const EVENT_TYPES = [
   'levelUp',
   'clickBlocked',
   'spin',
+  'flip',
+  'citizenRun',
   'reward',
 ] as const
 
@@ -101,6 +103,11 @@ const SAMPLES: Record<GameEvent['type'], GameEvent[]> = {
     { type: 'spin', outcome: 'dud', mult: 0, wager: 100, payout: 0, free: false, hot: false },
     { type: 'spin', outcome: 'small', mult: 2, wager: 100, payout: 200, free: true, hot: false },
   ],
+  flip: [
+    { type: 'flip', side: 'you', wager: 100, payout: 200, streak: 2 },
+    { type: 'flip', side: 'comfy', wager: 100, payout: 0, streak: 0 },
+  ],
+  citizenRun: [{ type: 'citizenRun', handle: 'latent_goblin', workflowName: 'Hands, fixed', credits: 42 }],
   reward: [{ type: 'reward', id: 'title-click', credits: 1000 }],
 }
 
@@ -152,6 +159,10 @@ describe('sfxMap: event coverage', () => {
     expect(cueForEvent({ type: 'postResolved', postId: 'p', viral: false, flop: true, ratioed: false })?.name).toBe('flop')
     expect(cueForEvent({ type: 'spin', outcome: 'x', mult: 42, wager: 1, payout: 42, free: false, hot: false })?.name).toBe('jackpot')
     expect(cueForEvent({ type: 'spin', outcome: 'x', mult: 0, wager: 1, payout: 0, free: false, hot: false })?.name).toBe('lose')
+    expect(cueForEvent({ type: 'flip', side: 'you', wager: 1, payout: 2, streak: 1 })?.name).toBe('cash')
+    expect(cueForEvent({ type: 'flip', side: 'comfy', wager: 1, payout: 0, streak: 0 })?.name).toBe('lose')
+    // A citizen run is background noise, not an event.
+    expect(cueForEvent({ type: 'citizenRun', handle: 'a_b', workflowName: 'w', credits: 1 })).toBeNull()
     expect(cueForEvent({ type: 'offline', gain: 1, elapsedSec: 1 })).toBeNull()
     expect(cueForEvent({ type: 'eventEnd', defId: 'e', kind: 'powerSurge' })).toBeNull()
   })

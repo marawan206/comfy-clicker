@@ -399,17 +399,47 @@ export interface ActiveEvent {
   resolved?: boolean
 }
 
-/** Seed roulette bookkeeping. `nextSpinAt` is a timestamp, so a cooldown cannot be farmed offline. */
+/** Latent Lounge bookkeeping. There is no cooldown, so nothing in here is a timestamp. */
 export interface GambleState {
-  nextSpinAt: number
   /** `dayKey` of the day whose free spin was used; null when it is still available. */
   freeSpinDay: string | null
-  /** Consecutive results paying x2 or better (the hot sampler). */
+  /** Consecutive wheel results paying x2 or better (the hot sampler). */
   winStreak: number
   /** Consecutive NaN results (the pity meter). */
   dryStreak: number
-  /** Credits banked from every paid spin, paid out with the x42 seed. */
+  /** Consecutive coin flips that landed on your side. */
+  coinStreak: number
+  /** Credits banked from every paid bet, paid out with the x42 seed. */
   pot: number
+}
+
+/** One workflow of yours that citizens are running. See `src/game/citizens.ts`. */
+export interface CitizenDrop {
+  /** ComfyHub workflow id when the publish reached the server, else a local id. */
+  id: string
+  name: string
+  publishedAt: number
+  /** Runs citizens have taken so far. */
+  runs: number
+  /** Credits collected from those runs. */
+  royalties: number
+  /** Interest left: 1 the moment it is published, decayed by every run and by time. */
+  heat: number
+  /** Epoch ms of the next run. */
+  nextRunAt: number
+  /** True once it has stopped trending; kept on the board until a newer drop pushes it off. */
+  cold: boolean
+}
+
+/** One citizen run, for the activity list. */
+export interface CitizenVisit {
+  id: string
+  at: number
+  /** The citizen's handle. Invented, never a real account. */
+  handle: string
+  workflowId: string
+  workflowName: string
+  credits: number
 }
 
 export interface DailyState {
@@ -451,9 +481,11 @@ export interface GameStats {
   ratioed: number
   /** Dislikes collected across every ratioed post. */
   dislikes: number
-  /** Seed roulette spins taken. */
+  /** Wheel spins taken in the Lounge. */
   spins: number
-  /** Lifetime roulette profit. May be negative. */
+  /** Coin flips taken in the Lounge. */
+  flips: number
+  /** Lifetime Lounge profit, wheel and coin together. May be negative. */
   spinNet: number
   /** Epoch ms until which clicks pay nothing; 0 = not locked. */
   clickLockUntil: number
@@ -506,6 +538,7 @@ export interface GameState {
   events: { active: ActiveEvent[]; nextAt: number }
   daily: DailyState
   gamble: GambleState
+  citizens: { drops: CitizenDrop[]; feed: CitizenVisit[] }
   stats: GameStats
   settings: GameSettings
   flags: Record<string, boolean>
@@ -582,6 +615,8 @@ export type GameEvent =
   | { type: 'levelUp'; level: number; credits: number; unlocked: string[] }
   | { type: 'clickBlocked'; reason: 'locked' | 'rate' | 'cadence'; until: number }
   | { type: 'spin'; outcome: string; mult: number; wager: number; payout: number; free: boolean; hot: boolean }
+  | { type: 'flip'; side: 'you' | 'comfy'; wager: number; payout: number; streak: number }
+  | { type: 'citizenRun'; handle: string; workflowName: string; credits: number }
   | { type: 'reward'; id: string; credits: number }
 
 export type Rng = () => number
