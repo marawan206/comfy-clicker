@@ -5,6 +5,15 @@
  * floating "+N" and a burst of credit diamonds at the pointer. Space is handled by `useHotkeys`;
  * keyboard clicks still get the squash and a centred float via the store's `click` event.
  *
+ * There are two controls here and they are one button. The square is the click target and the pill
+ * under it is the same click with a word on it, which is not obvious the first time: a QA reader
+ * took the square for artwork and the pill for something that queued a job, the way the Studio's
+ * "Generate post" does. So the square now answers a hover and a focus the way a control should,
+ * both carry the one tooltip that says they are the same press, their accessible names differ so a
+ * screen reader does not meet two buttons called Generate, and until the first click of a save the
+ * square wears a breathing ring. The tour cuts its first spotlight around `data-tour="hero-controls"`,
+ * which holds both; `data-tour="generate"` stays on the square because `focusHero` focuses it.
+ *
  * The guard has three visible states. A synthetic event never reaches the store at all
  * (`trustedInput`). A click the engine refuses pays nothing, so it draws nothing: no float, no
  * burst, no ripple, no squash, because a "+N" for a click that earned nothing is a lie. While a
@@ -68,6 +77,8 @@ export function GenerateButton() {
   const store = useGameStore()
   const cps = useGame((_s, d) => d.cps)
   const clickValue = useGame((_s, d) => d.clickValue)
+  // A boolean, so the 20 Hz loop re-renders this once: on the first click of the save.
+  const untouched = useGame((s) => s.totalClicks === 0)
   const lockUntil = useGame((s) => s.stats.clickLockUntil)
   // The 20 Hz loop is the clock: the selector returns a boolean, so the logo re-renders twice per
   // lockout (once when it lands, once when it lifts) rather than on every frame of the countdown.
@@ -165,7 +176,7 @@ export function GenerateButton() {
   }, [reduced, scale])
 
   return (
-    <div className="flex w-full flex-col items-center gap-3">
+    <div data-tour="hero-controls" className="flex w-full flex-col items-center gap-3">
       <div className="relative flex items-center justify-center" style={{ width: BOX, height: BOX, maxWidth: '100%' }}>
         <div
           aria-hidden="true"
@@ -178,6 +189,7 @@ export function GenerateButton() {
             } as React.CSSProperties
           }
         />
+        <Tooltip {...generateButtonTip(clickValue)} side="bottom" delay={600}>
         <motion.button
           ref={buttonRef}
           type="button"
@@ -189,8 +201,10 @@ export function GenerateButton() {
           onContextMenu={(e) => e.preventDefault()}
           style={{ scale, width: BOX, height: BOX, maxWidth: '100%', borderRadius: RADIUS, touchAction: 'manipulation' }}
           className={cn(
-            'relative isolate flex select-none items-center justify-center overflow-hidden border-2 border-charcoal-300 bg-charcoal-700 shadow-[0_6px_0_#0e0e0f] outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-4 focus-visible:ring-electric-400',
-            locked ? 'cursor-not-allowed grayscale' : 'cursor-pointer',
+            'relative isolate flex select-none items-center justify-center overflow-hidden border-2 border-charcoal-300 bg-charcoal-700 shadow-[0_6px_0_#0e0e0f] outline-none transition-colors duration-150 [-webkit-tap-highlight-color:transparent] focus-visible:ring-4 focus-visible:ring-electric-400',
+            // A 245 px target with no hover answer reads as artwork. Colours only: the scale is a
+            // Motion value on this element and a CSS transform transition would fight it.
+            locked ? 'cursor-not-allowed grayscale' : 'cursor-pointer hover:border-electric-400 hover:bg-charcoal-600',
           )}
         >
           <span
@@ -198,6 +212,15 @@ export function GenerateButton() {
             className="pointer-events-none absolute inset-0"
             style={{ background: 'radial-gradient(circle at 50% 35%, rgb(240 255 65 / 0.12), transparent 60%)' }}
           />
+          {/* Until the first click of a save, the square says press me. A sibling span rather than
+              a class on the button: `cc-breathe` animates a transform and the button's scale is a
+              Motion value. The utility is already reduced-motion guarded in globals.css. */}
+          {untouched && !locked ? (
+            <span
+              aria-hidden="true"
+              className="cc-breathe pointer-events-none absolute inset-0 rounded-[inherit] ring-4 ring-electric-400 ring-inset"
+            />
+          ) : null}
           <Image
             src="/brand/comfy-logo.svg"
             alt=""
@@ -223,12 +246,16 @@ export function GenerateButton() {
             ))}
           </AnimatePresence>
         </motion.button>
+        </Tooltip>
       </div>
 
       <Tooltip {...generateButtonTip(clickValue)} side="bottom">
         <motion.button
           type="button"
-          aria-label={locked ? 'Clicks paused' : 'Generate'}
+          // The square above owns the same action, so the two names differ. The visible label is
+          // still "Generate" and the accessible name still opens with it, which is what a voice
+          // control listens for.
+          aria-label={locked ? 'Clicks paused' : 'Generate. Same as the logo above'}
           {...{ [GENERATE_HOTKEY_ATTR]: 'true' }}
           onPointerDown={onPointerDown}
           onKeyDown={onKeyDown}

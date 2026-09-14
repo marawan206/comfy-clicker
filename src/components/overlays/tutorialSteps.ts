@@ -63,11 +63,13 @@ export function tourStart(state: GameState, now: number): TourStart {
 export const TUTORIAL_STEPS: readonly TourStep[] = [
   {
     id: 'click',
-    anchor: 'generate',
-    title: 'This is the button.',
-    body: 'Every click is a credit. Ten of them and we move on. Space works too.',
+    // The wrapper holding both controls, so the spotlight does not cut the pill out of the
+    // lesson and teach that the square is the only button.
+    anchor: 'hero-controls',
+    title: 'Both of these click.',
+    body: 'The logo and the pill under it are one button. Every click is a credit. Ten of them and we move on. Space works too.',
     kind: 'action',
-    cta: 'Click it ten times',
+    cta: 'Press either one',
     isDone: (s, start) => s.totalClicks >= start.clicks + TUTORIAL_CLICKS,
   },
   {
