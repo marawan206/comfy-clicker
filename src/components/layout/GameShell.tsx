@@ -18,6 +18,7 @@ import { Tutorial } from '@/components/overlays/Tutorial'
 import { RackPanel } from '@/components/rigs/RackPanel'
 import { StorePanel } from '@/components/store/StorePanel'
 import { LOADING_LINES } from '@/data/flavor'
+import { useDisplayFlags } from '@/hooks/useDisplayFlags'
 import { useEasterEggs } from '@/hooks/useEasterEggs'
 import { useHotkeys } from '@/hooks/useHotkeys'
 import { useSfx } from '@/hooks/useSfx'
@@ -47,8 +48,8 @@ export function GameShell() {
   useEasterEggs()
 
   const started = useGame((_s, _d, store) => store.started)
-  const projector = useGame((s) => s.settings.projector)
-  const reducedSetting = useGame((s) => s.settings.reducedMotion)
+  // Mirrors `projector` / `reducedMotion` onto <html> for every route that keeps the store alive.
+  const { projector, reducedMotion: reducedSetting } = useDisplayFlags()
   const osReduced = useReducedMotion()
   const reduced = Boolean(osReduced) || reducedSetting
   const ready = useBootReady(started)
@@ -57,20 +58,6 @@ export function GameShell() {
   // fade stuck until the tab is shown. Skip both animations while hidden.
   const visible = useDocumentVisible()
   const instant = reduced || !visible
-
-  // Mirror the two display settings onto <html>: rem-based sizes scale with `projector`, and
-  // the CSS loops in globals.css stop under `reduced-motion` (overlays portal to <body>, so the
-  // shell's own class would not reach them).
-  useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle('projector', projector)
-    return () => root.classList.remove('projector')
-  }, [projector])
-  useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle('reduced-motion', reducedSetting)
-    return () => root.classList.remove('reduced-motion')
-  }, [reducedSetting])
 
   return (
     <FeedProvider>

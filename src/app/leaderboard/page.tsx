@@ -17,6 +17,7 @@ import { useMarkVisited } from '@/components/layout/navBadges'
 import { LeaderboardTable, type YouRow } from '@/components/leaderboard/LeaderboardTable'
 import { Overlays } from '@/components/overlays/Overlays'
 import { formatNum } from '@/game/format'
+import { useDisplayFlags } from '@/hooks/useDisplayFlags'
 import type { LeaderboardEntry, LeaderboardResult } from '@/server/leaderboard'
 import { useGameShallow } from '@/state/useGame'
 
@@ -33,8 +34,10 @@ interface BoardState {
 
 export default function LeaderboardPage() {
   const os = useReducedMotion()
-  const reducedSetting = useGameShallow((s) => ({ v: s.settings.reducedMotion })).v
-  const instant = Boolean(os) || reducedSetting
+  // Projector and reduced motion are set in-game but have to reach this route: the hook mirrors
+  // both onto <html>, which is the only element the board, the header and the overlays share.
+  const { reducedMotion } = useDisplayFlags()
+  const instant = Boolean(os) || reducedMotion
   const auth = useAuth()
   const [board, setBoard] = useState<BoardState>({ entries: [], updatedAt: null, available: true, loading: true, error: null })
 

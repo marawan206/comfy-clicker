@@ -182,14 +182,26 @@ describe('applyOffline', () => {
     expect(state.lifetimeCredits).toBe(240)
     expect(state.seasonCredits).toBe(240)
     expect(state.meta.lastTickAt).toBe(now)
-    expect(state.stats.offlineClaims).toBe(1)
+    // A two-minute tab switch pays at the full rate and shows no card, so it is not a claim
+    // either: "Comfy Sleep Mode" cannot be earned by alt-tabbing.
+    expect(state.stats.offlineClaims).toBe(0)
   })
 
-  it('a gap under a minute is not an offline claim', () => {
+  it('no offline claim anywhere inside the short-gap band', () => {
+    for (const sec of [OFFLINE_CLAIM_MIN_S - 1, OFFLINE_CLAIM_MIN_S, OFFLINE_CLAIM_MIN_S + 1, SHORT_GAP_S]) {
+      const state = stateAt(T0)
+      applyOffline(state, derivedWith({ cps: 2 }), catalog, T0 + sec * 1000)
+      expect(state.stats.offlineClaims).toBe(0)
+    }
     const state = stateAt(T0)
     applyOffline(state, derivedWith({ cps: 2 }), catalog, T0 + (OFFLINE_CLAIM_MIN_S - 1) * 1000)
-    expect(state.stats.offlineClaims).toBe(0)
     expect(state.credits).toBeCloseTo(2 * (OFFLINE_CLAIM_MIN_S - 1))
+  })
+
+  it('the first gap past the short band is an offline claim', () => {
+    const state = stateAt(T0)
+    applyOffline(state, derivedWith({ cps: 2 }), catalog, T0 + (SHORT_GAP_S + 1) * 1000)
+    expect(state.stats.offlineClaims).toBe(1)
   })
 
   it('long gap: capped income and an offline report first in the event list', () => {

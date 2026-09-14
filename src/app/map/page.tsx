@@ -8,7 +8,7 @@
  */
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, type ComponentType, type ReactNode } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import { ArrowLeft, FlaskConical, Medal, Waypoints, type LucideProps } from 'lucide-react'
 import { AccountMenu } from '@/components/auth/AccountMenu'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
@@ -17,6 +17,7 @@ import { FxCanvas } from '@/components/fx/FxCanvas'
 import { GraphMap } from '@/components/map/GraphMap'
 import { useMarkVisited } from '@/components/layout/navBadges'
 import { useMapBalances } from '@/components/map/mapHooks'
+import { useDisplayFlags } from '@/hooks/useDisplayFlags'
 import { Overlays } from '@/components/overlays/Overlays'
 import { formatCps, formatNum } from '@/game/format'
 import { cn } from '@/lib/utils'
@@ -25,21 +26,9 @@ import { useGame } from '@/state/useGame'
 export default function MapPage() {
   // The header's "new" dot for the Graph stops once it has been opened.
   useMarkVisited('map')
-  const projector = useGame((s) => s.settings.projector)
-  const reducedSetting = useGame((s) => s.settings.reducedMotion)
-
-  // Same <html> flags the game shell sets: projector scales the rem grid, reduced-motion stops
-  // the noodle flow and node pulse in map.css.
-  useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle('projector', projector)
-    return () => root.classList.remove('projector')
-  }, [projector])
-  useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle('reduced-motion', reducedSetting)
-    return () => root.classList.remove('reduced-motion')
-  }, [reducedSetting])
+  // Same <html> flags the game shell sets: projector scales the rem grid (map.css writes its type
+  // in rem for exactly this), reduced-motion stops the noodle flow and the node pulse.
+  const { projector } = useDisplayFlags()
 
   return (
     <div className={cn('relative z-10 flex h-dvh flex-col overflow-hidden bg-charcoal-800', projector && 'projector')}>

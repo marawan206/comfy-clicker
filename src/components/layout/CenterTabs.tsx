@@ -156,7 +156,15 @@ export function CenterTabs() {
       </AnimatePresence>
 
       {/* The panel swaps immediately and only fades in: no exit animation to wait on, so a
-          throttled or hidden tab can never leave the old panel stuck under a new tab. */}
+          throttled or hidden tab can never leave the old panel stuck under a new tab.
+
+          `scroll-pb` reserves the Studio's sticky CTA block (cost line + button row, 9.25 rem
+          measured at 1280x679) at the bottom of this scrollport, so anything scrolled into view
+          here (a focused hashtag chip, the guidance popover's target) lands above the CTA instead
+          of under it. It has to be scroll padding rather than real padding: real `pb` is part of
+          the sticky constraint rectangle, so it lifts the CTA that same distance off the bottom
+          edge and leaves a dead band under it, which is exactly what `sticky bottom-0` is there
+          to prevent. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <motion.div
           key={tab}
@@ -169,7 +177,7 @@ export function CenterTabs() {
           initial={off ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16, ease: 'easeOut' }}
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-0.5 pb-1 focus-visible:outline-none data-[scrolled=true]:[mask-image:linear-gradient(to_bottom,transparent,black_14px)]"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-pb-[9.25rem] pr-0.5 pb-1 focus-visible:outline-none data-[scrolled=true]:[mask-image:linear-gradient(to_bottom,transparent,black_14px)]"
         >
           {tab === 'studio' ? <StudioPanel /> : tab === 'feed' ? <FeedPanel /> : <ContractsPanel />}
         </motion.div>

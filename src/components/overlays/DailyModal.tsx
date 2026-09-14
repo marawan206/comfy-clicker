@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/components/auth/useAuth'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { fx } from '@/components/fx/fxBus'
-import { ModalBase, ModalButton, useReducedMotionPref } from '@/components/overlays/ModalBase'
+import { CLOSE_MODALS_EVENT, ModalBase, ModalButton, useReducedMotionPref } from '@/components/overlays/ModalBase'
 import { toast } from '@/components/overlays/useToasts'
 import { useNow } from '@/hooks/useNow'
 import { DAILY_BASE_SECS } from '@/game/constants'
@@ -56,7 +56,18 @@ export function DailyModal({ open, onClose, onOpen }: DailyModalProps) {
       autoOpenedThisSession = true
       onOpen()
     }, AUTO_OPEN_DELAY_MS)
-    return () => clearTimeout(t)
+    // `comfy:close-modals` means "clear the overlays", and a calendar that opened itself 400 ms
+    // later would read as the event failing to close it. A dismissed auto-open does not come back
+    // this session; the header's Claim daily button still opens it on demand.
+    const onCloseModals = () => {
+      autoOpenedThisSession = true
+      clearTimeout(t)
+    }
+    window.addEventListener(CLOSE_MODALS_EVENT, onCloseModals)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener(CLOSE_MODALS_EVENT, onCloseModals)
+    }
   }, [started, can, offlinePending, tourActive, open, onOpen])
 
   return (

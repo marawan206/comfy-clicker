@@ -4,10 +4,10 @@
  * finished, settles the resulting posts, credits them toward contracts, and announces anything
  * the gap crossed (a trending-week rollover, achievements).
  *
- * Gaps up to SHORT_GAP_S are a silent full-rate catch-up (no cap, no report). Longer gaps are
- * capped at `derived.offlineCapHours`, scaled by `derived.offlineEfficiency` (OFFLINE_EFFICIENCY
- * unless an upgrade raises it) and reported with an `offline` event so the UI can show the
- * "while you were away" card.
+ * Gaps up to SHORT_GAP_S are a silent full-rate catch-up (no cap, no report, and no offline
+ * claim). Longer gaps are capped at `derived.offlineCapHours`, scaled by
+ * `derived.offlineEfficiency` (OFFLINE_EFFICIENCY unless an upgrade raises it) and reported with
+ * an `offline` event so the UI can show the "while you were away" card.
  */
 import type { Catalog } from '@/data'
 import { checkAchievements } from '@/game/achievements'
@@ -22,7 +22,12 @@ import { advanceQueue } from '@/game/studio'
 import type { Derived, GameEvent, GameState, Job, Rng } from '@/game/types'
 import { settlePosts } from '@/game/virality'
 
-/** Gaps at least this long count as an offline claim (achievement stat). */
+/**
+ * Lower bound, inside the long-gap path, for a gap that counts as an offline claim (the stat the
+ * "Comfy Sleep Mode" achievement reads). The upper gate is the short-gap rule: a catch-up that
+ * paid at the full rate and showed no welcome-back card was a tab switch, not a night away, so it
+ * never claims. Alt-tabbing for 61 seconds is not an idle strategy.
+ */
 export const OFFLINE_CLAIM_MIN_S = 60
 
 export interface OfflineResult {
@@ -119,7 +124,7 @@ export function applyOffline(state: GameState, derived: Derived, catalog: Catalo
   // gone by the next tick, so this is the only place they can be credited.
   events.push(...progressContracts(state, events, catalog))
 
-  if (elapsedSec >= OFFLINE_CLAIM_MIN_S) state.stats.offlineClaims += 1
+  if (!short && elapsedSec >= OFFLINE_CLAIM_MIN_S) state.stats.offlineClaims += 1
 
   // The tick seeds its rollover memo from `lastTickAt`, which is about to become `now`; announce
   // a week crossed while away here and prime the memo so the tick stays quiet about it.

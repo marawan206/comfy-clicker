@@ -1,14 +1,20 @@
 'use client'
 /**
  * The header's autosave chip: proof that the game is writing, which is the whole point of making
- * autosave visible. Three states, left of the account menu and hidden below lg.
+ * autosave visible. Left of the account menu, hidden below lg.
  *
+ * - not mounted yet: `Autosave`, no timestamp, neutral colours
  * - normal: `Saved just now`, then `Saved 12s ago`, `Saved 3m ago`
  * - autosave off (amber): `Autosave off · saved 12s ago`
  * - the browser refused the write (slot-vae): `Not saving`, plus one danger toast, once
  *
  * The timestamp comes from the store's `savedAt`, falling back to `state.meta.lastSavedAt` until
  * the first write of the session lands. Nothing here toasts on a successful save.
+ *
+ * The placeholder state exists because all three inputs (the clock, the loaded save, the write
+ * outcome) only exist in the browser while the header itself is server-rendered on /hub and
+ * /leaderboard: without it the server's "Saved 30m ago" met the client's "Saved just now" and
+ * React threw a hydration error on every load of those routes.
  */
 import { useEffect, useRef } from 'react'
 import { HardDriveDownload, TriangleAlert } from 'lucide-react'
@@ -17,6 +23,7 @@ import { Tooltip } from '@/components/common/Tooltip'
 import { saveStatusTip } from '@/components/common/tooltipCopy'
 import { toast } from '@/components/overlays/useToasts'
 import { cn } from '@/lib/utils'
+import { useMounted } from '@/hooks/useMounted'
 import { useNow } from '@/hooks/useNow'
 import { useGameShallow } from '@/state/useGame'
 
@@ -24,6 +31,8 @@ import { useGameShallow } from '@/state/useGame'
 const JUST_NOW_MS = 2000
 /** How long the disk icon stays popped after a write. */
 const POP_MS = 250
+/** What the chip says before it knows anything: the feature's name, no timestamp. */
+const PLACEHOLDER = 'Autosave'
 
 /** `just now`, `12s ago`, `3m ago`, `2h ago`. */
 export function savedAgo(savedAt: number, now: number): string {
@@ -42,6 +51,7 @@ function openSettings(): void {
 }
 
 export function SaveStatus({ motionOff = false }: { motionOff?: boolean }) {
+  const mounted = useMounted()
   const now = useNow(1000)
   const { savedAt, autosave, failed } = useGameShallow((s, _d, store) => ({
     savedAt: store.savedAt > 0 ? store.savedAt : s.meta.lastSavedAt,
@@ -77,10 +87,14 @@ export function SaveStatus({ motionOff = false }: { motionOff?: boolean }) {
     })
   }, [failed])
 
+  // Before mount the save, the clock and the write outcome are all unknown, so every branch below
+  // (the label, the icon, the border colour) holds still rather than guessing.
   const ago = savedAgo(savedAt, now)
-  const full = failed ? 'Not saving' : autosave ? `Saved ${ago}` : `Autosave off · saved ${ago}`
-  const short = failed ? 'No save' : ago
-  const tip = saveStatusTip({ autosave, failed, status: failed ? undefined : `Saved ${ago}` })
+  const warn = mounted && failed
+  const quiet = mounted && !failed && !autosave
+  const full = !mounted ? PLACEHOLDER : failed ? 'Not saving' : autosave ? `Saved ${ago}` : `Autosave off · saved ${ago}`
+  const short = !mounted ? PLACEHOLDER : failed ? 'No save' : ago
+  const tip = saveStatusTip({ autosave, failed, status: mounted && !failed ? `Saved ${ago}` : undefined })
 
   return (
     <Tooltip {...tip} side="bottom">
@@ -92,11 +106,11 @@ export function SaveStatus({ motionOff = false }: { motionOff?: boolean }) {
         aria-label={`${full}. Open settings.`}
         className={cn(
           'hidden h-9 shrink-0 items-center gap-1.5 rounded-comfy border border-charcoal-400 bg-charcoal-600 px-2 text-[11px] font-semibold whitespace-nowrap tabular-nums transition-colors hover:border-charcoal-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400 lg:inline-flex',
-          failed ? 'border-slot-vae/60 text-slot-vae' : autosave ? 'text-smoke-600 hover:text-smoke-100' : 'border-credits/60 text-credits',
+          warn ? 'border-slot-vae/60 text-slot-vae' : quiet ? 'border-credits/60 text-credits' : 'text-smoke-600 hover:text-smoke-100',
         )}
       >
         <motion.span aria-hidden="true" animate={pop} className="inline-flex shrink-0">
-          {failed ? <TriangleAlert size={14} /> : <HardDriveDownload size={14} className={autosave ? 'text-slot-mask' : 'text-credits'} />}
+          {warn ? <TriangleAlert size={14} /> : <HardDriveDownload size={14} className={quiet ? 'text-credits' : 'text-slot-mask'} />}
         </motion.span>
         <span className="hidden 2xl:inline">{full}</span>
         <span className="2xl:hidden">{short}</span>

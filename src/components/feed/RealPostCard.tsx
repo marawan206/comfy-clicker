@@ -32,7 +32,11 @@ function XMark({ size = 14, className }: { size?: number; className?: string }) 
   )
 }
 
-/** A real post from the wire. Non-interactive except the link-out; sapphire stripe marks it as real. */
+/**
+ * A real post from the wire. Non-interactive except the link-out; the sapphire stripe marks it as
+ * real. Sapphire is a border and background colour here: the verified badge uses `sapphire-300`,
+ * the foreground tint, because `sapphire-700` on the card is 1.70:1 and the tick vanishes.
+ */
 export const RealPostCard = memo(function RealPostCard({ item }: Props) {
   return item.source === 'x' ? <XCard item={item} /> : <CompactCard item={item} />
 })
@@ -49,7 +53,7 @@ function XCard({ item }: Props) {
             <div className="flex min-w-0 flex-col leading-tight">
               <span className="inline-flex items-center gap-1 truncate text-sm font-semibold text-smoke-100">
                 <span className="truncate">{item.author}</span>
-                {item.verified ? <BadgeCheck size={14} className="shrink-0 text-sapphire-700 fill-sapphire-700/20" aria-label="Verified" /> : null}
+                {item.verified ? <BadgeCheck size={14} className="shrink-0 text-sapphire-300 fill-sapphire-700/20" aria-label="Verified" /> : null}
               </span>
               <span className="truncate text-xs text-smoke-800">@{item.handle}</span>
             </div>
@@ -77,7 +81,7 @@ function CompactCard({ item }: Props) {
             {platform.label}
           </span>
           <span className="truncate text-sm font-semibold text-smoke-100">{item.author}</span>
-          {item.verified ? <BadgeCheck size={13} className="shrink-0 text-sapphire-700" aria-label="Verified" /> : null}
+          {item.verified ? <BadgeCheck size={13} className="shrink-0 text-sapphire-300" aria-label="Verified" /> : null}
           <LinkOut href={item.url} label={`Open on ${platform.label}`} className="ml-auto">
             <ExternalLink size={14} />
           </LinkOut>

@@ -9,6 +9,7 @@ import { NumberTicker } from '@/components/common/NumberTicker'
 import { Panel, type Stripe } from '@/components/common/Panel'
 import { DotGrid } from '@/components/layout/DotGrid'
 import { formatCps, formatNum } from '@/game/format'
+import { useDisplayFlags } from '@/hooks/useDisplayFlags'
 import { cn } from '@/lib/utils'
 import { useGame } from '@/state/useGame'
 
@@ -41,8 +42,9 @@ const ENTER = { type: 'spring', stiffness: 260, damping: 26 } as const
  */
 export function RoutePage({ icon: Icon, stripe, eyebrow, title, lede, stats, children }: RoutePageProps) {
   const os = useReducedMotion()
-  const setting = useGame((s) => s.settings.reducedMotion)
-  const instant = Boolean(os) || setting
+  // The in-game display toggles have to reach this route too: the hook puts them on <html>.
+  const { reducedMotion } = useDisplayFlags()
+  const instant = Boolean(os) || reducedMotion
 
   return (
     <>
@@ -142,7 +144,9 @@ const STRIPE_TEXT: Record<Stripe, string> = {
   vae: 'text-slot-vae',
   mask: 'text-slot-mask',
   electric: 'text-electric-400',
-  sapphire: 'text-sapphire-700',
+  // sapphire-700 is a background/border colour: as a foreground on charcoal it is 1.70:1 and
+  // the glyph disappears. sapphire-300 is the foreground tint (5.09:1 on charcoal-600).
+  sapphire: 'text-sapphire-300',
   none: 'text-smoke-600',
 }
 

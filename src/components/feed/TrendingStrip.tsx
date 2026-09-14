@@ -1,11 +1,12 @@
 'use client'
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Flame, Radio, TrendingUp } from 'lucide-react'
 import { useGameEvents, useGameStore } from '@/state/useGame'
 import { TRENDING_WEIGHTS } from '@/game/constants'
 import { msUntilRollover, weekPeriodMs } from '@/game/hashtags'
 import { formatDuration } from '@/game/format'
+import { useMounted } from '@/hooks/useMounted'
 import { useNow } from '@/hooks/useNow'
 import {
   pickHashtag,
@@ -21,7 +22,6 @@ import { cn } from '@/lib/utils'
 
 const RING_R = 9
 const RING_C = 2 * Math.PI * RING_R
-const noSubscribe = (): (() => void) => () => {}
 
 const DOT: Record<TrendingTone, string> = {
   live: 'bg-sapphire-700',
@@ -137,7 +137,7 @@ export function TrendingStrip() {
 function Countdown({ weekSpeed }: { weekSpeed: number }) {
   const now = useNow(250)
   // The clock only exists on the client; the server render shows an empty ring so hydration matches.
-  const mounted = useSyncExternalStore(noSubscribe, () => true, () => false)
+  const mounted = useMounted()
   const period = weekPeriodMs(weekSpeed)
   const left = mounted ? msUntilRollover(now, weekSpeed) : period
   const progress = 1 - left / period
