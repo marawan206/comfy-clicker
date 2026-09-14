@@ -3,6 +3,10 @@
  * Bottom-right toast stack. Shows the first TOAST_MAX_VISIBLE queued toasts, slides them in with a
  * spring, auto-dismisses each TOAST_DURATION_MS after it becomes visible (paused while hovered),
  * and lets the pointer dismiss early.
+ *
+ * A card is keyed by its toast id, so a same-key toast refreshed in the bus updates this card in
+ * place instead of animating a new one in: the timer re-arms from `refreshedAt` and the sound
+ * stays on the first appearance.
  */
 import { memo, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -53,6 +57,8 @@ const ToastCard = memo(function ToastCard({ toast, reduced }: { toast: Toast; re
   const remaining = useRef(toast.durationMs)
   const startedAt = useRef(0)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** The pointer is over the card: the clock stays paused, refresh or no refresh. */
+  const hovering = useRef(false)
 
   // One cue per card, when it becomes visible. `sound: false` is how an engine-event toast stays
   // quiet: the event itself already sounded.
@@ -61,25 +67,28 @@ const ToastCard = memo(function ToastCard({ toast, reduced }: { toast: Toast; re
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one cue per card, keyed by its id
   }, [toast.id])
 
-  // Auto-dismiss runs from the moment the card is visible; hovering pauses it.
+  // Auto-dismiss runs from the moment the card is visible; hovering pauses it. A refresh (the same
+  // key raised again) restarts the clock at the full duration rather than letting the card expire
+  // on the first press's timer.
   useEffect(() => {
-    const arm = () => {
-      startedAt.current = Date.now()
-      timer.current = setTimeout(() => dismissToast(toast.id), remaining.current)
-    }
-    arm()
+    remaining.current = toast.durationMs
+    if (hovering.current) return
+    startedAt.current = Date.now()
+    timer.current = setTimeout(() => dismissToast(toast.id), remaining.current)
     return () => {
       if (timer.current) clearTimeout(timer.current)
     }
-  }, [toast.id])
+  }, [toast.id, toast.refreshedAt, toast.durationMs])
 
   const pause = () => {
+    hovering.current = true
     if (!timer.current) return
     clearTimeout(timer.current)
     timer.current = null
     remaining.current = Math.max(600, remaining.current - (Date.now() - startedAt.current))
   }
   const resume = () => {
+    hovering.current = false
     if (timer.current) return
     startedAt.current = Date.now()
     timer.current = setTimeout(() => dismissToast(toast.id), remaining.current)
