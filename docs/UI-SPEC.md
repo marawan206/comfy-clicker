@@ -7,8 +7,8 @@ use `next/image` for `/brand/*.svg` in `public/brand`, and inline the few we rec
 
 ## State access
 `src/state/useGame.ts`: `useGame(selector, equals?)`, `useGameShallow(selector)`, `useGameStore()`, `useGameLifecycle()`, `useGameEvents(handler)`.
-`src/state/store.ts` exposes actions: `click, buyHardware(id, n|'max'), buyUpgrade, unlockMapNode, quantize, setupModel, trainLora, queueJob, claimContract, claimDaily, rebrand, resolveEvent, upscalePost, toggleSetting, setFlag, setWeekOverride, setLiveTrending, hardReset, replaceState, save, dismissOffline`.
-Game formulas/helpers: `src/game/*` (see CONTRACT.md). UI never re-implements math; it calls `unitCost`, `bulkCost`, `maxAffordable`, `paybackSec`, `canBuy`, `lockReason`, `runnableHardware`, `bestRunnable`, `genTimeMs`, `jobCost`, `quantFee`, `setupFee`, `currentTrending`, `msUntilRollover`, `matchTags`, `trendMult`, `likesAt`, `mapNodeAvailable`, `canAffordNode`, `rebrandCp`, `canRebrand`, `canClaim` (daily), `isUnlocked`, formatters from `format.ts`.
+`src/state/store.ts` exposes actions: `click, buyHardware(id, n|'max'), buyUpgrade, unlockMapNode, quantize, setupModel, trainLora, queueJob, claimContract, claimDaily, spin(wager|'free'), rebrand, resolveEvent, upscalePost, toggleSetting, setFlag, grantGift, declineGift, completeTutorial, setWeekOverride, setLiveTrending, hardReset, replaceState, save(reason), dismissOffline`, and the public fields `savedAt`, `saveReason`, `saveError`, `leader`, `saveOwner`, `offlineReport`.
+Game formulas/helpers: `src/game/*` (see CONTRACT.md). UI never re-implements math; it calls `unitCost`, `bulkCost`, `maxAffordable`, `paybackSec`, `canBuy`, `lockReason`, `runnableHardware`, `bestRunnable`, `genTimeMs`, `jobCost`, `quantFee`, `setupFee`, `currentTrending`, `msUntilRollover`, `matchTags`, `mismatchedTypeTags`, `trendMult`, `likesAt`, `mapNodeAvailable`, `canAffordNode`, `rebrandCp`, `canRebrand`, `canClaim` (daily), `isUnlocked`, `playerLevel`, `levelProgress`, `levelTitle`, `modelLevelLock`, `modelsUnlockedAt`, `nextGoal`, `nextAchievements`, `condProgress`, `saveTarget`, `canSpin`, `wagerBounds`, `spinEv`, `msUntilSpin`, `explainRun`/`explainBuy`/`describeCause`, formatters from `format.ts`.
 All game components are client components (`'use client'`). Selectors must return primitives or small objects with `useGameShallow`. The counter/cps/power meter may update at 20 Hz; lists (store rows, feed) must select stable slices (counts, ids, affordability booleans) so they re-render only on change.
 
 ## Visual language (identity, not Cookie Clicker's)
@@ -22,25 +22,80 @@ All game components are client components (`'use client'`). Selectors must retur
 
 ## Layout (desktop ≥ 1280; stacks below 1024)
 ```
-Header (64px): [Comfy logo 32] Comfy Clicker | ◆ 12,480 credits  +47.2/s  ⚡ 640/650 W  ⚇ 3 signups  🔥 day 4 | Map · Hub · Board · Contracts | account · settings
+Header (64px): [Comfy logo 32] Comfy Clicker | LV 4  ◆ 12,480 credits  +47.2/s  ⚡ 640/650 W  ⚇ 3 signups  🔥 day 4 | Map · Hub · Board · Seed | ? · Stats · Settings · Projector | SaveStatus · account
 Ticker (32px): "COMFY WIRE" pill + marquee of real posts and in-game news lines
 Grid: minmax(320px,1fr) | minmax(0,2fr) | minmax(300px,1fr), gap 16px, padding 16px, min-h 0 so columns scroll internally
-LEFT   HeroPanel (logo button 260–300px, aura, ripple, floating +N, click combo, click value line), FlagshipRig (best owned unit art, VRAM, "can run: SDXL, Flux (FP8)"), PowerMeter (draw/budget bar, throttle warning + buy PSU shortcut), QueueMini (running jobs), DailyStreak chip
+LEFT   HeroPanel (logo button 260–300px, aura, ripple, floating +N, click combo, click value line), NextUpPanel (goal row + nearest achievement row), FlagshipRig (best owned unit art, VRAM, "can run: SDXL, Flux (FP8)"), PowerMeter (draw/budget bar, throttle warning + buy PSU shortcut), QueueMini (running jobs), DailyStreak chip
 CENTER Tabs: Studio | Feed | Contracts (default Studio when a model is available)
          RackPanel (owned hardware rows: art, name, count, per-unit cps, shelf of mini icons; family grouping), collapsible, max-h 40vh
          StudioPanel: model chips (owned/lockable with reason; quantize button), precision toggle (native/fp8/q4 with EV hint), prompt textarea + PromptChips, HashtagPicker (≤3; trending highlighted with weight; "spam" warning at 3 trending), cost/ETA line ("1,240 credits · 12 s of income · 8 s on RTX 4090"), Generate post button, QueueList (ComfyUI-style striped progress bars with model vendor icon)
          TrendingStrip: "Trending this week" 3 chips + countdown ring + "(AI weeks are 10 minutes)"
          FeedPanel: PostCard (thumb via Art, caption=prompt, hashtags, LikesCounter beating heart, "+◆ N" ring, breakdown "1,240 likes × 3.2 = 3,968", BLEW UP ribbon, FLOP tag, Q4 chip, upscale button), RealPostCard (initials/logo avatar, name, platform chip, text, likes, link-out; sapphire stripe), interleaved 1 real per 3 player posts
 RIGHT  StorePanel tabs: Hardware (family sub-tabs as chips: CPU/Apple/NVIDIA/AMD/Workstation/Datacenter/Cloud/Regions; BuyAmount 1/10/100/Max; rows: art well, name, price with credits icon, +cps, payback, owned count; affordable/unaffordable/locked states; save-for bar "Next: RTX 4090 in 0:48"), Upgrades (grouped by category; unlocked-but-unaffordable dimmed; tooltip), Models (cards with vendor icon, kind badge, VRAM bar vs best card, lock reason, setup fee, quantize FP8/Q4 with fee), Power (PSU/cooling rows + meter)
-Overlays: AchievementToast queue (bottom-right), EventBanner (top-center: Model Drop, Node Broke [click to fix], Spot Reclaimed, Power Surge, Cloud Promo), TrendingSpark (floating clickable # badge for 8 s), WelcomeBackModal (offline report), DailyModal (7-day calendar), RebrandModal, SettingsModal (save/export/import/reset, sfx, particles, reduced motion, projector), StatsModal, AuthSheet (later), FxCanvas (full-screen, pointer-events none)
+Overlays: AchievementToast queue (bottom-right), EventBanner (top-center: Model Drop, Node Broke [click to fix], Spot Reclaimed, Power Surge, Cloud Promo), TrendingSpark (floating clickable # badge for 8 s), LevelUpBanner (centred card), WelcomeBackModal (offline report), DailyModal (7-day calendar), RebrandModal, SeedModal (Seed Roulette), SettingsModal (save/export/import/reset, sfx, particles, reduced motion, projector), StatsModal, GuidanceHost (one anchored lock popover), AuthSheet + FounderGiftModal + UsernameModal (owned by AccountMenu), Tutorial (GameShell only), FxCanvas (full-screen, pointer-events none)
 Routes: `/` game, `/map` (The Graph), `/hub` (ComfyHub), `/leaderboard`, `/auth/*`. Map/Hub/Leaderboard are pages that keep the game store alive (store is a module singleton; `useGameLifecycle` in the root layout's client provider).
 ```
+
+## Z-index ladder (do not break it)
+One ladder, in ascending order, and every new layer has to declare which rung it is on:
+FX canvas `z-50` · trending spark `z-[60]` · Spaghetti Mode noodles `z-[65]` and its banner `z-[66]` ·
+event banners and the LevelUpBanner `z-[70]`, the tutorial dim `z-[70]` and its bubble `z-[71]` ·
+the Comfy wave `z-[75]` · modals and toasts `z-[80]` · tooltips and guidance popovers `z-[85]`.
+Tooltips and guidance sit **above** modals on purpose: a tooltip on a control inside a dialog must
+not be clipped by the dialog. Everything below 50 is in-panel stacking (`z-0`, `z-10`, `z-20`) and
+must stay there.
 
 ## FX layer (`src/components/fx/FxCanvas.tsx`)
 One `<canvas>` sized to the viewport (devicePixelRatio aware), plain arrays: floating numbers (text, x, y, vy, ttl, colour), diamond particles (credits icon pre-rasterised to an offscreen canvas at 12 px amber), credit rain (density = clamp(log10(cps) × 8, 0, 60) sprites falling behind the UI at 25 % opacity, confined to the left column), confetti (120 particles, electric/sapphire/white/pink) on `postResolved viral`, screen flash on `achievement`/`milestone`. Subscribes with `useGameEvents`; caps 300 live particles; pauses when `document.hidden`; disabled by `settings.particles=false` or reduced motion.
 
 ## Hero button (`src/components/hero/GenerateButton.tsx`)
 The Comfy logo (`/brand/comfy-logo.svg`) 260 px inside a 300 px rounded square with an animated conic aura behind (rotation speed ∝ log10(cps)); pointerdown → spring scale 0.94 → 1.04 → 1; ripple ring in electric; each click: `store.click()`, spawn floating `+{formatNum(value)}` at the pointer, 3–6 diamond particles; hold-to-repeat is NOT allowed (one click = one event), keyboard Space triggers a click when focus is not in an input. Under it: a Run-style pill "Generate" and a rotating flavor line (`CLICK_LINES`), and combo counter (clicks with ≤ 400 ms gaps; milestones at 10/25/50 show "combo ×N").
+
+## Tooltips (`src/components/common/Tooltip.tsx`)
+One tooltip for the whole game, on `@base-ui/react/tooltip`. `TooltipProviderRoot` (delay 350, closeDelay 0, timeout 300) is mounted once in `GameProvider`, so every route shares one delay group and moving between two tooltips inside 300 ms opens the second instantly.
+```ts
+interface TooltipProps {
+  title?: ReactNode; description?: ReactNode
+  cost?: { credits?: number; rp?: number; cp?: number; have?: number }
+  meta?: ReactNode; lock?: string | null; shortcut?: string
+  tone?: 'default' | 'electric' | 'locked' | 'credits'
+  side?: 'top' | 'bottom' | 'left' | 'right'; align?: 'start' | 'center' | 'end'
+  delay?: number; disabled?: boolean; children: ReactElement
+}
+function Tip({ text, children, ...rest })   // one-line shorthand
+```
+Popup: `z-[85] max-w-[280px] rounded-xl border-2 border-charcoal-400 bg-charcoal-700 px-3 py-2 text-left shadow-[0_4px_0_#0e0e0f]`, `sideOffset 8`, collision padding 12, no arrow. The child renders as the trigger itself (no wrapper element), so keep its `aria-label` and **delete the `title=` it used to carry**. The cost row prints credits in amber with `· have N` in `slot-vae` when the player is short, then RP in electric and CP in `slot-latent`; `shortcut` renders as a `<kbd>`. A `Tooltip` whose slots are all empty (or with `disabled`) returns its child untouched, so a copy builder that came back empty costs nothing and never shows a bare box.
+Text only, never a button: an actionable lock is the guidance popover's job. Copy lives in `src/components/common/tooltipCopy.ts` as pure builders (`<Tooltip {...hardwareRowTip(def, row)}>`), which is what makes it testable and what keeps two surfaces from describing the same thing differently.
+
+## Guidance popover (`src/components/guidance/`)
+The answer to "I clicked something locked and nothing happened". The engine supplies the reason (`src/game/guidance.ts`, `LockCause` + `describeCause`); the UI supplies the route out.
+- `lockGuide.ts` (pure): `GuideAction = { type: 'store'; tab; family?; focusId? } | { type: 'map'; nodeId } | { type: 'center'; tab } | { type: 'modal'; id } | { type: 'hero' } | { type: 'act'; label; run }`, and `stepsFor(causes, store, subject?) → GuideSpec { subject, why, steps }` with at most three steps, each `{ label, detail?, cost?, currency?, etaSec?, action?, alt? }`.
+- `GuidanceHost.tsx` is a **bus**, not a component tree: any surface calls `guide(anchorEl, spec)` (or `guideCauses` / `guideCause`) and the single host, mounted in `Overlays`, anchors itself there. Nothing threads props and only one explanation is ever on screen. A null anchor or an empty spec closes it instead, so a caller can hand over whatever the engine said without checking first.
+- Chrome: 320 px, `rounded-2xl border-2 border-charcoal-400 border-l-4 border-l-slot-vae bg-charcoal-600`, hard shadow plus a soft drop, portal at `z-[85]`, `sideOffset 8`, collision padding 12. Header `Locked · FLUX.1 dev` in a `SectionLabel` (uppercase), the why line, an `<ol>` of steps with the primary `ModalButton size="sm"` on the recommended one and alternatives as electric link rows, and `Got it`.
+- Esc, an outside press, any action taken, and a `purchase` or `upgrade` event all close it (the row underneath may unmount).
+- `navigate.ts` runs an action: same route uses the existing window events (`comfy:store-tab` with `{ tab, family?, focusId? }`, `comfy:center-tab`, `comfy:map-focus`, `comfy:open-modal`); cross route parks the request in `sessionStorage['comfy-clicker:goto']` and pushes, and `GraphMap` / `StorePanel` consume it exactly once. `useHighlight` in `storeHooks.ts` scrolls the target row in and rings it electric for a moment on arrival.
+
+## Nav tiles (`src/components/layout/navMeta.ts`, `navBadges.ts`, `NavTile.tsx`)
+Destination tiles, not grey glyphs. Order `Map · Hub · Board · Seed | ? · Stats · Settings · Projector`, divider between `seed` and `help`.
+Chrome: `h-9 rounded-comfy border border-charcoal-400 bg-charcoal-600 px-2.5 gap-1.5`, 16 px icon in the tile's tint, label `text-[11px] font-bold uppercase tracking-[0.08em]`. Hover puts the tint at 60 % on the border; the active route gets the tint at 15 % behind it and a 2 px bottom bar that springs between tiles on one shared `layoutId`; `whileTap scale 0.94` behind the reduced-motion guard. Route tiles keep their label from `xl`, utility tiles from `2xl`, and every collapsed tile is `w-9 justify-center` with an `aria-label` and its tooltip.
+Tints, written as **literal class strings** because Tailwind scans source (never build one at runtime): Map electric-400, Hub `#7f8dff`, Board credits amber, Seed slot-latent, Stats slot-image, Settings slot-cond, Help and Projector smoke-600.
+Badges are `h-4 min-w-4 rounded-[0.354em]` in the tint on `text-charcoal-800`, capped at `9+` (`BADGE_CAP = 9`), with `overflow-visible` on the nav so the overhang never clips; Board shows literal text (`#12`), Seed and Help show a bare dot. Sources: affordable Graph nodes, unseen hub runs, a rank cache with a 60 minute TTL, achievements since the Stats modal was last opened.
+"New" dots pulse only when a destination is unvisited **and** useful (`shouldPulse`), and at most `MAX_PULSES = 2` at a time.
+
+## NextUpPanel (`src/components/hero/NextUpPanel.tsx`)
+`Panel stripe="mask" title="Next up"` between `HeroPanel` and `FlagshipRig`, two rows: the current `nextGoal` (28 px `Art` or glyph, label, electric bar, an ETA or a `Go` button) and the nearest entry from `nextAchievements` (glyph, name, `9,120 / 10,000 likes`, a thin bar that turns electric with an `ALMOST` kicker at 90 %). Selectors return strings (`goalKey` plus the whole-number percent, `id:pct`) so the 20 Hz loop re-renders the panel only when a percent moves, and the views are `useMemo`d on those strings. A finished row holds a done state for 900 ms with a check, an electric border and an `fx.burst` before the next candidate slides in. `Go` routes through the same `GuideAction` vocabulary as the guidance popover.
+
+## LevelUpBanner (`src/components/overlays/LevelUpBanner.tsx`)
+Centred card at `z-[70]`, mounted in `Overlays` so a level earned on `/map` is still announced where it happened. Kicker `LEVEL UP`, the number in extrabold, the title from `levelTitle`, the newly unlocked models as `Art` tiles, `+N credits` in amber, and `Show me` (opens the Models tab focused on the first unlock) plus `Later`. `settleLevelUps` emits one event per level, so two crossings a frame apart **merge** into one card reading `Level 4 to 6` with the credits summed and the tiles concatenated, rather than stacking two cards. Auto-dismisses after `LEVEL_UP_MS = 5 000`, click dismisses. Confetti and the electric flash belong to `FxCanvas`, which maps `levelUp` itself; this file never fires FX.
+
+## SeedModal (`src/components/overlays/SeedModal.tsx`)
+`ModalBase` dressed as a KSampler node, opened by the header `Seed` tile. Widget rows: `seed` (an odometer that scrambles then settles, instant under reduced motion), `control_after_generate` (`randomize`, or `fixed` once the sampler is hot), `steps` (the wager, with presets in seconds of income), `denoise` (the pity meter as three pips). Under them the seven segments scroll past a fixed marker.
+Two rules the file exists to keep. **The odds are printed before the bet**: the full table with each segment's probability and what it would pay at the current wager is on screen at all times, and the footer always reads `EV +3.8% · one spin every 3 minutes · one free spin a day · you can lose the whole wager`. **The engine decides**: every spin goes through `canSpin` first and the button is disabled with the engine's own rejection string, never a paraphrase.
+
+## Tutorial layer (`src/components/overlays/Tutorial.tsx`)
+Mounted by `GameShell`, not `Overlays`, because its anchors only exist on the workbench. Six steps against `data-tour` attributes (`generate`, `studio-generate`, `center-tab-feed`, `store-buy` falling back to `store`, `trending`, `nav`).
+The dim is a `fixed inset-0 z-[70] pointer-events-none` SVG mask: white full rect, black rounded rect (radius 16) over the target inflated by 8 px, a `charcoal-800` rect at 0.72 opacity through the mask, and a 2 px electric stroke around the cutout. The cutout is a `motion.rect` springing (380/34) between steps, instant under reduced motion. The bubble is 300 px of Panel chrome at `z-[71]` titled `Tutorial · 3 / 6` (uppercase by the panel header style), with six progress dots, `Skip tour` in the header, and either the step's `Next`/`Done` button or a breathing "do it to continue" hint, and it never sits in the bottom-right block the toasts own.
+**Nothing about it is modal**: the whole overlay is pointer-events-none apart from its own two buttons, action steps complete when the player does the thing, and a step already satisfied completes on entry, so wandering only shortens the tour. Targets are re-measured every 500 ms and on resize plus capture-phase scroll; an anchor missing for 2 s auto-skips its step; the tour hides while any `[role="dialog"][aria-modal="true"]` is in the DOM. The step cursor is `localStorage['comfy-clicker:tour']` behind `src/state/tourStore.ts`; "has been taught" is `flags['tutorial-done']` on the game state, so it travels with the cloud save.
 
 ## Performance rules
 - Selectors return primitives; heavy lists memoise rows by id; use `content-visibility: auto` on long lists; feed capped at 60 cards; `React.memo` on row components; never map over `state.posts` inside the 20 Hz counter component.

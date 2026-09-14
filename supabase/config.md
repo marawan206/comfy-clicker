@@ -12,8 +12,11 @@ royalty routes and the daily route's writes) moves `hub_runs` / `daily_logins` w
 the service role, adds the royalty ledger and `claim_hub_royalties()`; `0004_profiles.sql`
 (required by the username picker) adds `profiles.handle_changed_at`, teaches
 `handle_new_user()` to honour the handle the create-account form asked for, and adds the
-`profiles_guard_handle()` rename gate. `0002_feed_cron.sql` is optional (pg_cron for the
-feed) and needs its placeholders replaced. Apply in order: 0001, 0003, 0004.
+`profiles_guard_handle()` rename gate; `0005_hardening.sql` (apply after 0004) makes the
+`hub_workflows` counters server-owned on INSERT as well as UPDATE, pins `handle_changed_at`
+for user JWTs so the one-rename-a-day cooldown cannot be cleared, and gives both handle
+functions the client's full reserved-name list. `0002_feed_cron.sql` is optional (pg_cron for
+the feed) and needs its placeholders replaced. Apply in order: 0001, 0003, 0004, 0005.
 
 ### Option A: Supabase MCP (recommended from Claude Code)
 
