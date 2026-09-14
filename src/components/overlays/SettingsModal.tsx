@@ -5,7 +5,8 @@
  * `html.projector` / `html.reduced-motion` mirrors follow automatically.
  */
 import { useId, useState, type ReactNode } from 'react'
-import { Check, ClipboardCopy, Download, Info, Monitor, Save, Sparkles, Trash2, Upload, Volume2, Waves } from 'lucide-react'
+import { Check, ClipboardCopy, Download, GraduationCap, HardDriveDownload, Info, Monitor, Play, Save, Sparkles, Trash2, Upload, Volume2, Waves } from 'lucide-react'
+import { getSfxVolume, playCue, setSfxVolume } from '@/audio/sfxEngine'
 import { cn } from '@/lib/utils'
 import { useCloudSync } from '@/components/auth/useAuth'
 import { HoldToConfirm, ModalBase, ModalButton, SectionLabel } from '@/components/overlays/ModalBase'
@@ -42,6 +43,13 @@ const TOGGLES: ToggleDef[] = [
   { key: 'projector', label: 'Projector mode', hint: 'Bigger type and panels for the back row.', icon: <Monitor size={16} /> },
 ]
 
+const SAVE_TOGGLE: ToggleDef = {
+  key: 'autosave',
+  label: 'Autosave',
+  hint: 'Every 10 s, a moment after any purchase or unlock, and when the tab hides. S saves any time.',
+  icon: <HardDriveDownload size={16} />,
+}
+
 function SettingsBody({ onClose }: { onClose: () => void }) {
   const store = useGameStore()
   const settings = useGameShallow((s) => ({
@@ -54,8 +62,10 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
   const [exported, setExported] = useState('')
   const [copied, setCopied] = useState(false)
   const [importText, setImportText] = useState('')
+  const [volume, setVolume] = useState(() => Math.round(getSfxVolume() * 100))
   const [importError, setImportError] = useState<string | null>(null)
   const importId = useId()
+  const volumeId = useId()
   // Signed in: whatever replaces this run is uploaded within the minute, so say so before the click.
   const cloud = useCloudSync() !== 'offline'
 
@@ -112,13 +122,42 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
         </SectionLabel>
         <ul className="divide-y divide-charcoal-400/70 overflow-hidden rounded-xl border border-charcoal-400 bg-charcoal-700/40">
           {TOGGLES.map((t) => (
-            <li key={t.key} className="flex items-center gap-3 px-3 py-2.5">
-              <span className="grid size-8 shrink-0 place-items-center rounded-comfy bg-charcoal-700 text-smoke-600">{t.icon}</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-smoke-100">{t.label}</p>
-                <p className="text-xs text-smoke-600">{t.hint}</p>
+            <li key={t.key} className="px-3 py-2.5">
+              <div className="flex items-center gap-3">
+                <span className="grid size-8 shrink-0 place-items-center rounded-comfy bg-charcoal-700 text-smoke-600">{t.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-smoke-100">{t.label}</p>
+                  <p className="text-xs text-smoke-600">{t.hint}</p>
+                </div>
+                <Switch checked={settings[t.key]} label={t.label} onChange={() => store.toggleSetting(t.key)} />
               </div>
-              <Switch checked={settings[t.key]} label={t.label} onChange={() => store.toggleSetting(t.key)} />
+              {t.key === 'sfx' && settings.sfx ? (
+                <div className="mt-2 flex items-center gap-3 pl-11">
+                  <label htmlFor={volumeId} className="text-[11px] font-semibold uppercase tracking-[0.08em] text-smoke-600">
+                    Volume
+                  </label>
+                  <input
+                    id={volumeId}
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={volume}
+                    onChange={(e) => {
+                      const next = Number(e.target.value)
+                      setVolume(next)
+                      setSfxVolume(next / 100)
+                    }}
+                    onPointerUp={() => playCue({ name: 'tick' })}
+                    onKeyUp={() => playCue({ name: 'tick' })}
+                    className="h-1 flex-1 cursor-pointer accent-electric-400"
+                  />
+                  <span className="w-8 text-right text-xs tabular-nums text-smoke-600">{volume}</span>
+                  <ModalButton size="sm" onClick={() => playCue({ name: 'achievement' })}>
+                    <Play size={13} />
+                    Test
+                  </ModalButton>
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -137,6 +176,18 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
             <Download size={15} />
             Export code
           </ModalButton>
+        </div>
+        <div className="mt-2 flex items-center gap-3 rounded-xl border border-charcoal-400 bg-charcoal-700/40 px-3 py-2.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-comfy bg-charcoal-700 text-smoke-600">{SAVE_TOGGLE.icon}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-smoke-100">{SAVE_TOGGLE.label}</p>
+            <p className="text-xs text-smoke-600">
+              {settings.autosave
+                ? SAVE_TOGGLE.hint
+                : 'Off: only S, Save now, and leaving the tab write the save. Living dangerously.'}
+            </p>
+          </div>
+          <Switch checked={settings.autosave} label={SAVE_TOGGLE.label} onChange={() => store.toggleSetting('autosave')} />
         </div>
         <p className="mt-1.5 text-xs text-smoke-600">Autosaves every {AUTOSAVE_MS / 1000} s and whenever the tab hides. Press S to save any time.</p>
         {exported ? (
@@ -199,6 +250,24 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
             Wipes everything: credits, rigs, the Graph, achievements, CP{cloud ? ', and the cloud save follows within a minute' : ''}. No confirmation dialog after this one. The hold is the dialog.
           </p>
           <HoldToConfirm label="Hold to reset" holdingLabel="Wiping…" holdMs={2000} onConfirm={hardReset} icon={<Trash2 size={15} />} aria-label="Hold for two seconds to erase the save and start over" />
+        </div>
+      </section>
+
+      <section aria-labelledby="settings-help">
+        <SectionLabel className="mb-2">
+          <span id="settings-help">Help</span>
+        </SectionLabel>
+        <div className="flex flex-wrap items-center gap-2">
+          <ModalButton
+            onClick={() => {
+              onClose()
+              window.dispatchEvent(new CustomEvent('comfy:open-modal', { detail: 'help' }))
+            }}
+          >
+            <GraduationCap size={15} />
+            Replay the tutorial
+          </ModalButton>
+          <span className="text-xs text-smoke-600">Six steps, about ninety seconds. The ? in the header does this too.</span>
         </div>
       </section>
 

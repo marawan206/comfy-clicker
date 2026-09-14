@@ -7,6 +7,7 @@
  *   Esc   → `comfy:close-modals` for every overlay
  */
 import { useEffect } from 'react'
+import { trustedInput } from '@/lib/input'
 import { useGameStore } from '@/state/useGame'
 
 export const CLOSE_MODALS_EVENT = 'comfy:close-modals'
@@ -39,6 +40,9 @@ export function useHotkeys(): void {
   const store = useGameStore()
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // A script can dispatch a KeyboardEvent, and Space is a Generate click. The button drops
+      // untrusted pointer events for the same reason; the keyboard path has to agree.
+      if (!trustedInput(e)) return
       if (e.code === 'Escape') {
         window.dispatchEvent(new CustomEvent(CLOSE_MODALS_EVENT))
         return
