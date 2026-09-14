@@ -49,6 +49,20 @@ export const CHANGE_ORDER: readonly ChangeKind[] = ['added', 'changed', 'balance
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '0.2.2',
+    date: '2026-09-14',
+    kind: 'hotfix',
+    title: 'The Lounge in one screen',
+    summary: 'The bet button moved up beside the amount, and the coin waits to land before it says how it went.',
+    changes: [
+      { kind: 'fixed', text: 'The coin flip played its win or loss sound the moment you pressed the button, 0.9 s before the coin landed. The press is now a soft toss and the result sounds when the face shows' },
+      { kind: 'fixed', text: 'Same on the wheel: the sampler ticks while the seed scrambles, the payoff sounds when it settles, and the reel turns during the scramble instead of after it' },
+      { kind: 'fixed', text: 'The bank line, the pity pips, the pot and the win flash all moved the moment you bet. They hold still now until the coin or the seed lands' },
+      { kind: 'changed', text: 'The loss sting was mastered about 13 dB louder than the win chime. It sits at the same level now, in the Lounge and on a ratioed post, and the flop sting comes down with it' },
+      { kind: 'changed', text: 'The bet button sits beside the amount, so nothing needs a scroll to bet. Both tables fit one laptop screen: the wheel keeps its odds beside the seed and the coin sits next to its own line' },
+    ],
+  },
+  {
     version: '0.2.1',
     date: '2026-09-14',
     kind: 'hotfix',

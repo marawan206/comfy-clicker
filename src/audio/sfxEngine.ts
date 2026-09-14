@@ -27,6 +27,7 @@ import {
   MAX_VOICES,
   MIN_GAP_MS,
   RECIPES,
+  SAMPLE_TRIM,
   sfxUrl,
   type Cue,
   type Recipe,
@@ -371,6 +372,8 @@ function playName(ac: AudioContext, bus: GainNode, name: SfxName, rate: number, 
   let last: AudioScheduledSourceNode | null
   let length: number
   if (sample) {
+    // The trim corrects a file mastered off the rest of the set; the recipe below is already level.
+    voiceGain.gain.value = gain * (SAMPLE_TRIM[name] ?? 1)
     const src = ac.createBufferSource()
     src.buffer = sample
     src.playbackRate.value = rate

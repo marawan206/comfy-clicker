@@ -1,29 +1,39 @@
 'use client'
 /**
- * The Latent Lounge: two tables, one bet control.
+ * The Latent Lounge: two tables, one bet bar.
  *
  * **Wheel** is the KSampler spin, dressed as a node: `control_after_generate` says whether the
  * sampler has gone hot, `denoise` is the pity meter, and the reel scrolls the seven segments past
  * a fixed marker. **Coin** is one flip against the house, your side against Comfy's.
  *
- * Three rules this file exists to keep:
+ * Four rules this file exists to keep:
  * 1. **The odds are printed before the bet.** The wheel's table and the coin's two chances are
  *    always on screen. That is the whole difference between a game and a trap.
  * 2. **The bet is a number of credits.** A slider and a box, both showing the same figure, plus
- *    four plain shortcuts. No seconds of income, no tiers, no cooldown to wait out.
+ *    six plain shortcuts, with the button that places it right beside them so nothing needs a
+ *    scroll. No seconds of income, no tiers, no cooldown to wait out.
  * 3. **The engine decides.** Every bet goes through `canBet` first and the button carries the
  *    engine's own refusal, so `store.spin` / `store.flip` is never called on a bet the engine
  *    would refuse.
+ * 4. **Nothing gives the result away early.** The engine knows the outcome the instant the bet is
+ *    placed; the screen and the speakers find out together, when the seed settles or the coin
+ *    lands. The event-time sound is only the toss or the ticking reel; the payoff cue
+ *    (`cueForLanding`), the win flash and the confetti all fire from here in the same frame as
+ *    the result line; and every figure the engine moved at the press (the bank, the pity pips,
+ *    the hot sampler, the pot, the lifetime net) is held at its pre-bet value until then.
  *
  * The house edge lives in the footer, always visible, never behind a disclosure.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useIsPresent } from 'motion/react'
 import { CircleDollarSign, Dices } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { playCue } from '@/audio/sfxEngine'
+import { cueForLanding } from '@/audio/sfxMap'
 import { ComfyMark } from '@/components/brand/ComfyMark'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { fx } from '@/components/fx/fxBus'
+import { FLIP_MS, SCRAMBLE_MS } from '@/components/overlays/loungeTiming'
 import { ModalBase, ModalButton, SectionLabel, useReducedMotionPref } from '@/components/overlays/ModalBase'
 import { BET_MIN, COIN_PAYOUT, COIN_WIN_CHANCE, LOUNGE_MIN_LEVEL, SPIN_HOT_MULT, SPIN_PITY_DRY } from '@/game/constants'
 import { formatInt, formatNum, formatPct } from '@/game/format'
@@ -82,15 +92,17 @@ const seedText = (n: number): string => String(Math.abs(Math.floor(n))).padStart
 
 const randomSeed = (): number => Math.floor(Math.random() * 1e8)
 
-/** How long the odometer scrambles before it settles. */
-const SCRAMBLE_MS = 1_600
+/** How often the odometer changes digits while it scrambles (for SCRAMBLE_MS, see loungeTiming). */
 const SCRAMBLE_TICK_MS = 60
 /** Height of one reel row; the strip is translated in whole rows. */
 const ROW_H = 34
 /** Full cycles the reel runs through before it lands. */
 const REEL_CYCLES = 3
-/** How long the coin turns before it shows a face. */
-const FLIP_MS = 900
+/**
+ * The reel turns while the seed scrambles and stops a beat before the seed prints, so the order
+ * on screen is wheel, seed, result line, and the payoff sound arrives with the last of those.
+ */
+const REEL_MS = SCRAMBLE_MS - 150
 const HISTORY_MAX = 8
 /** Multiplier that earns confetti in here; `FxCanvas` uses the same line on the engine event. */
 const JACKPOT_CONFETTI_MULT = 10
@@ -103,12 +115,14 @@ interface Result {
   hot: boolean
   seed: number
   nonce: number
-  /** The segment already under the marker: the reel starts there so it never resets visibly. */
-  from: GambleOutcomeDef
 }
 
-/** A result before the reel knows where it is starting from. */
-type Landing = Omit<Result, 'from'>
+/** One run of the reel: from the segment already under the marker to the one the engine picked. */
+interface ReelRun {
+  from: GambleOutcomeDef
+  to: GambleOutcomeDef
+  nonce: number
+}
 
 interface FlipResult {
   side: 'you' | 'comfy'
@@ -135,7 +149,7 @@ function LoungeBody() {
   const now = useNow(1000)
   const outcomes = store.catalog.gamble
 
-  const s = useGameShallow((state, d) => ({
+  const live = useGameShallow((state, d) => ({
     credits: Math.floor(state.credits),
     min: betBounds(state).min,
     max: betBounds(state).max,
@@ -152,18 +166,30 @@ function LoungeBody() {
   const freeReady = freeSpinAvailable(store.state, now)
 
   const [table, setTable] = useState<TableId>('wheel')
-  const [bet, setBet] = useState(() => Math.max(BET_MIN, Math.min(s.max, 100)))
+  const [bet, setBet] = useState(() => Math.max(BET_MIN, Math.min(live.max, 100)))
   const [result, setResult] = useState<Result | null>(null)
+  const [reel, setReel] = useState<ReelRun | null>(null)
   const [flip, setFlip] = useState<FlipResult | null>(null)
   const [history, setHistory] = useState<HistoryChip[]>([])
   const [rejected, setRejected] = useState<string | null>(null)
   const [seed, setSeed] = useState(() => randomSeed())
   const [busy, setBusy] = useState(false)
+  const [sessionNet, setSessionNet] = useState(0)
+  /** False once the modal has started its exit animation: a landing due then is dropped. */
+  const present = useIsPresent()
+  /**
+   * The figures on screen while a bet is in the air. The engine settles a bet at the press, and
+   * the bank, the pity pips, the hot flag, the pot and the lifetime net would all say how it went
+   * a second and a half before the reel does, so the pre-bet snapshot stays up until it lands.
+   * The button is disabled for the same span, so nothing is ever staked against a stale figure.
+   */
+  const [frozen, setFrozen] = useState(live)
+  const s = busy ? frozen : live
   const reelRef = useRef<HTMLDivElement>(null)
   const coinRef = useRef<HTMLDivElement>(null)
   const nonce = useRef(0)
   /** The result the odometer or the coin settles on once the animation ends. */
-  const pending = useRef<Landing | FlipResult | null>(null)
+  const pending = useRef<Result | FlipResult | null>(null)
 
   // The wager is clamped on read, not corrected in an effect: the bank moves with every tick and
   // with every purchase made elsewhere, and a render that has to wait for a second pass to be
@@ -173,25 +199,30 @@ function LoungeBody() {
   const freeCheck = canBet(store.state, store.derived, now, 'free')
   const locked = s.level < LOUNGE_MIN_LEVEL
 
-  const land = useCallback(
-    (r: Landing) => {
-      setResult((prev) => ({ ...r, from: prev?.outcome ?? (outcomes[0] as GambleOutcomeDef) }))
-      setSeed(r.seed)
-      setBusy(false)
-      const net = r.payout - (r.free ? 0 : r.wager)
-      setHistory((prev) => [...prev, { id: r.outcome.id, label: r.outcome.label, net, nonce: r.nonce }].slice(-HISTORY_MAX))
-      floatNet(reelRef, net)
-      if (r.outcome.mult >= JACKPOT_CONFETTI_MULT) fx.confetti()
-    },
-    [outcomes],
-  )
+  const land = useCallback((r: Result) => {
+    setResult(r)
+    setSeed(r.seed)
+    setBusy(false)
+    const net = r.payout - (r.free ? 0 : r.wager)
+    setHistory((prev) => [...prev, { id: r.outcome.id, label: r.outcome.label, net, nonce: r.nonce }].slice(-HISTORY_MAX))
+    setSessionNet((n) => n + net)
+    floatNet(reelRef, net)
+    // The payoff sounds here, with the result line, and nowhere earlier. It is cued on what was
+    // paid, not on the printed multiplier: a hot x1 pays 1.5x and should not sound like a shrug.
+    playCue(cueForLanding({ table: 'wheel', mult: r.hot ? r.outcome.mult * SPIN_HOT_MULT : r.outcome.mult }))
+    if (r.outcome.mult >= JACKPOT_CONFETTI_MULT) fx.confetti()
+  }, [])
 
   const landFlip = useCallback((r: FlipResult) => {
     setFlip(r)
     setBusy(false)
     const net = r.payout - r.wager
     setHistory((prev) => [...prev, { id: r.side === 'you' ? 'clean' : 'nan', label: r.side === 'you' ? 'Your side' : 'Comfy side', net, nonce: r.nonce }].slice(-HISTORY_MAX))
+    setSessionNet((n) => n + net)
     floatNet(coinRef, net)
+    playCue(cueForLanding({ table: 'coin', won: r.side === 'you' }))
+    // A doubled bet is worth a wash of colour, once the face is showing.
+    if (r.side === 'you') fx.flash()
   }, [])
 
   // The engine is the source of truth for both results: the modal listens for its own events
@@ -201,7 +232,7 @@ function LoungeBody() {
       const outcome = outcomes.find((o) => o.id === event.outcome)
       if (!outcome) return
       nonce.current += 1
-      const r: Landing = {
+      const r: Result = {
         outcome,
         wager: event.wager,
         payout: event.payout,
@@ -211,10 +242,15 @@ function LoungeBody() {
         seed: outcome.id === 's42' ? 42 : randomSeed(),
         nonce: nonce.current,
       }
+      // The reel starts turning now, from the segment it is already showing. It is decorative and
+      // three full cycles long, so where it stops is not readable until it has stopped.
+      setReel((prev) => ({ from: prev?.to ?? (outcomes[0] as GambleOutcomeDef), to: outcome, nonce: nonce.current }))
       if (reduced) {
         land(r)
         return
       }
+      // `live` here is the last rendered snapshot, taken before the engine moved anything.
+      setFrozen(live)
       pending.current = r
       setResult(null)
       setBusy(true)
@@ -227,6 +263,7 @@ function LoungeBody() {
         landFlip(r)
         return
       }
+      setFrozen(live)
       pending.current = r
       setFlip(null)
       setBusy(true)
@@ -234,9 +271,11 @@ function LoungeBody() {
   })
 
   // The animation: 1.6 s of scrambling seed, or 0.9 s of turning coin, then the result lands. One
-  // timer per bet, cleared on unmount so closing the modal mid-spin leaves nothing behind.
+  // timer per bet, cleared the moment the modal starts closing (`present` drops before the exit
+  // fade, ahead of the unmount), so closing mid-spin leaves nothing behind: the credits already
+  // moved and only the reveal and its sound are dropped.
   useEffect(() => {
-    if (!busy) return
+    if (!busy || !present) return
     const coin = pending.current !== null && 'side' in pending.current
     const id = coin ? 0 : window.setInterval(() => setSeed(randomSeed()), SCRAMBLE_TICK_MS)
     const end = window.setTimeout(
@@ -254,7 +293,7 @@ function LoungeBody() {
       if (id) window.clearInterval(id)
       window.clearTimeout(end)
     }
-  }, [busy, land, landFlip])
+  }, [busy, present, land, landFlip])
 
   const place = useCallback(
     (amount: number | 'free', game: TableId) => {
@@ -270,20 +309,45 @@ function LoungeBody() {
     [store],
   )
 
-  const wheelEv = useMemo(() => spinEv(outcomes), [outcomes])
-  const sessionNet = history.reduce((sum, h) => sum + h.net, 0)
-
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <TableTabs table={table} onChange={setTable} disabled={busy} />
 
-      <BetControl
+      <BetBar
         value={wager}
+        draft={bet}
         min={s.min}
         max={s.max}
         credits={s.credits}
         disabled={locked}
         onChange={setBet}
+        status={busy ? null : (rejected ?? (check.ok ? null : check.reason))}
+        actions={
+          <>
+            <ModalButton
+              tone="primary"
+              size="lg"
+              data-autofocus
+              disabled={!check.ok || busy}
+              onClick={() => place(wager, table)}
+              aria-label={check.ok ? `Bet ${formatInt(wager)} credits` : check.reason}
+            >
+              {table === 'coin' ? <CircleDollarSign size={16} aria-hidden="true" /> : <Dices size={16} aria-hidden="true" />}
+              {table === 'coin' ? 'Flip the coin' : 'Queue prompt'}
+            </ModalButton>
+            {table === 'wheel' ? (
+              <ModalButton
+                tone="secondary"
+                size="lg"
+                disabled={!freeCheck.ok || busy}
+                onClick={() => place('free', 'wheel')}
+                title={freeReady ? "Today's free spin is still here." : freeCheck.ok ? undefined : freeCheck.reason}
+              >
+                Free spin · {formatNum(s.free)}
+              </ModalButton>
+            ) : null}
+          </>
+        }
       />
 
       {table === 'wheel' ? (
@@ -296,6 +360,7 @@ function LoungeBody() {
           pity={s.pity}
           pot={s.pot}
           result={result}
+          reel={reel}
           busy={busy}
           reduced={reduced}
           reelRef={reelRef}
@@ -304,68 +369,42 @@ function LoungeBody() {
         <CoinTable wager={wager} flip={flip} busy={busy} reduced={reduced} coinRef={coinRef} />
       )}
 
-      {/* Last eight */}
-      {history.length > 0 ? (
-        <section aria-label="Recent bets" className="flex flex-wrap items-center gap-1.5">
-          <SectionLabel className="mr-1">Last {history.length}</SectionLabel>
-          {history.map((h) => (
-            <span
-              key={h.nonce}
-              title={h.label}
-              className={cn(
-                'rounded-[0.354em] border border-charcoal-400 bg-charcoal-700 px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
-                tintFor(h.id),
-              )}
-            >
-              {h.net >= 0 ? '+' : ''}
-              {formatNum(h.net)}
-            </span>
-          ))}
-          <span className="ml-auto text-[11px] text-smoke-600">
-            session net{' '}
-            <span className={cn('font-extrabold tabular-nums', sessionNet >= 0 ? 'text-credits' : 'text-slot-vae')}>
-              {sessionNet >= 0 ? '+' : ''}
-              {formatNum(sessionNet)}
-            </span>
+      {/* Last eight, and the running totals */}
+      <section aria-label="Recent bets" className="flex flex-wrap items-center gap-1.5 text-[11px] text-smoke-600">
+        {history.length > 0 ? <SectionLabel className="mr-1">Last {history.length}</SectionLabel> : null}
+        {history.map((h) => (
+          <span
+            key={h.nonce}
+            title={h.label}
+            className={cn(
+              'rounded-[0.354em] border border-charcoal-400 bg-charcoal-700 px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+              tintFor(h.id),
+            )}
+          >
+            {h.net >= 0 ? '+' : ''}
+            {formatNum(h.net)}
           </span>
-        </section>
-      ) : null}
-
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-charcoal-400/70 pt-3">
-        <ModalButton
-          tone="primary"
-          size="lg"
-          data-autofocus
-          disabled={!check.ok || busy}
-          onClick={() => place(wager, table)}
-          aria-label={check.ok ? `Bet ${formatInt(wager)} credits` : check.reason}
-        >
-          {table === 'coin' ? <CircleDollarSign size={16} aria-hidden="true" /> : <Dices size={16} aria-hidden="true" />}
-          {table === 'coin' ? 'Flip the coin' : 'Queue prompt'}
-        </ModalButton>
-        {table === 'wheel' ? (
-          <ModalButton tone="secondary" size="lg" disabled={!freeCheck.ok || busy} onClick={() => place('free', 'wheel')}>
-            Free spin · {formatNum(s.free)}
-          </ModalButton>
-        ) : null}
-        <p className="ml-auto max-w-[260px] text-right text-[11px] text-smoke-600">
-          {rejected ? (
-            <span className="font-semibold text-slot-vae">{rejected}</span>
-          ) : !check.ok ? (
-            <span className="font-semibold text-slot-vae">{check.reason}</span>
-          ) : table === 'wheel' && freeReady ? (
-            <span className="font-semibold text-electric-400">Today&apos;s free spin is still here.</span>
-          ) : (
-            <span>Bet what you like, as often as you like. The bank is the only limit.</span>
-          )}
-        </p>
-      </div>
-
-      <p className="text-[11px] text-smoke-800 tabular-nums">
-        {formatInt(s.bets)} bets taken · lifetime {s.net >= 0 ? '+' : ''}
-        {formatNum(s.net)} · wheel returns {formatPct(wheelEv - 1)} a spin, coin {formatPct(coinEv() - 1)} a flip
-      </p>
+        ))}
+        <span className="ml-auto tabular-nums">
+          {history.length > 0 ? (
+            <>
+              session{' '}
+              <span className={cn('font-extrabold', sessionNet >= 0 ? 'text-credits' : 'text-slot-vae')}>
+                {sessionNet >= 0 ? '+' : ''}
+                {formatNum(sessionNet)}
+              </span>
+              {' · '}
+            </>
+          ) : null}
+          lifetime{' '}
+          <span className={cn('font-extrabold', s.net >= 0 ? 'text-credits' : 'text-slot-vae')}>
+            {s.net >= 0 ? '+' : ''}
+            {formatNum(s.net)}
+          </span>
+          {' · '}
+          {formatInt(s.bets)} bets
+        </span>
+      </section>
     </div>
   )
 }
@@ -384,28 +423,40 @@ function floatNet(ref: RefObject<HTMLDivElement | null>, net: number): void {
 }
 
 // ---------------------------------------------------------------------------
-// The bet control
+// The bet bar
 // ---------------------------------------------------------------------------
 
 /**
- * One number, three ways to set it: the slider, the box and the four shortcuts. The slider runs
- * over the bank rather than over a percentage, so the figure under the thumb is the figure that
- * will be staked; below BET_MIN the whole control is dead rather than quietly rounding up.
+ * One number, three ways to set it, and the button that stakes it. The slider runs over the bank
+ * rather than over a percentage, so the figure under the thumb is the figure that will be staked;
+ * below BET_MIN the whole control is dead rather than quietly rounding up. The action buttons live
+ * on the same row as the amount so the bet is placed where it was set, without a scroll, on
+ * either table.
  */
-function BetControl({
+function BetBar({
   value,
+  draft,
   min,
   max,
   credits,
   disabled,
   onChange,
+  actions,
+  status,
 }: {
+  /** The wager as it will be staked: the raw figure clamped to the bank. */
   value: number
+  /** The raw figure in the box, so a bet can be typed digit by digit under BET_MIN. */
+  draft: number
   min: number
   max: number
   credits: number
   disabled: boolean
   onChange: (n: number) => void
+  /** The place-bet button, and the free spin on the wheel. */
+  actions: ReactNode
+  /** The engine's refusal, when it has one. Replaces the range line until the next bet. */
+  status: string | null
 }) {
   const sliderId = useId()
   const boxId = useId()
@@ -420,17 +471,12 @@ function BetControl({
       aria-label="Your bet"
       className="rounded-xl border-2 border-charcoal-400 border-l-4 border-l-slot-latent bg-charcoal-700/50 p-3"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <label htmlFor={boxId} className="font-mono text-[11px] text-smoke-600">
-          bet
-        </label>
-        <span className="text-[11px] text-smoke-600 tabular-nums">
-          {formatInt(min)} to {formatInt(Math.max(min, max))} · you have {formatNum(credits)}
-        </span>
-      </div>
-
-      <div className="mt-2 flex items-center gap-3">
-        <span className="flex items-center gap-1.5 rounded-comfy border border-charcoal-400 bg-charcoal-600 px-2.5 py-1.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <label
+          htmlFor={boxId}
+          className="flex items-center gap-2 rounded-comfy border border-charcoal-400 bg-charcoal-600 px-2.5 py-1.5 transition-colors focus-within:border-electric-400/70"
+        >
+          <span className="font-mono text-[11px] text-smoke-600">bet</span>
           <CreditsIcon size={13} aria-hidden="true" />
           <input
             id={boxId}
@@ -438,16 +484,18 @@ function BetControl({
             inputMode="numeric"
             min={min}
             max={Math.max(min, max)}
-            value={value}
+            value={draft}
             disabled={off}
             onChange={(e) => {
               const n = Number(e.target.value)
               onChange(Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0)
             }}
             onBlur={() => set(value)}
-            className="w-28 bg-transparent text-lg font-extrabold text-credits tabular-nums outline-none disabled:opacity-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            // Sized to the figure (tabular digits are one ch each) so a nine-digit bank is never clipped.
+            style={{ width: `${Math.max(4, String(draft).length + 1)}ch` }}
+            className="min-w-[4ch] bg-transparent text-lg font-extrabold text-credits tabular-nums outline-none disabled:opacity-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           />
-        </span>
+        </label>
         <label htmlFor={sliderId} className="sr-only">
           Bet amount
         </label>
@@ -460,8 +508,9 @@ function BetControl({
           value={value}
           disabled={off}
           onChange={(e) => set(Number(e.target.value))}
-          className="h-1 flex-1 cursor-pointer accent-electric-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-1 min-w-[120px] flex-1 cursor-pointer accent-electric-400 disabled:cursor-not-allowed disabled:opacity-50"
         />
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -483,7 +532,15 @@ function BetControl({
         <Chip onClick={() => set(max)} disabled={off}>
           All in
         </Chip>
-        {broke ? <span className="ml-auto text-[11px] font-semibold text-slot-vae">Come back with {formatInt(min)} credits.</span> : null}
+        {status ? (
+          <span className="ml-auto text-[11px] font-semibold text-slot-vae">{status}</span>
+        ) : broke ? (
+          <span className="ml-auto text-[11px] font-semibold text-slot-vae">Come back with {formatInt(min)} credits.</span>
+        ) : (
+          <span className="ml-auto text-[11px] text-smoke-600 tabular-nums">
+            {formatInt(min)} to {formatInt(max)} · you have {formatNum(credits)}
+          </span>
+        )}
       </div>
     </section>
   )
@@ -537,6 +594,10 @@ function TableTabs({ table, onChange, disabled }: { table: TableId; onChange: (i
 // The wheel
 // ---------------------------------------------------------------------------
 
+/**
+ * The node mock, the reel and the result line on the left; the odds on the right. Two columns
+ * from `md` up so the whole table fits a laptop screen under the bet bar; stacked below that.
+ */
 function WheelTable({
   outcomes,
   wager,
@@ -546,6 +607,7 @@ function WheelTable({
   pity,
   pot,
   result,
+  reel,
   busy,
   reduced,
   reelRef,
@@ -558,90 +620,92 @@ function WheelTable({
   pity: boolean
   pot: number
   result: Result | null
+  reel: ReelRun | null
   busy: boolean
   reduced: boolean
   reelRef: RefObject<HTMLDivElement | null>
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      {/* The node mock */}
-      <section
-        aria-label="KSampler widgets"
-        className="rounded-xl border-2 border-charcoal-400 border-l-4 border-l-slot-latent bg-charcoal-700/50 p-3"
-      >
-        <div className="flex flex-col gap-1.5">
-          <Widget label="seed">
-            <span className={cn('font-mono text-lg font-extrabold tracking-[0.14em] tabular-nums', busy ? 'text-smoke-600' : 'text-electric-400')}>
-              {seedText(seed)}
-            </span>
-          </Widget>
-
-          <Widget label="control_after_generate">
-            {hot ? (
-              <span className="text-sm font-bold text-electric-400">
-                fixed <span className="text-smoke-600">· hot sampler ×{SPIN_HOT_MULT}</span>
+    <div className="grid gap-3 md:grid-cols-2">
+      <div className="flex min-w-0 flex-col gap-3">
+        {/* The node mock */}
+        <section
+          aria-label="KSampler widgets"
+          className="rounded-xl border-2 border-charcoal-400 border-l-4 border-l-slot-latent bg-charcoal-700/50 p-2.5"
+        >
+          <div className="flex flex-col gap-1">
+            <Widget label="seed">
+              <span className={cn('font-mono text-lg font-extrabold tracking-[0.14em] tabular-nums', busy ? 'text-smoke-600' : 'text-electric-400')}>
+                {seedText(seed)}
               </span>
+            </Widget>
+
+            <Widget label="control_after_generate">
+              {hot ? (
+                <span className="text-sm font-bold text-electric-400">
+                  fixed <span className="text-smoke-600">· hot ×{SPIN_HOT_MULT}</span>
+                </span>
+              ) : (
+                <span className="text-sm font-semibold text-smoke-100">randomize</span>
+              )}
+            </Widget>
+
+            <Widget label="denoise">
+              <span className="flex items-center gap-2">
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  {Array.from({ length: SPIN_PITY_DRY }, (_, i) => (
+                    <span
+                      key={i}
+                      className={cn(
+                        'size-2.5 rounded-full border',
+                        i < dry ? 'border-slot-latent bg-slot-latent' : 'border-charcoal-300 bg-charcoal-600',
+                      )}
+                    />
+                  ))}
+                </span>
+                <span className={cn('text-[11px]', pity ? 'font-bold text-slot-latent' : 'text-smoke-600')}>
+                  {pity ? 'pity armed · next NaN converts' : `${dry} of ${SPIN_PITY_DRY} NaN in a row`}
+                </span>
+              </span>
+            </Widget>
+          </div>
+        </section>
+
+        <Reel boxRef={reelRef} outcomes={outcomes} run={reel} busy={busy} reduced={reduced} />
+
+        {/* The result line */}
+        <div className="min-h-[40px] text-[13px] leading-5">
+          <AnimatePresence mode="wait">
+            {result ? (
+              <motion.p
+                key={result.nonce}
+                initial={reduced ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: reduced ? 0.1 : 0.2 }}
+                role="status"
+              >
+                <span className={cn('font-extrabold', tintFor(result.outcome.id))}>{result.outcome.line}</span>{' '}
+                <span className="text-smoke-600">
+                  ×{result.outcome.mult}
+                  {result.hot ? ` · hot ×${SPIN_HOT_MULT}` : ''} ·{' '}
+                </span>
+                <span className={cn('font-extrabold tabular-nums', result.payout > 0 ? 'text-credits' : 'text-slot-vae')}>
+                  {result.payout > 0 ? `+${formatNum(result.payout)}` : `-${formatNum(result.wager)}`}
+                </span>
+              </motion.p>
             ) : (
-              <span className="text-sm font-semibold text-smoke-100">randomize</span>
+              <p key="idle" className="text-smoke-600">
+                {busy ? 'Sampling…' : 'The seed decides. The table says how often it decides in your favour.'}
+              </p>
             )}
-          </Widget>
-
-          <Widget label="denoise">
-            <span className="flex items-center gap-2">
-              <span className="flex items-center gap-1" aria-hidden="true">
-                {Array.from({ length: SPIN_PITY_DRY }, (_, i) => (
-                  <span
-                    key={i}
-                    className={cn(
-                      'size-2.5 rounded-full border',
-                      i < dry ? 'border-slot-latent bg-slot-latent' : 'border-charcoal-300 bg-charcoal-600',
-                    )}
-                  />
-                ))}
-              </span>
-              <span className={cn('text-[11px]', pity ? 'font-bold text-slot-latent' : 'text-smoke-600')}>
-                {pity ? 'pity armed · the next NaN is converted' : `${dry} of ${SPIN_PITY_DRY} NaN in a row`}
-              </span>
-            </span>
-          </Widget>
+          </AnimatePresence>
         </div>
-      </section>
-
-      <Reel boxRef={reelRef} outcomes={outcomes} result={result} busy={busy} reduced={reduced} />
-
-      {/* The result line */}
-      <div className="min-h-[40px]">
-        <AnimatePresence mode="wait">
-          {result ? (
-            <motion.p
-              key={result.nonce}
-              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: reduced ? 0.1 : 0.2 }}
-              className="text-sm"
-              role="status"
-            >
-              <span className={cn('font-extrabold', tintFor(result.outcome.id))}>{result.outcome.line}</span>{' '}
-              <span className="text-smoke-600">
-                ×{result.outcome.mult}
-                {result.hot ? ` · hot ×${SPIN_HOT_MULT}` : ''} ·{' '}
-              </span>
-              <span className={cn('font-extrabold tabular-nums', result.payout > 0 ? 'text-credits' : 'text-slot-vae')}>
-                {result.payout > 0 ? `+${formatNum(result.payout)}` : `-${formatNum(result.wager)}`}
-              </span>
-            </motion.p>
-          ) : (
-            <p key="idle" className="text-sm text-smoke-600">
-              {busy ? 'Sampling…' : 'The seed decides. The table below says how often it decides in your favour.'}
-            </p>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* The odds, printed before the bet */}
-      <section aria-labelledby="wheel-odds">
-        <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
+      <section aria-labelledby="wheel-odds" className="min-w-0">
+        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <SectionLabel>
             <span id="wheel-odds">Odds</span>
           </SectionLabel>
@@ -649,36 +713,34 @@ function WheelTable({
             pot <span className="font-bold text-credits">{formatNum(pot)}</span> · rides on seed 42
           </p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[380px] border-collapse text-left text-xs">
-            <thead>
-              <tr className="text-[10px] font-semibold tracking-[0.08em] text-smoke-800 uppercase">
-                <th scope="col" className="py-1 font-semibold">
-                  Segment
-                </th>
-                <th scope="col" className="py-1 text-right font-semibold">
-                  Pays
-                </th>
-                <th scope="col" className="py-1 text-right font-semibold">
-                  Chance
-                </th>
-                <th scope="col" className="py-1 text-right font-semibold">
-                  At {formatInt(wager)}
-                </th>
+        <table className="w-full border-collapse text-left text-xs">
+          <thead>
+            <tr className="text-[10px] font-semibold tracking-[0.08em] text-smoke-800 uppercase">
+              <th scope="col" className="py-0.5 font-semibold">
+                Segment
+              </th>
+              <th scope="col" className="py-0.5 text-right font-semibold">
+                Pays
+              </th>
+              <th scope="col" className="py-0.5 text-right font-semibold">
+                Chance
+              </th>
+              <th scope="col" className="py-0.5 text-right font-semibold">
+                At {formatInt(wager)}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {outcomes.map((o) => (
+              <tr key={o.id} className={cn('border-t border-charcoal-400/60', result?.outcome.id === o.id && 'bg-charcoal-500/60')}>
+                <td className={cn('py-[3px] font-semibold', tintFor(o.id))}>{o.label}</td>
+                <td className="py-[3px] text-right font-bold text-smoke-100 tabular-nums">×{o.mult}</td>
+                <td className="py-[3px] text-right text-smoke-600 tabular-nums">{chance(o.weight)}</td>
+                <td className="py-[3px] text-right font-bold text-credits tabular-nums">{formatNum(Math.round(wager * o.mult))}</td>
               </tr>
-            </thead>
-            <tbody>
-              {outcomes.map((o) => (
-                <tr key={o.id} className={cn('border-t border-charcoal-400/60', result?.outcome.id === o.id && 'bg-charcoal-500/60')}>
-                  <td className={cn('py-1 font-semibold', tintFor(o.id))}>{o.label}</td>
-                  <td className="py-1 text-right font-bold text-smoke-100 tabular-nums">×{o.mult}</td>
-                  <td className="py-1 text-right text-smoke-600 tabular-nums">{chance(o.weight)}</td>
-                  <td className="py-1 text-right font-bold text-credits tabular-nums">{formatNum(Math.round(wager * o.mult))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </section>
     </div>
   )
@@ -687,7 +749,7 @@ function WheelTable({
 /** A ComfyUI widget row: label on the left, value on the right, inside a rounded pill. */
 function Widget({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-9 items-center justify-between gap-3 rounded-comfy border border-charcoal-400 bg-charcoal-600 px-3 py-1.5">
+    <div className="flex min-h-8 items-center justify-between gap-3 rounded-comfy border border-charcoal-400 bg-charcoal-600 px-3 py-1">
       <span className="font-mono text-[11px] text-smoke-600">{label}</span>
       {children}
     </div>
@@ -695,30 +757,31 @@ function Widget({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * The seven segments scrolling under a fixed marker. The strip is built per spin as
+ * The seven segments scrolling under a fixed marker. The strip is built per run as
  * `[previous, three full cycles, result]`, so it starts on the segment already showing and ends on
- * the new one: no reset flash, no unbounded offset. Reduced motion renders the landing row only.
+ * the new one: no reset flash, no unbounded offset. It starts turning the moment the bet is placed
+ * and stops just before the seed prints. Reduced motion renders the landing row only.
  */
 function Reel({
   boxRef,
   outcomes,
-  result,
+  run,
   busy,
   reduced,
 }: {
   boxRef: RefObject<HTMLDivElement | null>
   outcomes: readonly GambleOutcomeDef[]
-  result: Result | null
+  run: ReelRun | null
   busy: boolean
   reduced: boolean
 }) {
   const strip = useMemo(() => {
-    if (!result) return null
-    const rows: GambleOutcomeDef[] = [result.from]
+    if (!run) return null
+    const rows: GambleOutcomeDef[] = [run.from]
     if (!reduced) for (let c = 0; c < REEL_CYCLES; c++) rows.push(...outcomes)
-    rows.push(result.outcome)
+    rows.push(run.to)
     return rows
-  }, [result, outcomes, reduced])
+  }, [run, outcomes, reduced])
 
   const target = strip ? (strip.length - 1) * ROW_H : 0
 
@@ -731,10 +794,12 @@ function Reel({
     >
       {strip ? (
         <motion.div
-          key={result?.nonce ?? 0}
-          initial={{ y: 0 }}
+          key={run?.nonce ?? 0}
+          // A run mounts with `busy` set and scrolls in; a landed run remounting (the tab was
+          // switched away and back) renders straight at its landing row.
+          initial={busy ? { y: 0 } : false}
           animate={{ y: -target }}
-          transition={reduced ? { duration: 0 } : { duration: 1.15, ease: [0.12, 0.8, 0.2, 1] }}
+          transition={reduced ? { duration: 0 } : { duration: REEL_MS / 1000, ease: [0.2, 0.7, 0.3, 1] }}
         >
           {strip.map((o, i) => (
             <div
@@ -749,8 +814,8 @@ function Reel({
         </motion.div>
       ) : (
         <div className="flex items-center justify-between px-3 text-xs text-smoke-800" style={{ height: ROW_H }}>
-          <span>{busy ? 'sampling' : 'idle'}</span>
-          <span className="font-mono">{busy ? '· · ·' : '×?'}</span>
+          <span>idle</span>
+          <span className="font-mono">×?</span>
         </div>
       )}
       {/* The marker: a fixed electric caret the segments pass under. */}
@@ -766,8 +831,9 @@ function Reel({
 
 /**
  * Two faces and one number. Your side pays COIN_PAYOUT, Comfy's side keeps the stake, and both
- * chances sit under the coin where the bet is placed: the gap between them is the house, and it
- * is the only edge the coin has.
+ * chances sit beside the coin where the bet is placed: the gap between them is the house, and it
+ * is the only edge the coin has. The coin and its line share one row so the table is three rows
+ * tall, not a column.
  */
 function CoinTable({
   wager,
@@ -784,12 +850,12 @@ function CoinTable({
 }) {
   const win = flip?.side === 'you'
   return (
-    <div className="flex flex-col gap-4">
+    <div className="grid gap-3 md:grid-cols-2">
       <section
         aria-label="The coin"
-        className="flex flex-col items-center gap-3 rounded-xl border-2 border-charcoal-400 border-l-4 border-l-slot-latent bg-charcoal-700/50 px-3 py-5"
+        className="flex items-center gap-4 rounded-xl border-2 border-charcoal-400 border-l-4 border-l-slot-latent bg-charcoal-700/50 px-4 py-3"
       >
-        <div ref={coinRef} className="grid size-24 place-items-center">
+        <div ref={coinRef} className="grid size-20 shrink-0 place-items-center">
           <motion.div
             key={flip?.nonce ?? (busy ? 'turning' : 'idle')}
             aria-hidden="true"
@@ -797,7 +863,7 @@ function CoinTable({
             animate={busy && !reduced ? { rotateY: 1440 } : { rotateY: 0 }}
             transition={busy && !reduced ? { duration: FLIP_MS / 1000, ease: 'easeOut' } : { duration: 0 }}
             className={cn(
-              'grid size-24 place-items-center rounded-full border-4 shadow-[0_4px_0_#0e0e0f]',
+              'grid size-20 place-items-center rounded-full border-4 shadow-[0_4px_0_#0e0e0f]',
               flip === null
                 ? 'border-charcoal-300 bg-charcoal-600 text-smoke-600'
                 : win
@@ -806,18 +872,18 @@ function CoinTable({
             )}
           >
             {flip === null ? (
-              <span className="font-mono text-2xl font-extrabold">{busy ? '· ·' : '?'}</span>
+              <span className="font-mono text-xl font-extrabold">{busy ? '· ·' : '?'}</span>
             ) : win ? (
-              <span className="text-sm font-extrabold uppercase tracking-[0.08em]">You</span>
+              <span className="text-[13px] font-extrabold uppercase tracking-[0.08em]">You</span>
             ) : (
-              <ComfyMark size={34} />
+              <ComfyMark size={30} />
             )}
           </motion.div>
         </div>
 
-        <div className="min-h-[40px] text-center" role="status">
+        <div className="min-w-0 flex-1 text-[13px] leading-5" role="status">
           {flip ? (
-            <p className="text-sm">
+            <p>
               <span className={cn('font-extrabold', win ? 'text-electric-400' : 'text-slot-vae')}>
                 {win ? 'Your side. Paid double.' : 'Comfy side. The house keeps it.'}
               </span>{' '}
@@ -827,44 +893,44 @@ function CoinTable({
               {win && flip.streak > 1 ? <span className="text-smoke-600"> · {flip.streak} in a row</span> : null}
             </p>
           ) : (
-            <p className="text-sm text-smoke-600">{busy ? 'In the air…' : 'One flip. Your side pays double, Comfy side takes the stake.'}</p>
+            <p className="text-smoke-600">{busy ? 'In the air…' : 'One flip. Your side pays double, Comfy side takes the stake.'}</p>
           )}
         </div>
       </section>
 
-      <section aria-labelledby="coin-odds">
-        <SectionLabel>
+      <section aria-labelledby="coin-odds" className="min-w-0">
+        <SectionLabel className="mb-1">
           <span id="coin-odds">Odds</span>
         </SectionLabel>
-        <table className="mt-1.5 w-full border-collapse text-left text-xs">
+        <table className="w-full border-collapse text-left text-xs">
           <thead>
             <tr className="text-[10px] font-semibold tracking-[0.08em] text-smoke-800 uppercase">
-              <th scope="col" className="py-1 font-semibold">
+              <th scope="col" className="py-0.5 font-semibold">
                 Side
               </th>
-              <th scope="col" className="py-1 text-right font-semibold">
+              <th scope="col" className="py-0.5 text-right font-semibold">
                 Pays
               </th>
-              <th scope="col" className="py-1 text-right font-semibold">
+              <th scope="col" className="py-0.5 text-right font-semibold">
                 Chance
               </th>
-              <th scope="col" className="py-1 text-right font-semibold">
+              <th scope="col" className="py-0.5 text-right font-semibold">
                 At {formatInt(wager)}
               </th>
             </tr>
           </thead>
           <tbody>
-            <tr className="border-t border-charcoal-400/60">
-              <td className="py-1 font-semibold text-electric-400">Your side</td>
-              <td className="py-1 text-right font-bold text-smoke-100 tabular-nums">×{COIN_PAYOUT}</td>
-              <td className="py-1 text-right text-smoke-600 tabular-nums">{chance(COIN_WIN_CHANCE)}</td>
-              <td className="py-1 text-right font-bold text-credits tabular-nums">{formatNum(Math.round(wager * COIN_PAYOUT))}</td>
+            <tr className={cn('border-t border-charcoal-400/60', flip && win && 'bg-charcoal-500/60')}>
+              <td className="py-[3px] font-semibold text-electric-400">Your side</td>
+              <td className="py-[3px] text-right font-bold text-smoke-100 tabular-nums">×{COIN_PAYOUT}</td>
+              <td className="py-[3px] text-right text-smoke-600 tabular-nums">{chance(COIN_WIN_CHANCE)}</td>
+              <td className="py-[3px] text-right font-bold text-credits tabular-nums">{formatNum(Math.round(wager * COIN_PAYOUT))}</td>
             </tr>
-            <tr className="border-t border-charcoal-400/60">
-              <td className="py-1 font-semibold text-slot-vae">Comfy side</td>
-              <td className="py-1 text-right font-bold text-smoke-100 tabular-nums">×0</td>
-              <td className="py-1 text-right text-smoke-600 tabular-nums">{chance(1 - COIN_WIN_CHANCE)}</td>
-              <td className="py-1 text-right font-bold text-slot-vae tabular-nums">-{formatNum(wager)}</td>
+            <tr className={cn('border-t border-charcoal-400/60', flip && !win && 'bg-charcoal-500/60')}>
+              <td className="py-[3px] font-semibold text-slot-vae">Comfy side</td>
+              <td className="py-[3px] text-right font-bold text-smoke-100 tabular-nums">×0</td>
+              <td className="py-[3px] text-right text-smoke-600 tabular-nums">{chance(1 - COIN_WIN_CHANCE)}</td>
+              <td className="py-[3px] text-right font-bold text-slot-vae tabular-nums">-{formatNum(wager)}</td>
             </tr>
           </tbody>
         </table>

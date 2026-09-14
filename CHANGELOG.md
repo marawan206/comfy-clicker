@@ -6,6 +6,23 @@ the data file and regenerate, so the game and the repo always say the same thing
 Versions are semver. A release bumps the minor, a hotfix bumps the patch, and the major stays
 at 0 until the game is feature complete. See `docs/RELEASING.md`.
 
+## 0.2.2 · The Lounge in one screen
+
+Hotfix · 2026-09-14
+
+The bet button moved up beside the amount, and the coin waits to land before it says how it went.
+
+### Changed
+
+- The loss sting was mastered about 13 dB louder than the win chime. It sits at the same level now, in the Lounge and on a ratioed post, and the flop sting comes down with it
+- The bet button sits beside the amount, so nothing needs a scroll to bet. Both tables fit one laptop screen: the wheel keeps its odds beside the seed and the coin sits next to its own line
+
+### Fixed
+
+- The coin flip played its win or loss sound the moment you pressed the button, 0.9 s before the coin landed. The press is now a soft toss and the result sounds when the face shows
+- Same on the wheel: the sampler ticks while the seed scrambles, the payoff sounds when it settles, and the reel turns during the scramble instead of after it
+- The bank line, the pity pips, the pot and the win flash all moved the moment you bet. They hold still now until the coin or the seed lands
+
 ## 0.2.1 · Two dead ends
 
 Hotfix · 2026-09-14

@@ -8,11 +8,15 @@ import {
   DUCKERS,
   MIN_GAP_MS,
   RECIPES,
+  SAMPLE_TRIM,
   SFX_NAMES,
   comboRate,
+  JACKPOT_MULT,
   cueForEvent,
+  cueForLanding,
   cueForToast,
   sfxUrl,
+  type BetLanding,
   type Cue,
   type SfxName,
 } from '../sfxMap'
@@ -157,14 +161,63 @@ describe('sfxMap: event coverage', () => {
     expect(cueForEvent({ type: 'postResolved', postId: 'p', viral: true, flop: false, ratioed: false })?.name).toBe('viral')
     expect(cueForEvent({ type: 'postResolved', postId: 'p', viral: false, flop: false, ratioed: true })?.name).toBe('lose')
     expect(cueForEvent({ type: 'postResolved', postId: 'p', viral: false, flop: true, ratioed: false })?.name).toBe('flop')
-    expect(cueForEvent({ type: 'spin', outcome: 'x', mult: 42, wager: 1, payout: 42, free: false, hot: false })?.name).toBe('jackpot')
-    expect(cueForEvent({ type: 'spin', outcome: 'x', mult: 0, wager: 1, payout: 0, free: false, hot: false })?.name).toBe('lose')
-    expect(cueForEvent({ type: 'flip', side: 'you', wager: 1, payout: 2, streak: 1 })?.name).toBe('cash')
-    expect(cueForEvent({ type: 'flip', side: 'comfy', wager: 1, payout: 0, streak: 0 })?.name).toBe('lose')
     // A citizen run is background noise, not an event.
     expect(cueForEvent({ type: 'citizenRun', handle: 'a_b', workflowName: 'w', credits: 1 })).toBeNull()
     expect(cueForEvent({ type: 'offline', gain: 1, elapsedSec: 1 })).toBeNull()
     expect(cueForEvent({ type: 'eventEnd', defId: 'e', kind: 'powerSurge' })).toBeNull()
+  })
+
+  it('sounds a bet the same whichever way it went, until it lands', () => {
+    // The engine event fires while the coin is still in the air and the seed is still scrambling.
+    // A win and a loss must be indistinguishable here, or the speakers spoil the screen.
+    const spins = SAMPLES.spin.map((e) => JSON.stringify(cueForEvent(e)))
+    expect(new Set(spins).size).toBe(1)
+    expect(cueForEvent(SAMPLES.spin[0] as GameEvent)?.name).toBe('spin')
+    const flips = SAMPLES.flip.map((e) => JSON.stringify(cueForEvent(e)))
+    expect(new Set(flips).size).toBe(1)
+    expect(cueForEvent(SAMPLES.flip[0] as GameEvent)?.name).toBe('whoosh')
+    for (const event of [...SAMPLES.spin, ...SAMPLES.flip]) {
+      for (const part of walk(cueForEvent(event) as Cue)) expect(['cash', 'lose', 'jackpot']).not.toContain(part.name)
+      // Under reduced motion the Lounge lands the bet at once, so the landing cue is the only one.
+      expect(cueForEvent(event, { reducedMotion: true })).toBeNull()
+    }
+  })
+
+  it('pays off at the landing', () => {
+    const landings: BetLanding[] = [
+      { table: 'wheel', mult: 42 },
+      { table: 'wheel', mult: JACKPOT_MULT },
+      { table: 'wheel', mult: 4 },
+      { table: 'wheel', mult: 2 },
+      { table: 'wheel', mult: 1 },
+      { table: 'wheel', mult: 0.5 },
+      { table: 'wheel', mult: 0 },
+      { table: 'coin', won: true },
+      { table: 'coin', won: false },
+    ]
+    for (const landing of landings) {
+      for (const part of walk(cueForLanding(landing))) {
+        expect(names.has(part.name)).toBe(true)
+        if (part.rate !== undefined) expect(part.rate).toBeGreaterThan(0)
+        if (part.gain !== undefined) expect(part.gain).toBeGreaterThan(0)
+      }
+    }
+    expect(cueForLanding({ table: 'wheel', mult: 42 }).name).toBe('jackpot')
+    expect(cueForLanding({ table: 'wheel', mult: JACKPOT_MULT }).name).toBe('jackpot')
+    expect(cueForLanding({ table: 'wheel', mult: 4 }).name).toBe('cash')
+    expect(cueForLanding({ table: 'wheel', mult: 2 }).name).toBe('cash')
+    expect(cueForLanding({ table: 'wheel', mult: 1 }).name).toBe('tick')
+    expect(cueForLanding({ table: 'wheel', mult: 0 }).name).toBe('lose')
+    // Half back is the smaller sting: quieter and shorter than a NaN.
+    const half = cueForLanding({ table: 'wheel', mult: 0.5 })
+    const nan = cueForLanding({ table: 'wheel', mult: 0 })
+    expect(half.name).toBe('lose')
+    expect(half.gain ?? 1).toBeLessThan(nan.gain ?? 1)
+    expect(half.rate ?? 1).toBeGreaterThan(nan.rate ?? 1)
+    expect(cueForLanding({ table: 'coin', won: true }).name).toBe('cash')
+    expect(cueForLanding({ table: 'coin', won: false }).name).toBe('lose')
+    // A lost flip is the common case on a fast table, so it sits under the wheel's NaN.
+    expect(cueForLanding({ table: 'coin', won: false }).gain ?? 1).toBeLessThan(nan.gain ?? 1)
   })
 
   it('gives the hidden achievement the easter egg sting', () => {
@@ -277,6 +330,17 @@ describe('sfxMap: recipes and the shipped files', () => {
   it('keeps the click quiet and the payoffs ducking over it', () => {
     expect(BASE_GAIN.click).toBeLessThanOrEqual(0.25)
     for (const name of SFX_NAMES) expect(BASE_GAIN[name]).toBeGreaterThan(0)
+    // lose.mp3 and flop.mp3 are mastered around 13 dB hotter than the rest of the set (see the
+    // note on SAMPLE_TRIM). The trim is what keeps a lost bet under the jackpot when the file
+    // plays, and it must not touch the recipes, which are already level.
+    expect(SAMPLE_TRIM.lose).toBeLessThanOrEqual(0.45)
+    expect(SAMPLE_TRIM.flop).toBeLessThanOrEqual(0.6)
+    for (const [name, trim] of Object.entries(SAMPLE_TRIM)) {
+      expect(names.has(name)).toBe(true)
+      expect(trim).toBeGreaterThan(0)
+      expect(trim).toBeLessThan(1)
+    }
+    expect(BASE_GAIN.lose).toBeLessThanOrEqual(BASE_GAIN.cash)
     expect([...DUCKERS].sort()).toEqual(['achievement', 'jackpot', 'levelup', 'viral'])
     expect(MIN_GAP_MS.error).toBe(500)
   })

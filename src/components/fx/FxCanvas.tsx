@@ -19,7 +19,6 @@ const COLOR_WHITE = '#f3f3f3'
 const COLOR_RATIO = '#ff6e6e'
 const CONFETTI_COLORS = [COLOR_ELECTRIC, COLOR_SAPPHIRE, COLOR_WHITE, COLOR_PINK]
 /** Roulette multiplier that earns confetti: the golden seed and the x42. */
-const SPIN_CONFETTI_MULT = 10
 
 const MAX_SPRITES = 300
 const MAX_FLOATS = 80
@@ -470,14 +469,9 @@ export function FxCanvas() {
         engine.handle({ kind: 'confetti' })
         engine.handle({ kind: 'flash', color: COLOR_ELECTRIC })
         break
-      case 'spin':
-        // Golden seed and up. Anything smaller is a number changing, not an event.
-        if (event.mult >= SPIN_CONFETTI_MULT) engine.handle({ kind: 'confetti' })
-        break
-      case 'flip':
-        // A doubled bet is worth a wash of colour; a lost one is already a number falling.
-        if (event.payout > 0) engine.handle({ kind: 'flash', color: COLOR_ELECTRIC })
-        break
+      // `spin` and `flip` are deliberately absent: the engine decides them at the press, but the
+      // Lounge is still turning the reel or the coin, so the modal fires the confetti and the
+      // flash itself through `fx` when the result lands.
       case 'reward':
         engine.handle({ kind: 'confetti' })
         break

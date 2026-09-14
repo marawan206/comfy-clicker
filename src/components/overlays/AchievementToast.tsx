@@ -28,6 +28,7 @@ import { Art } from '@/components/common/Art'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { runGuideAction } from '@/components/guidance/navigate'
 import { pickHashtag } from '@/components/feed/feedHooks'
+import { SCRAMBLE_MS } from '@/components/overlays/loungeTiming'
 import { toast } from '@/components/overlays/useToasts'
 import { buildIndex } from '@/game/catalog'
 import { ACHIEVEMENT_MULT, TRENDING_WEIGHTS, WEEK_MS } from '@/game/constants'
@@ -237,16 +238,21 @@ export function AchievementToast() {
       }
       case 'spin': {
         // Only the x42 leaves the modal: everything else is already on the reel in front of you.
+        // The engine has decided it now, but the reel is still turning, so the card waits for the
+        // seed to settle rather than announcing the jackpot a second and a half early.
         if (e.mult < JACKPOT_MULT) return
-        toast('Seed 42. It was always 42.', {
-          title: 'Jackpot',
-          description: <>{credits(e.payout)}<span>· write the seed down</span></>,
-          icon: <Dices className="text-electric-400" />,
-          tone: 'electric',
-          key: 'jackpot',
-          durationMs: 8000,
-          sound: false,
-        })
+        const payout = e.payout
+        window.setTimeout(() => {
+          toast('Seed 42. It was always 42.', {
+            title: 'Jackpot',
+            description: <>{credits(payout)}<span>· write the seed down</span></>,
+            icon: <Dices className="text-electric-400" />,
+            tone: 'electric',
+            key: 'jackpot',
+            durationMs: 8000,
+            sound: false,
+          })
+        }, SCRAMBLE_MS)
         return
       }
       case 'signup':
