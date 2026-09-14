@@ -4,7 +4,6 @@ import { HARDWARE } from '@/data/hardware'
 import { MODELS } from '@/data/models'
 import {
   CITIZEN_TREND_MS,
-  CLICK_LOCKOUT_MAX_MS,
   LEVEL_REWARD_PER_LEVEL,
   LEVEL_REWARD_SECS,
   LEVEL_XP,
@@ -325,14 +324,15 @@ describe('save', () => {
     expect(back.stats.landedStreak).toBe(0)
   })
 
-  it('clamps a click lockout and a citizen run from a clock that ran ahead', () => {
+  it('drops a legacy click lockout and clamps a citizen run from a clock that ran ahead', () => {
     const state = createInitialState(T0, GUEST)
+    // Written by a build that still had the cadence lockout; there is nothing left to serve it.
     state.stats.clickLockUntil = T0 + 30 * 86_400_000
     state.citizens.drops = [
       { id: 'w1', name: 'Hands, fixed', publishedAt: T0, runs: 2, royalties: 40, heat: 0.8, nextRunAt: T0 + 30 * 86_400_000, cold: false },
     ]
     const back = deserialize(serialize(state), T0, GUEST)
-    expect(back.stats.clickLockUntil).toBe(T0 + CLICK_LOCKOUT_MAX_MS)
+    expect(back.stats.clickLockUntil).toBe(0)
     expect(back.citizens.drops[0]!.nextRunAt).toBe(T0 + CITIZEN_TREND_MS)
     expect(back.citizens.drops[0]!.name).toBe('Hands, fixed')
   })

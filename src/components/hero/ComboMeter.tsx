@@ -23,9 +23,10 @@ function tierOf(n: number): number {
  * turns amber at 25 and shimmers electric at 50. The thin bar underneath drains over the gap
  * window so the player can see how long they have to keep the streak alive.
  *
- * The same pill is where a refused click surfaces: over fifteen in a second the engine stops
- * paying, and the pill says `MAX` for 600 ms instead of a combo. Nothing else changes, because
- * nothing else happened: the click simply did not count.
+ * The same pill is where a refused click surfaces: past `CLICK_CAP_PER_SEC` in a second the engine
+ * stops paying, and the pill says `MAX` for 600 ms instead of a combo. Nothing else changes,
+ * because nothing else happened: the click simply did not count, and the next one inside the
+ * window will.
  */
 export function ComboMeter({ className }: { className?: string }) {
   const [combo, setCombo] = useState(0)
@@ -40,8 +41,7 @@ export function ComboMeter({ className }: { className?: string }) {
 
   useGameEvents((e) => {
     if (e.type === 'clickBlocked') {
-      // Only the rate cap belongs here; a cadence lockout is the Generate pill's story to tell.
-      if (e.reason !== 'rate') return
+      // The rate cap is the only reason a click is ever refused, and this pill is where it shows.
       setCapped(true)
       window.clearTimeout(capTimer.current)
       capTimer.current = window.setTimeout(() => setCapped(false), MAX_FLASH_MS)

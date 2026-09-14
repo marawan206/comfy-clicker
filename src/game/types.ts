@@ -305,7 +305,7 @@ export interface EventDef {
 export interface GambleOutcomeDef {
   id: string
   label: string
-  /** Payout multiplier on the wager. 0 loses it. */
+  /** Payout multiplier on the wager. The table's lowest is the dud (0.25 on the shipped table). */
   mult: number
   /** Probability in [0, 1]. The table sums to 1. */
   weight: number
@@ -487,11 +487,15 @@ export interface GameStats {
   flips: number
   /** Lifetime Lounge profit, wheel and coin together. May be negative. */
   spinNet: number
-  /** Epoch ms until which clicks pay nothing; 0 = not locked. */
+  /**
+   * Legacy: the cadence detector and its lockout are gone (see `clickGuard.ts`). Never written,
+   * 0 on a fresh state, and `hydrate` collapses a stored lockout to 0. The three fields stay so
+   * the save schema and older blobs keep their shape.
+   */
   clickLockUntil: number
-  /** Cadence strikes on record (drives the lockout ladder). */
+  /** Legacy, see `clickLockUntil`. */
   clickStrikes: number
-  /** Epoch ms of the last cadence strike; strikes decay after CLICK_STRIKE_DECAY_MS. */
+  /** Legacy, see `clickLockUntil`. */
   clickStrikeAt: number
   /** Clicks that rolled the lucky-seed multiplier. */
   luckyClicks: number
@@ -613,7 +617,7 @@ export type GameEvent =
   | { type: 'easterEgg'; id: string }
   | { type: 'milestone'; cps: number }
   | { type: 'levelUp'; level: number; credits: number; unlocked: string[] }
-  | { type: 'clickBlocked'; reason: 'locked' | 'rate' | 'cadence'; until: number }
+  | { type: 'clickBlocked'; reason: 'rate'; until: number }
   | { type: 'spin'; outcome: string; mult: number; wager: number; payout: number; free: boolean; hot: boolean }
   | { type: 'flip'; side: 'you' | 'comfy'; wager: number; payout: number; streak: number }
   | { type: 'citizenRun'; handle: string; workflowName: string; credits: number }

@@ -16,7 +16,6 @@ import { buildIndex } from '@/game/catalog'
 import {
   CITIZEN_TREND_MS,
   CLICK_JOB_BONUS_CAP,
-  CLICK_LOCKOUT_MAX_MS,
   CONTRACT_ROTATE_MS,
   EVENT_MAX_GAP_MS,
   POST_WINDOW_MS,
@@ -419,9 +418,8 @@ function hydrate(data: SaveData, now: number, guestId: string, catalog: Catalog)
   for (const drop of state.citizens.drops) {
     if (drop.nextRunAt > now + CITIZEN_TREND_MS) drop.nextRunAt = now + CITIZEN_TREND_MS
   }
-  // A click lockout from a clock that ran ahead would otherwise outlast its own rules; it may
-  // never reach further than one full period from now.
-  state.stats.clickLockUntil = Math.min(state.stats.clickLockUntil, now + CLICK_LOCKOUT_MAX_MS)
+  // The cadence lockout is gone, so a lock a pre-cap save is still serving collapses to nothing.
+  state.stats.clickLockUntil = 0
   // A save from before levels: award the level the stats already earned, without paying for it.
   if (stats?.levelSeen === undefined) state.stats.levelSeen = playerLevel(state)
 
