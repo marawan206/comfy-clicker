@@ -271,7 +271,7 @@ export function computeDerived(state: GameState, catalog: Catalog): Derived {
   d.powerBudget = powerBudget(effects)
   d.throttled = isThrottled(d.powerDraw, d.powerBudget)
 
-  // Proportional brownout: at twice the budget the rig earns half (see power.ts).
+  // Past the breaker the rack is dark: no passive income at all until it fits the circuit (power.ts).
   d.cps = rawCps * d.globalMult * throttleMult(d.powerDraw, d.powerBudget)
   d.clickValue = (1 + clickFlat) * clickMult * d.globalMult + clickCpsPct * d.cps
 

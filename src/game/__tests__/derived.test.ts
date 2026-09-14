@@ -156,33 +156,35 @@ describe('rawCps and hardware summary', () => {
   })
 })
 
-describe('power throttle', () => {
+describe('power breaker', () => {
   const overBudget = (s: GameState) => { s.hardware['rtx-4090'] = 1; s.hardware['rtx-3060'] = 1 }
 
-  it('scales cps by budget / draw when draw exceeds the base budget', () => {
+  it('cuts cps to zero when draw exceeds the budget', () => {
     const d = computeDerived(fresh(overBudget), CATALOG)
     expect(d.powerDraw).toBe(hw('pc-4c8t').watts + hw('rtx-4090').watts + hw('rtx-3060').watts)
     expect(d.powerDraw).toBeGreaterThan(d.powerBudget)
     expect(d.throttled).toBe(true)
-    expect(d.cps).toBeCloseTo((d.rawCps * d.globalMult * d.powerBudget) / d.powerDraw, 9)
+    expect(d.cps).toBe(0)
+    // The rack is off, not gone: rawCps still says what it would earn on a big enough circuit.
+    expect(d.rawCps).toBeGreaterThan(0)
   })
 
-  it('is proportional: past the breaker a unit only pays if its cps per watt beats the rack average', () => {
-    // Ten 3060s (1.7 kW on a 650 W circuit) run at 650/1765 of their output…
+  it('is a cliff, not a slope: nothing bought past the breaker earns anything', () => {
+    // Ten 3060s draw 1.7 kW on a 650 W circuit, so the whole rack is dark…
     const ten = computeDerived(fresh((s) => { s.hardware['rtx-3060'] = 10 }), CATALOG)
-    expect(ten.cps).toBeCloseTo((ten.rawCps * POWER_BUDGET_BASE) / ten.powerDraw, 9)
-    // …so an eleventh 3060 (the rack's own cps/W, give or take the office PC) adds next to nothing…
+    expect(ten.throttled).toBe(true)
+    expect(ten.cps).toBe(0)
+    // …and an eleventh card, or a more efficient one, changes nothing while it stays dark.
     const eleven = computeDerived(fresh((s) => { s.hardware['rtx-3060'] = 11 }), CATALOG)
-    expect(eleven.cps / ten.cps).toBeGreaterThan(0.99)
-    expect(eleven.cps / ten.cps).toBeLessThan(1.01)
-    // …while a 72 W L4 (far better cps/W) still raises income on the same tripped breaker…
+    expect(eleven.cps).toBe(0)
     const withL4 = computeDerived(fresh((s) => { s.hardware['rtx-3060'] = 10; s.hardware.l4 = 1 }), CATALOG)
-    expect(withL4.cps).toBeGreaterThan(ten.cps * 1.05)
-    // …and a 3060 added to a tripped rack of L4s lowers income: it drags the average down.
-    const l4s = computeDerived(fresh((s) => { s.hardware.l4 = 10 }), CATALOG)
-    expect(l4s.throttled).toBe(true)
-    const l4sPlus = computeDerived(fresh((s) => { s.hardware.l4 = 10; s.hardware['rtx-3060'] = 1 }), CATALOG)
-    expect(l4sPlus.cps).toBeLessThan(l4s.cps)
+    expect(withL4.cps).toBe(0)
+  })
+
+  it('leaves the click value standing so a tripped breaker is recoverable', () => {
+    const d = computeDerived(fresh(overBudget), CATALOG)
+    expect(d.cps).toBe(0)
+    expect(d.clickValue).toBeGreaterThan(0)
   })
 
   it('lifts the throttle once the 850 W PSU raises the budget', () => {

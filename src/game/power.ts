@@ -1,9 +1,10 @@
 /**
  * Power system. Every owned unit draws watts; the budget starts at a single household circuit
  * and grows through PSU/infra upgrades and map nodes. Drawing more than the budget trips the
- * breaker: income is scaled by `budget / draw`, so a rig at twice its budget earns half. The
- * throttle is proportional on purpose. Past the breaker another unit only helps if its cps per
- * watt beats the rack's average, which is what makes PSU upgrades and low-watt silicon matter.
+ * breaker, and a tripped breaker cuts the power to the whole rack: every unit that needs watts
+ * stops, so passive income is zero until the draw fits the circuit again. Clicking still pays
+ * (a click is you, not the rack), which is the way back out of a breaker you tripped by buying
+ * one card too many. Nothing is lost, nothing is sold: buy a PSU and the rack comes back up.
  *
  * Pure helpers over `GameState`/`Derived`; derived.ts calls these once per recompute and the
  * store UI uses the projection helpers to warn before a purchase trips the breaker.
@@ -38,13 +39,11 @@ export function isThrottled(draw: number, budget: number): boolean {
 }
 
 /**
- * Income multiplier for a rig drawing `draw` watts against `budget`: 1 within budget, else
- * `budget / draw` (0 when there is no budget at all). Proportional, no floor, see the header.
+ * Income multiplier for a rig drawing `draw` watts against `budget`: 1 within budget, 0 past it.
+ * There is no partial brownout. See the header for why it is a cliff and not a slope.
  */
 export function throttleMult(draw: number, budget: number): number {
-  if (!isThrottled(draw, budget)) return 1
-  if (!(budget > 0)) return 0
-  return budget / draw
+  return isThrottled(draw, budget) ? 0 : 1
 }
 
 /** Watts still available before the breaker trips (negative when already over). */
@@ -67,7 +66,7 @@ export interface PowerProjection {
   throttled: boolean
   /** True when the purchase itself flips the breaker from off to on. */
   trips: boolean
-  /** Income multiplier the rig would run at after the purchase (see `throttleMult`). */
+  /** Income multiplier the rig would run at after the purchase: 1, or 0 past the breaker. */
   mult: number
 }
 

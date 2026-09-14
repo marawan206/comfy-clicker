@@ -87,11 +87,12 @@ describe('pacing: climb upper bounds (something has to be slow)', () => {
 })
 
 describe('pacing: naive (spend everything on the best affordable payback)', () => {
-  // Naive spending trips the breaker with cheap boxes, so the proportional throttle costs it a few minutes.
+  // Naive spending trips the breaker with cheap boxes, and a tripped breaker earns nothing at all,
+  // so the detour through the PSU ladder costs it a few minutes that climbing never pays.
   const naiveLong = simulate('naive', 60 * MIN)
 
-  it('still reaches the RTX 4090 within 25 minutes', () => {
-    expect(naive.firsts['rtx-4090']).toBeLessThan(25 * MIN)
+  it('still reaches the RTX 4090 within 30 minutes', () => {
+    expect(naive.firsts['rtx-4090']).toBeLessThan(30 * MIN)
   })
 
   it('is slower than climbing at every milestone', () => {

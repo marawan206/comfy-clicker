@@ -86,7 +86,7 @@ export function RackPanel() {
         </button>
       }
       right={
-        <span className={cn('font-extrabold tabular-nums tracking-tight', throttled ? 'text-slot-vae' : 'text-smoke-100')} title={throttled ? 'Breaker tripped: income throttled' : 'Total income'}>
+        <span className={cn('font-extrabold tabular-nums tracking-tight', throttled ? 'text-slot-vae' : 'text-smoke-100')} title={throttled ? 'Breaker tripped: every rig is off' : 'Total income'}>
           {formatCps(cps)}
         </span>
       }
