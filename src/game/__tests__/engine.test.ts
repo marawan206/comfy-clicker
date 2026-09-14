@@ -25,6 +25,7 @@ import {
 import { CONTRACT_SLOTS, POST_WINDOW_MS, SETUP_FEE_MULT, STEP_S, TIER_UPGRADE_THRESHOLDS, TRENDING_COUNT, WEEK_MS } from '@/game/constants'
 import { CONTRACTS } from '@/data/contracts'
 import { acceptContract } from '@/game/contracts'
+import { addDrop } from '@/game/citizens'
 import { computeDerived, createEmptyDerived } from '@/game/derived'
 import { bulkCost, maxAffordable } from '@/game/economy'
 import { crossedMilestones, needsDerived, resetTickMemo, tick } from '@/game/engine'
@@ -172,6 +173,32 @@ describe('tick', () => {
     expect(ofType(settled, 'postResolved')).toHaveLength(1)
     expect(state.posts[0]?.granted).toBe(true)
     expect(state.posts[0]?.likes).toBe(state.posts[0]?.targetLikes)
+  })
+})
+
+describe('tick: citizens', () => {
+  it('runs a published workflow, pays the royalty into credits and cools off', () => {
+    const state = createInitialState(T0, GUEST)
+    const rng = mulberry32(3)
+    addDrop(state, T0, rng, 'w1', 'Hands, fixed')
+    const due = state.citizens.drops[0]!.nextRunAt
+    const derived = derivedWith({ cps: 100 })
+
+    // Nothing before the run is due.
+    expect(ofType(tick(state, derived, CATALOG, STEP_S, T0, rng), 'citizenRun')).toEqual([])
+
+    const events = ofType(tick(state, derived, CATALOG, STEP_S, due, rng), 'citizenRun')
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ workflowName: 'Hands, fixed' })
+    expect(state.credits).toBeGreaterThan(0)
+    expect(state.stats.hubRuns).toBe(1)
+    expect(state.citizens.feed).toHaveLength(1)
+
+    // One run per drop per tick, whatever the gap: an hour later the workflow has stopped
+    // trending, so the tick marks it cold instead of paying out the backlog.
+    expect(ofType(tick(state, derived, CATALOG, STEP_S, due + 3_600_000, rng), 'citizenRun')).toEqual([])
+    expect(state.citizens.drops[0]!.cold).toBe(true)
+    expect(state.stats.hubRuns).toBe(1)
   })
 })
 

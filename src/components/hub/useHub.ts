@@ -200,7 +200,7 @@ async function post<T>(url: string, body: unknown): Promise<T> {
  */
 export async function publishHubWorkflow(input: HubPublishInput): Promise<HubWorkflow> {
   const workflow = await post<HubWorkflow>(`${HUB_URL}/publish`, input)
-  getGameStore().recordHubPublish()
+  getGameStore().recordHubPublish({ id: workflow.id, name: workflow.name })
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(HUB_CHANGED_EVENT))
   return workflow
 }

@@ -3,9 +3,10 @@
  * Mounts every overlay once (toasts, achievement bridge, event banners, the trending spark, the
  * easter-egg shows, the level-up banner, the guidance popover, the offline report and the modals)
  * and routes the window events the rest of the UI dispatches:
- *   `comfy:open-modal`  { detail: 'settings' | 'stats' | 'daily' | 'rebrand' | 'seed' }
+ *   `comfy:open-modal`  { detail: 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' | 'patch' }
  *   `comfy:close-modals`
- *   `comfy:saved`       (from the S hotkey) → a "Saved" toast
+ *   `comfy:saved`       (from the S hotkey) → a "Saved" toast, or the cooldown line when the
+ *                       write was refused because the last one was seconds ago
  *
  * This file is mounted on every route that keeps the store alive (the game shell, the Graph, the
  * Hub, the leaderboard), so anything that must work away from the workbench belongs here: the
@@ -22,7 +23,8 @@ import { GuidanceHost } from '@/components/guidance/GuidanceHost'
 import { LevelUpBanner } from '@/components/overlays/LevelUpBanner'
 import { CLOSE_MODALS_EVENT, OPEN_MODAL_EVENT } from '@/components/overlays/ModalBase'
 import { RebrandModal } from '@/components/overlays/RebrandModal'
-import { SeedModal } from '@/components/overlays/SeedModal'
+import { LoungeModal } from '@/components/overlays/LoungeModal'
+import { PatchNotesModal } from '@/components/overlays/PatchNotesModal'
 import { SettingsModal } from '@/components/overlays/SettingsModal'
 import { StatsModal } from '@/components/overlays/StatsModal'
 import { ToastHost } from '@/components/overlays/ToastHost'
@@ -30,9 +32,10 @@ import { TrendingSpark } from '@/components/overlays/TrendingSpark'
 import { toast } from '@/components/overlays/useToasts'
 import { WelcomeBackModal } from '@/components/overlays/WelcomeBackModal'
 import { useGrandTour } from '@/hooks/useEasterEggs'
+import type { SavedDetail } from '@/hooks/useHotkeys'
 
-export type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'seed'
-const MODAL_IDS: ReadonlySet<string> = new Set<ModalId>(['settings', 'stats', 'daily', 'rebrand', 'seed'])
+export type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' | 'patch'
+const MODAL_IDS: ReadonlySet<string> = new Set<ModalId>(['settings', 'stats', 'daily', 'rebrand', 'lounge', 'patch'])
 const SAVED_EVENT = 'comfy:saved'
 
 /** Dispatch helper for anything that wants to open a modal without importing the overlays. */
@@ -55,7 +58,19 @@ export function Overlays() {
       if (typeof id === 'string' && MODAL_IDS.has(id)) setModal(id as ModalId)
     }
     const onClose = () => setModal(null)
-    const onSaved = () =>
+    const onSaved = (e: Event) => {
+      const detail = (e as CustomEvent<SavedDetail | undefined>).detail
+      if (detail && !detail.wrote) {
+        toast(`Already saved · again in ${Math.max(1, Math.ceil(detail.waitMs / 1000))}s`, {
+          title: 'Save',
+          description: 'The game autosaves on its own. The key is for peace of mind, not for spamming.',
+          icon: <Save className="text-smoke-600" />,
+          tone: 'default',
+          key: 'saved',
+          durationMs: 2000,
+        })
+        return
+      }
       toast('Saved', {
         title: 'Save',
         description: 'Progress lives in this browser · export a code in Settings to move it.',
@@ -64,6 +79,7 @@ export function Overlays() {
         key: 'saved',
         durationMs: 2500,
       })
+    }
     window.addEventListener(OPEN_MODAL_EVENT, onOpen)
     window.addEventListener(CLOSE_MODALS_EVENT, onClose)
     window.addEventListener(SAVED_EVENT, onSaved)
@@ -84,7 +100,8 @@ export function Overlays() {
       <WelcomeBackModal />
       <DailyModal open={modal === 'daily'} onClose={close} onOpen={openDaily} />
       <RebrandModal open={modal === 'rebrand'} onClose={close} />
-      <SeedModal open={modal === 'seed'} onClose={close} />
+      <LoungeModal open={modal === 'lounge'} onClose={close} />
+      <PatchNotesModal open={modal === 'patch'} onClose={close} />
       <SettingsModal open={modal === 'settings'} onClose={close} />
       <StatsModal open={modal === 'stats'} onClose={close} />
       <ToastHost />

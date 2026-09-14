@@ -13,7 +13,7 @@ import { createInitialState } from '@/game/state'
 import { loadSave, serialize, SAVE_CORRUPT_KEY } from '@/game/save'
 import { applyOffline } from '@/game/offline'
 import { startLoop } from '@/game/loop'
-import { SAVE_KEY } from '@/game/constants'
+import { MANUAL_SAVE_COOLDOWN_MS, SAVE_KEY } from '@/game/constants'
 import { autosaveDue, type SaveReason } from '@/state/autosave'
 import * as cloud from '@/state/cloudActions'
 
@@ -137,6 +137,8 @@ export class GameStore {
   leader = true
   /** The account this save belongs to; null for a guest run. Set by cloud sync, cleared by `replaceState`. */
   saveOwner: string | null = null
+  /** Epoch ms of the last save the player asked for by hand; 0 before the first one. */
+  manualSavedAt = 0
 
   private listeners = new Set<Listener>()
   private eventListeners = new Set<EventListener>()
@@ -334,20 +336,40 @@ export class GameStore {
 
   // ---- persistence --------------------------------------------------------
   /**
+   * Milliseconds left on the manual-save cooldown, 0 when a hand-written save is allowed.
+   *
+   * Holding S wrote the blob (and, signed in, queued a cloud upload) on every key repeat, which is
+   * a lot of traffic for a game that already autosaves every ten seconds. The cooldown is on the
+   * player's own writes only: the interval, the debounce after an action and the write on tab hide
+   * are untouched, so nothing can be lost by pressing the key too often.
+   */
+  msUntilManualSave(now: number = Date.now()): number {
+    if (this.manualSavedAt <= 0) return 0
+    return Math.max(0, this.manualSavedAt + MANUAL_SAVE_COOLDOWN_MS - now)
+  }
+
+  /**
    * Write the save. Always writes, whatever `settings.autosave` says: the setting decides when the
    * tick asks (see `autosaveDue`), not whether an explicit write is allowed. A refused write is
    * surfaced through `saveError` rather than swallowed, because a player whose browser is quietly
    * dropping every save deserves to be told before they close the tab.
+   *
+   * Returns false when nothing was written because the manual cooldown is still running; every
+   * other path returns true, the browser refusing the write included (that is `saveError`).
    */
-  save = (reason: SaveReason = 'manual'): void => {
+  save = (reason: SaveReason = 'manual'): boolean => {
     const now = Date.now()
+    if (reason === 'manual') {
+      if (this.msUntilManualSave(now) > 0) return false
+      this.manualSavedAt = now
+    }
     if (!this.claimWrite(reason, now)) {
       // A follower never writes the shared save. Clearing the pending marks keeps the tick from
       // asking again every 50 ms; the leader's next write arrives through `onStorage`.
       this.lastSaveAt = now
       this.dirtyAt = null
       this.notify()
-      return
+      return true
     }
     this.state.meta.lastSavedAt = now
     const written = safeStorageSet(SAVE_KEY, serialize(this.state))
@@ -359,6 +381,7 @@ export class GameStore {
       this.saveReason = reason
     }
     this.notify()
+    return true
   }
 
   /**
@@ -448,6 +471,7 @@ export class GameStore {
   claimDaily = (): ActionResult => this.run((ctx) => actions.claimDaily(ctx), SAVE)
   rebrand = (): ActionResult => this.run((ctx) => actions.rebrand(ctx), SAVE)
   spin = (wager: number | 'free'): ActionResult => this.run((ctx) => actions.spin(ctx, wager), SAVE)
+  flip = (wager: number): ActionResult => this.run((ctx) => actions.flip(ctx, wager), SAVE)
   upscalePost = (postId: string): ActionResult => this.run((ctx) => actions.upscalePost(ctx, postId), SAVE)
   toggleSetting = (key: keyof GameState['settings'], value?: boolean): ActionResult =>
     this.run((ctx) => actions.toggleSetting(ctx, key, value), SAVE)
@@ -458,7 +482,8 @@ export class GameStore {
   // Server-driven actions (src/state/cloudActions.ts): the daily calendar on the server clock and ComfyHub bookkeeping.
   claimDailyFromServer = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.claimDailyFromServer(ctx, claim), SAVE)
   markDailyClaimed = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.markDailyClaimed(ctx, claim), SAVE)
-  recordHubPublish = (): ActionResult => this.run((ctx) => cloud.recordHubPublish(ctx), SAVE)
+  recordHubPublish = (workflow?: { id: string; name: string }): ActionResult =>
+    this.run((ctx) => cloud.recordHubPublish(ctx, workflow), SAVE)
   applyHubRoyalties = (grant: cloud.HubRoyaltyGrant): ActionResult => this.run((ctx) => cloud.applyHubRoyalties(ctx, grant), SAVE)
   setWeekOverride = (week: number | null): void => {
     this.state.weekOverride = week

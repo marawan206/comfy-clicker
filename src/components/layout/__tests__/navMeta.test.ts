@@ -64,7 +64,7 @@ describe('NAV_TILES', () => {
   it('gives every route tile an href and every utility tile none', () => {
     for (const id of ROUTE_TILE_IDS) {
       const tile = navTile(id)
-      if (id === 'seed') expect(tile.href).toBeNull()
+      if (id === 'lounge') expect(tile.href).toBeNull()
       else expect(tile.href).toMatch(/^\//)
     }
     for (const id of UTILITY_TILE_IDS) expect(navTile(id).href).toBeNull()
@@ -200,12 +200,12 @@ describe('shouldPulse', () => {
     expect(shouldPulse('leaderboard', input(state))).toBe(true)
   })
 
-  it('never lights Settings, Projector, Help or Seed', () => {
+  it('never lights Settings, Projector, Help or Lounge', () => {
     const state = fresh()
     state.stats.posts = 50
     state.lifetimeCredits = 1e9
     const rich = input(state, { signedIn: true, affordable: 40 })
-    for (const id of ['settings', 'projector', 'help', 'seed'] as NavTileId[]) {
+    for (const id of ['settings', 'projector', 'help', 'lounge'] as NavTileId[]) {
       expect(shouldPulse(id, rich)).toBe(false)
     }
   })

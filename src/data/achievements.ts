@@ -594,18 +594,18 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     cond: stat('level', 10),
   },
 
-  // ---- seed roulette -----------------------------------------------------
+  // ---- the latent lounge -------------------------------------------------
   {
     id: 'seed-first',
     name: 'Random Seed',
-    desc: 'Spin the seed roulette once. control_after_generate handles the rest.',
+    desc: 'Spin the wheel in the Lounge once. control_after_generate handles the rest.',
     icon: 'dices',
     cond: stat('spins', 1),
   },
   {
     id: 'seed-100',
     name: 'Degenerate Sampler',
-    desc: 'Spin the seed roulette 100 times. Three minutes apart, that is five hours of waiting.',
+    desc: 'Spin the wheel 100 times. The table pays back less than it takes, so that is a choice.',
     icon: 'coins',
     cond: stat('spins', 100),
   },
@@ -725,7 +725,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'seed-42-hit',
     name: 'It Was Always 42',
-    desc: 'Land seed 42 on the roulette. Forty-two times the wager, and the pot on top.',
+    desc: 'Land seed 42 on the wheel. Forty-two times the bet, and the pot on top.',
     icon: 'party-popper',
     cond: flag('jackpot42'),
     hidden: true,
@@ -736,6 +736,14 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     desc: 'Three NaN latents in a row. The next one gets rerolled, out of pity.',
     icon: 'circle-slash',
     cond: flag('nanStreak3'),
+    hidden: true,
+  },
+  {
+    id: 'coin-five',
+    name: 'Call It In The Air',
+    desc: 'Five coin flips on your side in a row. The coin does not remember, but you will.',
+    icon: 'circle-dollar-sign',
+    cond: flag('coinFive'),
     hidden: true,
   },
   {

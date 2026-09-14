@@ -143,12 +143,12 @@ const COND: NavTint = {
   dot: 'bg-slot-cond',
 }
 
-/** Every tile in header order. The divider sits between `seed` and `help`. */
+/** Every tile in header order. The divider sits between `lounge` and `help`. */
 export const NAV_TILES: readonly NavTileMeta[] = [
   { id: 'map', href: '/map', label: 'Map', pitch: 'The Graph: 132 nodes to spend on', tint: ELECTRIC, icon: Waypoints, labelled: true },
   { id: 'hub', href: '/hub', label: 'Hub', pitch: "ComfyHub: run other players' workflows", tint: PERIWINKLE, icon: Workflow, labelled: true },
   { id: 'leaderboard', href: '/leaderboard', label: 'Board', pitch: 'Leaderboard: top 100 by lifetime credits', tint: AMBER, icon: Trophy, labelled: true },
-  { id: 'seed', href: null, label: 'Seed', pitch: 'Seed Roulette: wager credits on a spin', tint: LATENT, icon: Dices, labelled: true },
+  { id: 'lounge', href: null, label: 'Lounge', pitch: 'The Latent Lounge: bet credits on the wheel or the coin', tint: LATENT, icon: Dices, labelled: true },
   { id: 'help', href: null, label: 'Help', pitch: 'Replay the tutorial', tint: SMOKE, icon: HelpCircle, labelled: false },
   { id: 'stats', href: null, label: 'Stats', pitch: 'Lifetime numbers and achievements', tint: IMAGE, icon: ChartColumn, labelled: false },
   { id: 'settings', href: null, label: 'Settings', pitch: 'Save, export, sound, motion', tint: COND, icon: Settings, labelled: false },
@@ -156,7 +156,7 @@ export const NAV_TILES: readonly NavTileMeta[] = [
 ]
 
 /** The tiles above the divider (destinations), in order. */
-export const ROUTE_TILE_IDS: readonly NavTileId[] = ['map', 'hub', 'leaderboard', 'seed']
+export const ROUTE_TILE_IDS: readonly NavTileId[] = ['map', 'hub', 'leaderboard', 'lounge']
 /** The tiles below the divider (utilities), in order. */
 export const UTILITY_TILE_IDS: readonly NavTileId[] = ['help', 'stats', 'settings', 'projector']
 
@@ -287,7 +287,7 @@ export function shouldPulse(id: NavTileId, input: PulseInput): boolean {
       return state.stats.posts > 0
     case 'leaderboard':
       return signedIn || state.lifetimeCredits >= BOARD_PULSE_CREDITS
-    case 'seed':
+    case 'lounge':
     case 'help':
     case 'settings':
     case 'projector':

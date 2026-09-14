@@ -17,7 +17,7 @@ import { canClaim, claimDaily as payDaily } from '@/game/daily'
 import { maxAffordable } from '@/game/economy'
 import { addCredits, pushEvents } from '@/game/engine'
 import { RESOLVABLE_KINDS, resolveEvent as resolveActiveEvent } from '@/game/events'
-import { applySpin, canSpin } from '@/game/gamble'
+import { applyFlip, applySpin, canBet } from '@/game/gamble'
 import { applyPurchase, canBuy } from '@/game/hardware'
 import { modelLevelLock } from '@/game/level'
 import { canAffordNode, currencyBalance, isNodeUnlocked, mapNodeAvailable, unlockNode } from '@/game/map'
@@ -415,12 +415,12 @@ export function claimDaily(ctx: ActionContext): ActionResult {
 }
 
 /**
- * Seed Roulette: wager credits (or take the daily house spin with `'free'`) on the KSampler.
+ * The Latent Lounge, wheel table: bet credits (or take the daily house spin with `'free'`).
  *
- * `canSpin` owns every rule and every rejection string (the level gate, the cooldown, the wager
- * bounds, the daily free spin); `applySpin` owns the roll, the pity meter, the hot streak and the
- * pot. `dirty` is false: a spin moves the spendable balance and some counters, and nothing in
- * `Derived` reads any of them.
+ * `canBet` owns every rule and every rejection string (the level gate, the floor, the balance, the
+ * daily free spin); `applySpin` owns the roll, the pity meter, the hot streak and the pot.
+ * `dirty` is false: a bet moves the spendable balance and some counters, and nothing in `Derived`
+ * reads any of them.
  *
  * Two things this must never become. It is not reachable from the click path or a hotkey, so a
  * wager is always a deliberate press. And it does not call `noteSpend`: a bank that lands on zero
@@ -428,10 +428,23 @@ export function claimDaily(ctx: ActionContext): ActionResult {
  */
 export function spin(ctx: ActionContext, wager: number | 'free'): ActionResult {
   const { state, derived, catalog, now, rng } = ctx
-  const check = canSpin(state, derived, now, wager)
+  const check = canBet(state, derived, now, wager)
   if (!check.ok) return fail(check.reason)
   const events = applySpin(state, derived, catalog, now, rng, wager)
   if (events.length === 0) return fail('The sampler has no seeds to give')
+  return ok(events, false)
+}
+
+/**
+ * The Latent Lounge, coin table: one flip, your side pays double. Same validation and the same
+ * credits-only rule as `spin`; there is no free flip, so `'free'` is not accepted here.
+ */
+export function flip(ctx: ActionContext, wager: number): ActionResult {
+  const { state, derived, now, rng } = ctx
+  const check = canBet(state, derived, now, wager)
+  if (!check.ok) return fail(check.reason)
+  const events = applyFlip(state, derived, now, rng, wager)
+  if (events.length === 0) return fail('The coin would not come down')
   return ok(events, false)
 }
 

@@ -232,8 +232,10 @@ describe('tooltip copy strings', () => {
       tone: 'credits',
     })
     const throttled = incomeTip({ cps: 2.8, throttled: true, draw: 665, budget: 650 })
-    expect(throttled.title).toBe('Throttled')
-    expect(throttled.description).toBe('Draw 665 is over the 650 budget. Income runs at 98% until it fits.')
+    expect(throttled.title).toBe('Breaker tripped')
+    expect(throttled.description).toBe(
+      'Draw 665 is over the 650 budget. The rack is off and earns nothing until it fits. Clicks still pay.',
+    )
   })
 
   it('level chip', () => {
@@ -249,7 +251,7 @@ describe('tooltip copy strings', () => {
   it('signups chip', () => {
     const tip = signupsTip(12, 3)
     expect(tip.title).toBe('Comfy Cloud signups')
-    expect(tip.description).toBe('Each signup is a Research Point: +1% income forever, and RP buys Graph nodes.')
+    expect(tip.description).toBe('Each signup is a Research Point: +1% income forever. Spend them on the Graph.')
     expect(tip.meta).toBe('3 RP unspent')
   })
 
@@ -267,10 +269,10 @@ describe('tooltip copy strings', () => {
 
   it('power chip', () => {
     expect(powerTip({ draw: 640, budget: 650, throttled: false }).description).toBe(
-      '640 of 650 W. Past the breaker, income scales by budget over draw.',
+      '640 of 650 W. Past the breaker every rig stops and passive income is zero.',
     )
     expect(powerTip({ draw: 1_400_000, budget: 2_000_000, throttled: false }).description).toBe(
-      '1.4 MW of 2.0 MW. Past the breaker, income scales by budget over draw.',
+      '1.4 MW of 2.0 MW. Past the breaker every rig stops and passive income is zero.',
     )
   })
 
@@ -372,7 +374,7 @@ describe('tooltip copy strings', () => {
     })
     expect(navTileTip('hub').description).toBe("Run other players' recipes for +15% likes. Publish yours: 5% of every run is yours.")
     expect(navTileTip('leaderboard').description).toBe('Top 100 cloud saves by lifetime credits. Sign in to appear.')
-    expect(navTileTip('seed').description).toBe('Wager credits on a random seed. One spin every three minutes, one free a day.')
+    expect(navTileTip('lounge').description).toBe('Bet any credits on the wheel or the coin. No cooldown, one free spin a day.')
     expect(navTileTip('stats').description).toBe('Lifetime numbers and the achievement grid. Hidden ones show as ???.')
     expect(navTileTip('settings').description).toBe('Save, export, sound, motion, hard reset.')
     expect(navTileTip('projector').description).toBe('Bigger type for the back row.')

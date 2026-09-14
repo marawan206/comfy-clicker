@@ -1,8 +1,8 @@
 'use client'
 /**
  * Power draw against the breaker budget. The bar shifts from calm blue through amber to red as
- * the rack approaches the limit; once tripped, income scales by budget/draw and a banner offers
- * the Power tab of the store. `compact` renders the header chip ("⚡ 640/650 W").
+ * the rack approaches the limit; once tripped, every rig stops earning and a banner offers the
+ * Power tab of the store. `compact` renders the header chip ("⚡ 640/650 W").
  */
 import { AlertTriangle, Zap } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -72,7 +72,6 @@ export function PowerMeter({ compact = false }: PowerMeterProps) {
   const load = budget > 0 ? draw / budget : draw > 0 ? Infinity : 0
   const color = loadColor(load)
   const pct = Math.min(100, Math.max(0, (Number.isFinite(load) ? load : 1) * 100))
-  const mult = throttled && draw > 0 ? budget / draw : 1
   const label = `${formatWatts(draw)} / ${formatWatts(budget)}`
 
   if (compact) {
@@ -154,7 +153,8 @@ export function PowerMeter({ compact = false }: PowerMeterProps) {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-smoke-100">Breaker tripped</p>
               <p className="text-xs text-smoke-600">
-                Income at <span className="font-semibold tabular-nums text-slot-vae">{Math.round(mult * 100)}%</span> until the rack fits the circuit.
+                Every rig is <span className="font-semibold text-slot-vae">off</span>. Passive income is zero until the rack fits the circuit. Clicks
+                still pay.
               </p>
             </div>
             <button

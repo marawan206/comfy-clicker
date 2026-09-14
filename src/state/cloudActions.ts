@@ -5,6 +5,7 @@
  * click. They live here rather than in the core because their inputs come from HTTP, not play.
  */
 import type { ActionContext, ActionResult } from '@/game/actions'
+import { addDrop } from '@/game/citizens'
 import { DAILY_CLAIMED_KEEP, DAILY_CP_DAY, DAILY_RP_DAY, cycleDay, dailyReward, dayKey } from '@/game/daily'
 import { addCredits } from '@/game/engine'
 import type { GameEvent } from '@/game/types'
@@ -69,9 +70,14 @@ export function markDailyClaimed(ctx: ActionContext, claim: ServerDailyClaim): A
   return ok([], false)
 }
 
-/** A workflow of yours went up on ComfyHub. */
-export function recordHubPublish(ctx: ActionContext): ActionResult {
-  ctx.state.stats.hubPublished += 1
+/**
+ * A workflow of yours went up on ComfyHub. The publish also puts a drop on the citizens' board,
+ * so the workflow starts collecting runs while it is new (see `src/game/citizens.ts`).
+ */
+export function recordHubPublish(ctx: ActionContext, workflow?: { id: string; name: string }): ActionResult {
+  const { state, now, rng } = ctx
+  state.stats.hubPublished += 1
+  if (workflow && workflow.id) addDrop(state, now, rng, workflow.id, workflow.name)
   return ok([], false)
 }
 

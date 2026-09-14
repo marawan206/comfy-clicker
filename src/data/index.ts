@@ -16,6 +16,7 @@ import type {
   UpgradeDef,
 } from '@/game/types'
 import { ACHIEVEMENTS } from '@/data/achievements'
+import { CITIZEN_LINES, CITIZEN_PREFIXES, CITIZEN_SUFFIXES } from '@/data/citizens'
 import { CONTRACTS } from '@/data/contracts'
 import { EVENT_DEFS } from '@/data/events'
 import { GAMBLE_OUTCOMES } from '@/data/gamble'
@@ -37,8 +38,17 @@ export interface Catalog {
   hashtags: HashtagDef[]
   contracts: ContractDef[]
   events: EventDef[]
-  /** Seed roulette segments. Weights are probabilities and sum to 1. */
+  /** Lounge wheel segments. Weights are probabilities and sum to 1. */
   gamble: GambleOutcomeDef[]
+  /** Word pools for the citizens who run published workflows. */
+  citizens: CitizenFlavor
+}
+
+/** Handle parts and one-liners for the hub's invented players. */
+export interface CitizenFlavor {
+  prefixes: string[]
+  suffixes: string[]
+  lines: string[]
 }
 
 /**
@@ -57,7 +67,14 @@ export function createCatalog(partial: Partial<Catalog> = {}): Catalog {
     contracts: partial.contracts ?? [],
     events: partial.events ?? [],
     gamble: partial.gamble ?? GAMBLE_OUTCOMES,
+    citizens: partial.citizens ?? SHIPPED_CITIZENS,
   }
+}
+
+const SHIPPED_CITIZENS: CitizenFlavor = {
+  prefixes: [...CITIZEN_PREFIXES],
+  suffixes: [...CITIZEN_SUFFIXES],
+  lines: [...CITIZEN_LINES],
 }
 
 /** The shipped game data. Tier upgrades are generated once here for the shipped hardware ladder. */
@@ -72,4 +89,5 @@ export const CATALOG: Catalog = {
   contracts: CONTRACTS,
   events: EVENT_DEFS,
   gamble: GAMBLE_OUTCOMES,
+  citizens: SHIPPED_CITIZENS,
 }

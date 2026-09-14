@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CATALOG } from '@/data'
-import { AUTOSAVE_MS, SAVE_DEBOUNCE_MS, SAVE_KEY } from '@/game/constants'
+import { AUTOSAVE_MS, MANUAL_SAVE_COOLDOWN_MS, SAVE_DEBOUNCE_MS, SAVE_KEY } from '@/game/constants'
 import { autosaveDue } from '@/state/autosave'
 import { GameStore } from '@/state/store'
 
@@ -77,7 +77,8 @@ function makeStore(): GameStore {
   const store = new GameStore(CATALOG)
   store.state.credits = 1e9
   // Establish a baseline write so the very first tick is not an "never saved" interval write.
-  store.save('manual')
+  // `interval`, not `manual`: a manual write starts the manual cooldown, which these tests set.
+  store.save('interval')
   writes = 0
   return store
 }
@@ -150,11 +151,32 @@ describe('GameStore save cadence', () => {
     expect(store.savedAt).toBe(savedAt)
 
     throwOnSet = false
-    clock = T0 + 2_000
+    clock = T0 + 1_000 + MANUAL_SAVE_COOLDOWN_MS
     store.save('manual')
     expect(store.saveError).toBe(false)
-    expect(store.savedAt).toBe(T0 + 2_000)
+    expect(store.savedAt).toBe(clock)
     expect(store.saveReason).toBe('manual')
+  })
+
+  it('refuses a second manual save inside the cooldown and says how long is left', () => {
+    const store = makeStore()
+    clock = T0 + 1_000
+    expect(store.save('manual')).toBe(true)
+    const written = writes
+
+    clock = T0 + 2_000
+    expect(store.save('manual')).toBe(false)
+    expect(writes).toBe(written)
+    expect(store.msUntilManualSave(clock)).toBe(MANUAL_SAVE_COOLDOWN_MS - 1_000)
+
+    // The cadence the tick asks for is untouched: only the player's own key is on a cooldown.
+    clock = T0 + 2_000 + AUTOSAVE_MS
+    step(store, clock)
+    expect(writes).toBe(written + 1)
+
+    clock = T0 + 1_000 + MANUAL_SAVE_COOLDOWN_MS
+    expect(store.save('manual')).toBe(true)
+    expect(store.msUntilManualSave(clock)).toBe(MANUAL_SAVE_COOLDOWN_MS)
   })
 
   it('autosave off stops the tick writes but never an explicit one', () => {

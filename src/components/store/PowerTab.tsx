@@ -23,8 +23,6 @@ export function PowerTab() {
     throttled: d.throttled,
   }));
   const totalDraw = rows.reduce((sum, r) => sum + r.watts, 0);
-  const mult =
-    power.throttled && power.draw > 0 ? power.budget / power.draw : 1;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
@@ -58,7 +56,7 @@ export function PowerTab() {
             )}
           >
             {formatWatts(power.draw)} / {formatWatts(power.budget)}
-            {power.throttled && ` · ×${mult.toFixed(2)} income`}
+            {power.throttled && " · rack off"}
           </span>
         </div>
         <div className="overflow-x-auto rounded-lg border border-charcoal-400">

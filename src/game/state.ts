@@ -50,7 +50,8 @@ export function createInitialState(now: number, guestId: string): GameState {
     contracts: { active: [], nextRotateAt: now },
     events: { active: [], nextAt: now + EVENT_MIN_GAP_MS },
     daily: { lastClaimDay: null, streak: 0, claimed: [] },
-    gamble: { nextSpinAt: now, freeSpinDay: null, winStreak: 0, dryStreak: 0, pot: 0 },
+    gamble: { freeSpinDay: null, winStreak: 0, dryStreak: 0, coinStreak: 0, pot: 0 },
+    citizens: { drops: [], feed: [] },
     stats: {
       posts: 0,
       videos: 0,
@@ -72,6 +73,7 @@ export function createInitialState(now: number, guestId: string): GameState {
       ratioed: 0,
       dislikes: 0,
       spins: 0,
+      flips: 0,
       spinNet: 0,
       clickLockUntil: 0,
       clickStrikes: 0,

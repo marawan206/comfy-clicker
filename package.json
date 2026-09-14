@@ -1,6 +1,6 @@
 {
   "name": "comfy-clicker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,6 +13,8 @@
     "assets:check": "tsx scripts/check-assets.ts",
     "art:post": "node scripts/art-postprocess.mjs",
     "balance": "tsx scripts/balance.ts",
+    "notes": "node scripts/patch-notes.mjs",
+    "notes:check": "node scripts/patch-notes.mjs --check",
     "commit": "node scripts/backdate-commit.mjs"
   },
   "dependencies": {

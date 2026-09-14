@@ -5,12 +5,13 @@
  * `html.projector` / `html.reduced-motion` mirrors follow automatically.
  */
 import { useId, useState, type ReactNode } from 'react'
-import { Check, ClipboardCopy, Download, GraduationCap, HardDriveDownload, Info, Monitor, Play, Save, Sparkles, Trash2, Upload, Volume2, Waves } from 'lucide-react'
+import { Check, ClipboardCopy, Download, GraduationCap, HardDriveDownload, Info, Monitor, Play, Save, ScrollText, Sparkles, Trash2, Upload, Volume2, Waves } from 'lucide-react'
 import { getSfxVolume, playCue, setSfxVolume } from '@/audio/sfxEngine'
 import { cn } from '@/lib/utils'
 import { useCloudSync } from '@/components/auth/useAuth'
 import { HoldToConfirm, ModalBase, ModalButton, SectionLabel } from '@/components/overlays/ModalBase'
 import { toast } from '@/components/overlays/useToasts'
+import { GAME_VERSION, PATCH_NOTES } from '@/data/patchNotes'
 import { AUTOSAVE_MS } from '@/game/constants'
 import { exportString, importString } from '@/game/save'
 import type { GameSettings } from '@/game/types'
@@ -50,6 +51,11 @@ const SAVE_TOGGLE: ToggleDef = {
   icon: <HardDriveDownload size={16} />,
 }
 
+/** Swap this modal for the patch notes: same overlay host, so Esc still closes whatever is open. */
+function openPatchNotes(): void {
+  window.dispatchEvent(new CustomEvent<string>('comfy:open-modal', { detail: 'patch' }))
+}
+
 function SettingsBody({ onClose }: { onClose: () => void }) {
   const store = useGameStore()
   const settings = useGameShallow((s) => ({
@@ -70,7 +76,11 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
   const cloud = useCloudSync() !== 'offline'
 
   const saveNow = () => {
-    store.save()
+    if (!store.save()) {
+      const wait = Math.max(1, Math.ceil(store.msUntilManualSave() / 1000))
+      toast(`Already saved · again in ${wait}s`, { title: 'Save', description: 'Autosave is still running underneath.', icon: <Save className="text-smoke-600" />, key: 'saved' })
+      return
+    }
     toast('Saved', { title: 'Save', description: 'Progress lives in this browser. Export a code to move it.', icon: <Save className="text-electric-400" />, tone: 'electric', key: 'saved' })
   }
 
@@ -277,6 +287,21 @@ function SettingsBody({ onClose }: { onClose: () => void }) {
             <Info size={12} /> About
           </span>
         </SectionLabel>
+        <p className="mb-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={openPatchNotes}
+            className={cn(
+              'inline-flex h-7 items-center gap-1.5 rounded-[0.354em] border border-charcoal-400 bg-charcoal-600 px-2 text-[11px] font-bold text-smoke-100 transition-colors hover:border-charcoal-300 hover:bg-charcoal-500',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-electric-400',
+            )}
+          >
+            <ScrollText size={12} aria-hidden="true" />
+            Patch notes
+            <span className="font-mono tabular-nums text-smoke-600">v{GAME_VERSION}</span>
+          </button>
+          <span className="text-[11px] text-smoke-600">{PATCH_NOTES[0]?.title}</span>
+        </p>
         <p>
           <span className="font-semibold text-smoke-100">Comfy Clicker</span>, made by{' '}
           <a

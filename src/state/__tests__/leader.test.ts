@@ -212,7 +212,8 @@ describe('writer lock', () => {
 function seedSave(gapSec: number): number {
   const seed = new GameStore(CATALOG)
   seed.state.credits = 1e9
-  expect(seed.buyHardware('pc-4c8t', 10).error).toBeUndefined()
+  // Four more office PCs, not ten: eleven of them draw 715 W and a tripped breaker earns nothing.
+  for (let i = 0; i < 4; i++) expect(seed.buyHardware('pc-4c8t').error).toBeUndefined()
   expect(seed.derived.cps).toBeGreaterThan(0)
   seed.state.meta.lastTickAt = clock - gapSec * 1000
   seed.save('manual')

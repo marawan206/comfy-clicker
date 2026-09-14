@@ -2,7 +2,8 @@
 /**
  * Global keyboard shortcuts:
  *   Space → one Generate click (never repeats while held; ignored inside inputs)
- *   S     → save now (`comfy:saved` event; Overlays shows the toast)
+ *   S     → save now (`comfy:saved` event; Overlays shows the toast). Refused while the manual
+ *             cooldown runs, so holding the key writes once rather than once a repeat.
  *   ?     → replay the tutorial (same event the header's `?` tile raises)
  *   Esc   → `comfy:close-modals` for every overlay
  */
@@ -12,6 +13,13 @@ import { useGameStore } from '@/state/useGame'
 
 export const CLOSE_MODALS_EVENT = 'comfy:close-modals'
 export const SAVED_EVENT = 'comfy:saved'
+
+/** What `comfy:saved` carries: whether the write happened, and the wait left when it did not. */
+export interface SavedDetail {
+  wrote: boolean
+  waitMs: number
+}
+
 /** Same string `ModalBase` exports; declared here so the hook pulls in no component module. */
 const OPEN_MODAL_EVENT = 'comfy:open-modal'
 
@@ -65,8 +73,9 @@ export function useHotkeys(): void {
       }
       if (e.code === 'KeyS' && !e.repeat) {
         e.preventDefault()
-        store.save()
-        window.dispatchEvent(new CustomEvent(SAVED_EVENT))
+        const wrote = store.save()
+        const detail: SavedDetail = { wrote, waitMs: wrote ? 0 : store.msUntilManualSave() }
+        window.dispatchEvent(new CustomEvent<SavedDetail>(SAVED_EVENT, { detail }))
       }
     }
     window.addEventListener('keydown', onKeyDown)

@@ -82,7 +82,8 @@ const asClient = (s: Supabase): any => s
 function cloudRow(gapSec: number, savedAt = new Date(T0 - gapSec * 1000).toISOString()): Row {
   const seed = new GameStore(CATALOG)
   seed.state.credits = 1e9
-  seed.buyHardware('pc-4c8t', 10)
+  // Four more office PCs, not ten: eleven of them draw 715 W and a tripped breaker earns nothing.
+  for (let i = 0; i < 4; i++) seed.buyHardware('pc-4c8t')
   seed.state.lifetimeCredits = 5e9
   seed.state.meta.playedSec = 9_000
   seed.state.totalClicks = 4_000
