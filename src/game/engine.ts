@@ -16,6 +16,7 @@
  */
 import type { Catalog } from '@/data'
 import { checkAchievements } from '@/game/achievements'
+import { runCitizens } from '@/game/citizens'
 import { contractsDue, progressContracts, rotateContracts } from '@/game/contracts'
 import { expireEvents, maybeStartEvent } from '@/game/events'
 import { currentTrending, weekIndex } from '@/game/hashtags'
@@ -105,8 +106,8 @@ export function primeTickMemo(state: GameState, derived: Derived, now: number): 
  * Advance the game by `dtSec` seconds ending at wall-clock `now`.
  *
  * Order matters: income first (so jobs finishing this tick see the new bank), then the studio
- * queue and post settlement, random events, contracts, achievements (at most once per played
- * second), the trending-week rollover, cps milestones and the breaker flip. `lastTickAt` is
+ * queue and post settlement, citizen runs, random events, contracts, achievements (at most once
+ * per played second), the trending-week rollover, cps milestones and the breaker flip. `lastTickAt` is
  * stamped last so `applyOffline` measures from the end of this tick.
  */
 export function tick(
@@ -133,16 +134,19 @@ export function tick(
   pushEvents(events, advanceQueue(state, derived, catalog, now, rng))
   pushEvents(events, settlePosts(state, derived, catalog, now))
 
-  // 3. Random events: end the expired ones before possibly starting a new one.
+  // 3. Citizens running the workflows this save has published (at most one run per drop).
+  pushEvents(events, runCitizens(state, derived, catalog, now, rng))
+
+  // 4. Random events: end the expired ones before possibly starting a new one.
   pushEvents(events, expireEvents(state, now))
   pushEvents(events, maybeStartEvent(state, derived, catalog, now, rng))
 
-  // 4. Contracts: progress goals from what happened this tick; refill/rotate when due
+  // 5. Contracts: progress goals from what happened this tick; refill/rotate when due
   //    (timer elapsed, a free slot, or a claimed one to drop; rotateContracts reschedules itself).
   pushEvents(events, progressContracts(state, events, catalog))
   if (contractsDue(state, now)) pushEvents(events, rotateContracts(state, derived, catalog, now, rng))
 
-  // 5. Achievements: once per whole second of play, not 20× a second.
+  // 6. Achievements: once per whole second of play, not 20× a second.
   if (Math.floor(state.meta.playedSec) !== Math.floor(playedBefore)) {
     pushEvents(events, checkAchievements(state, derived, catalog))
     // Levels are derived from lifetime stats, so this only ever pays for a threshold already
@@ -151,18 +155,18 @@ export function tick(
     pushEvents(events, settleLevelUps(state, derived, catalog))
   }
 
-  // 6. Trending week rollover (wall clock, weekSpeed, or a demo override change).
+  // 7. Trending week rollover (wall clock, weekSpeed, or a demo override change).
   const week = currentWeek(state, derived, now)
   if (week !== memo.week) {
     events.push({ type: 'weekRollover', tags: [...currentTrending(state, now, catalog, derived.weekSpeed)] })
     memo.week = week
   }
 
-  // 7. cps milestones: announced the first time a power of ten is reached.
+  // 8. cps milestones: announced the first time a power of ten is reached.
   for (const cps of crossedMilestones(state.stats.bestCps, derived.cps)) events.push({ type: 'milestone', cps })
   if (derived.cps > state.stats.bestCps) state.stats.bestCps = derived.cps
 
-  // 8. Breaker flip.
+  // 9. Breaker flip.
   if (derived.throttled !== memo.throttled) {
     events.push({ type: 'powerThrottle', on: derived.throttled })
     memo.throttled = derived.throttled

@@ -459,7 +459,8 @@ export class GameStore {
   // Server-driven actions (src/state/cloudActions.ts): the daily calendar on the server clock and ComfyHub bookkeeping.
   claimDailyFromServer = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.claimDailyFromServer(ctx, claim), SAVE)
   markDailyClaimed = (claim: cloud.ServerDailyClaim): ActionResult => this.run((ctx) => cloud.markDailyClaimed(ctx, claim), SAVE)
-  recordHubPublish = (): ActionResult => this.run((ctx) => cloud.recordHubPublish(ctx), SAVE)
+  recordHubPublish = (workflow?: { id: string; name: string }): ActionResult =>
+    this.run((ctx) => cloud.recordHubPublish(ctx, workflow), SAVE)
   applyHubRoyalties = (grant: cloud.HubRoyaltyGrant): ActionResult => this.run((ctx) => cloud.applyHubRoyalties(ctx, grant), SAVE)
   setWeekOverride = (week: number | null): void => {
     this.state.weekOverride = week

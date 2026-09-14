@@ -2,12 +2,14 @@
 /**
  * /hub: ComfyHub. The same litegraph canvas and header as the game (the store is a module
  * singleton started in the root layout, so the counter keeps ticking here), a short intro with the
- * player's own hub numbers, and the listing panel with its sort tabs, tag filter and Publish CTA.
+ * player's own hub numbers, the citizens' board for workflows you have published, and the listing
+ * panel with its sort tabs, tag filter and Publish CTA.
  * The full overlay set is mounted so the header's daily / stats / settings buttons work here.
  */
 import { Award, Play, Upload, Workflow } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { NumberTicker } from '@/components/common/NumberTicker'
+import { CitizensPanel } from '@/components/hub/CitizensPanel'
 import { HubPanel } from '@/components/hub/HubPanel'
 import { DotGrid } from '@/components/layout/DotGrid'
 import { Header } from '@/components/layout/Header'
@@ -41,6 +43,7 @@ export default function HubPage() {
             transition={ENTER}
           >
             <Intro />
+            <CitizensPanel />
             <HubPanel />
           </motion.div>
         </main>
