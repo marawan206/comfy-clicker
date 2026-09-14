@@ -31,9 +31,13 @@ The twist is what you *spend* on:
 - **The Graph**: a node-graph progression map, ComfyUI style, with techniques (LoRA training, distillation), infrastructure
   (cooling, substations, reserved capacity), regions and prestige nodes.
 - **Rebrand**: the prestige loop: reset the run, keep the map, earn Comfy Points.
+- **Levels**: your level comes from everything you have ever done, and it decides which checkpoints you may install.
+  SD 1.5 at level 1, FLUX around level 4, the 160 GB video monster at level 12.
+- **Seed Roulette**: wager credits on a random seed, once every three minutes, plus a free spin a day. The odds are
+  printed on the node.
 
 Progress continues while you're away. Play as a guest or sign in to keep your save in the cloud, climb the leaderboard
-and collect the daily login bonus.
+and collect the daily login bonus. A six-step tour shows first-timers around; the `?` in the header replays it.
 
 ## Stack
 
@@ -43,14 +47,17 @@ Next.js (App Router) · React 19 · TypeScript · Tailwind 4 · [Motion](https:/
 The game engine (`src/game`) is framework-free TypeScript with the balance tables in `src/data`, so tuning never touches
 logic and everything is unit-tested with Vitest, including a pacing simulator (`pnpm balance`).
 
-Art is generated with the [Comfy Cloud MCP](https://docs.comfy.org/agent-tools/mcp) from prompts in
-`scripts/art-prompts.ts`; the UI ships designed fallbacks so nothing breaks while assets are missing.
+Art and sound are generated with the [Comfy Cloud MCP](https://docs.comfy.org/agent-tools/mcp): images from prompts in
+`scripts/art-prompts.ts`, the eighteen effects in `public/sfx` from ElevenLabs. The UI ships designed fallbacks for the
+art and synthesized fallbacks for the sound, so nothing breaks when a file is missing.
 
 ## Playing it
 
 - **Guest play** works instantly (localStorage). **Sign in** with email + password to keep the save in the cloud, appear on the leaderboard and collect the daily login bonus (server-timed streaks).
 - **The Graph** (`/map`) is the progression map; **ComfyHub** (`/hub`) is where you publish workflows other players run: you earn royalties and rep, they get a likes boost.
-- Hotkeys: `Space` generate, `S` save, `Esc` close. There are easter eggs. One of them involves a very famous key sequence.
+- Hotkeys: `Space` generate, `S` save, `Esc` close, `?` replay the tour, `Ctrl+Enter` queue a post from the prompt box.
+  There are nineteen hidden achievements. One of them involves a very famous key sequence, and one of them is just the
+  title of the game.
 
 ## Development
 
