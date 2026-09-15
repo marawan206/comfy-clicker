@@ -93,7 +93,7 @@ describe('runsOn', () => {
 
 describe('canBuy', () => {
   it('locks AMD consumer cards until ROCm Setup, with a reason that says so', () => {
-    const state = fresh((s) => { s.credits = 1e9; s.hardware['pc-8c16t'] = 1 })
+    const state = fresh((s) => { s.credits = 1e9; s.hardware['pc-8c16t'] = 1; s.stats.levelSeen = 2 })
     const locked = canBuy(hw('rx-7600-xt'), state, base, CATALOG)
     expect(locked.ok).toBe(false)
     expect(locked.reason).toMatch(/ROCm/)
@@ -104,8 +104,8 @@ describe('canBuy', () => {
   })
 
   it('AMD datacenter parts are not family-locked (ROCm tax only)', () => {
-    const state = fresh((s) => { s.credits = 1e9; s.hardware['a100-80'] = 1 })
-    expect(canBuy(hw('mi300x'), state, base, CATALOG).ok).toBe(true)
+    const state = fresh((s) => { s.credits = 1e9; s.hardware['a100-80'] = 1; s.stats.levelSeen = MAX_LEVEL })
+    expect(canBuy(hw('mi300x'), state, derivedWith({ powerBudget: 5_000 }), CATALOG).ok).toBe(true)
   })
 
   it('reports the store unlock condition', () => {
@@ -113,6 +113,20 @@ describe('canBuy', () => {
     const r = canBuy(hw('rtx-3060'), state, base, CATALOG)
     expect(r.ok).toBe(false)
     expect(r.reason).toMatch(/8c\/16t Workstation/)
+  })
+
+  it('names the level a locked unit needs, in the words a checkpoint uses', () => {
+    const state = fresh((s) => { s.credits = 1e9; s.hardware['pc-8c16t'] = 1 })
+    expect(canBuy(hw('rtx-3060'), state, base, CATALOG)).toEqual({ ok: false, reason: 'Needs level 2 · you are level 1' })
+    // The level comes after the unlock condition and before the money.
+    state.credits = 0
+    expect(canBuy(hw('rtx-3060'), state, base, CATALOG).reason).toBe('Needs level 2 · you are level 1')
+    state.stats.levelSeen = 2
+    expect(canBuy(hw('rtx-3060'), state, base, CATALOG).reason).toMatch(/^Need /)
+    state.credits = 1e9
+    expect(canBuy(hw('rtx-3060'), state, base, CATALOG)).toEqual({ ok: true })
+    // A level 1 unit never mentions it.
+    expect(canBuy(hw('pc-8c16t'), fresh((s) => { s.credits = 1e9 }), base, CATALOG)).toEqual({ ok: true })
   })
 
   it('reports missing credits with the bulk price', () => {
@@ -133,6 +147,26 @@ describe('canBuy', () => {
     state.hardware.capped = 2
     expect(canBuy(capped, state, base, catalog).reason).toMatch(/Maxed out/)
     expect(canBuy(hw('pc-4c8t'), state, base, catalog, 0).ok).toBe(false)
+  })
+
+  it('refuses a unit the circuit cannot carry and names the PSU to install first', () => {
+    const state = fresh((s) => { s.credits = 1e9 })
+    const near = derivedWith({ powerDraw: 600, powerBudget: 650 })
+    expect(canBuy(hw('pc-8c16t'), state, near, CATALOG)).toEqual({
+      ok: false,
+      reason: 'Trips the breaker · 70 W over budget · install 850 W PSU first',
+    })
+    // The whole order is projected: two fit a bigger circuit, three do not.
+    const roomy = derivedWith({ powerDraw: 600, powerBudget: 900 })
+    expect(canBuy(hw('pc-8c16t'), state, roomy, CATALOG, 2)).toEqual({ ok: true })
+    expect(canBuy(hw('pc-8c16t'), state, roomy, CATALOG, 3).reason).toBe(
+      'Trips the breaker · 60 W over budget · install 850 W PSU first',
+    )
+    // With the small PSUs installed, the next rung is Three-Phase.
+    state.upgrades.push('psu-850', 'psu-1600')
+    expect(canBuy(hw('pc-8c16t'), state, near, CATALOG).reason).toBe(
+      'Trips the breaker · 70 W over budget · install Three-Phase Power first',
+    )
   })
 
   it('applyPurchase deducts the bulk cost and installs the units', () => {

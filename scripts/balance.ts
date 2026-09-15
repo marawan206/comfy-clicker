@@ -1,13 +1,16 @@
 /**
- * Greedy pacing simulator for the Comfy Clicker hardware ladder.
+ * Greedy pacing simulator for the Comfy Clicker hardware ladder and the level that gates it.
  *
  *   pnpm balance            (= tsx scripts/balance.ts)
  *
- * It reads the shipped HARDWARE ladder, the power upgrades (named upgrades + infra map nodes),
- * the tier-upgrade constants and the game's own `unitCost`, `throttleMult` and `creditsForCp`,
- * and models the rest of the economy (click milestones, global upgrades, content bonus) with the
- * simple rules documented below so the ladder can be judged on its own. It tunes nothing:
- * change the data, re-run, read the table.
+ * It reads the shipped HARDWARE ladder (prices, cps, `minLevel`), the power upgrades (named
+ * upgrades + infra map nodes), the tier-upgrade constants, the level table and XP weights, the
+ * model table's `minLevel`s, the ACHIEVEMENTS catalog, and the game's own `unitCost`,
+ * `throttleMult`, `creditsForCp`, `levelForXp`, `levelReward`, `postXp`, `dailyXp` and
+ * `crossedMilestones`. It
+ * models the rest of the economy (click milestones, global upgrades, content bonus) with the
+ * simple rules documented below so the ladder and the level table can be judged on their own.
+ * It tunes nothing: change the data, re-run, read the tables.
  *
  * Strategies
  *   naive  Every second, buy the affordable candidate with the best payback (cost / Δcps),
@@ -17,7 +20,8 @@
  *          for"); buy it if affordable, otherwise hold the bank.
  *
  * Modelled (candidates compete on payback = cost / Δcps, Δcps measured after the power throttle)
- *   - hardware units, capped by `max`; AMD consumer family locked unless `opts.rocm`
+ *   - hardware units, capped by `max`, gated by `minLevel ≤ level`; AMD consumer family locked
+ *     unless `opts.rocm`
  *   - per-unit ×2 tier upgrades at the TIER_UPGRADE_THRESHOLDS, cost base × TIER_UPGRADE_COST_MULT
  *   - global +10 % cps at lifetime 1e3, 1e4 … 1e9, cost 2 × threshold
  *   - click value 1 → 2 (10 clicks) → ×2 (300) → ×2 (1500) → +1 % cps (4000) → +2 % cps (10000)
@@ -32,30 +36,77 @@
  *     `creditsForCp(cp)` of season credits (25 CP for orbital, 25 + 60 + 200 = 285 CP for the
  *     Dyson blueprint). CP is only banked by rebranding (which resets the rack), so the sim's
  *     times for those two are a lower bound on real play.
+ *
+ * Level model (level.ts, driven by the real constants)
+ *   - level = `levelForXp(creditsXp + xp)`, settled once per second. `creditsXp` is the derived
+ *     term, XP_CREDITS per decade of lifetime credits, floored; `xp` is the activity ledger.
+ *   - posts: `postRate(session)` posts per minute, 6 for the first 3 min, 4 to 10 min, 2 to
+ *     30 min, 1 after (the click taper, one post per ten-ish clicks). Each post pays
+ *     `postXp(model)` for the highest-level model the table opens at the current level (the gate
+ *     table guarantees a native card for it). Nothing goes viral and nothing is ratioed.
+ *   - first unit of each hardware id: XP_HARDWARE_FIRST. A tier upgrade: XP_TIER. Each global
+ *     step: XP_UPGRADE. Each power step: XP_UPGRADE when it is a named upgrade, XP_MAP_NODE (as a
+ *     Graph node) when it is an infra node; a node the ladder bought counts towards the node
+ *     proxy below, so it is never paid twice.
+ *   - achievements: the real ACHIEVEMENTS conditions the sim can answer (`stat` on clicks,
+ *     lifetimeCredits, posts, playedSec, level, contractsDone, mapNodes and achievements; `cps`;
+ *     `ownHardware`; `ownFamily`; `all` and `any` over those; anything else reads false), checked
+ *     once per second, XP_ACHIEVEMENT per row the first time it holds.
+ *   - proxies for what the sim does not play: one contract claimed per CONTRACT_EVERY_S of
+ *     active play (XP_CONTRACT), one Graph node per MAP_NODE_EVERY_S (XP_MAP_NODE), XP_SETUP for
+ *     every model a new level opens (the player installs the new checkpoint), XP_MILESTONE per
+ *     cps power of ten (`crossedMilestones`, as engine.ts pays it). `projectWeek` claims the
+ *     daily at the start of each day (`dailyXp(cycleDay(day))`). No quantizations, no LoRAs, no
+ *     rebrands, no named upgrades beyond the power ladder and the global steps, so real play
+ *     earns a little more.
+ *   - each level crossed pays `levelReward(level, cps)` into the bank and lifetime credits, as
+ *     `settleLevelUps` does, so the credits term moves with it and the next rung is a little
+ *     closer.
+ *   - `levels[n]` is the active second at which level n was first reached, `levelAtBuy[id]` the
+ *     level held when the first unit of `id` was bought (never below its `minLevel`, by
+ *     construction: a locked unit is not a candidate).
  */
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ACHIEVEMENTS } from '@/data/achievements'
 import { HARDWARE } from '@/data/hardware'
 import { MAP_NODES } from '@/data/mapNodes'
+import { MODELS } from '@/data/models'
 import { UPGRADES } from '@/data/upgrades'
 import {
+  LEVEL_XP,
+  MAX_LEVEL,
   OFFLINE_CAP_HOURS_BASE,
   OFFLINE_EFFICIENCY,
   POWER_BUDGET_BASE,
   TIER_UPGRADE_COST_MULT,
   TIER_UPGRADE_EFFECT,
   TIER_UPGRADE_THRESHOLDS,
+  XP_ACHIEVEMENT,
+  XP_CONTRACT,
+  XP_CREDITS,
+  XP_HARDWARE_FIRST,
+  XP_MAP_NODE,
+  XP_MILESTONE,
+  XP_SETUP,
+  XP_TIER,
+  XP_UPGRADE,
 } from '@/game/constants'
+import { cycleDay } from '@/game/daily'
 import { unitCost } from '@/game/economy'
+import { crossedMilestones } from '@/game/engine'
+import { dailyXp, levelForXp, levelReward, levelTitle, postXp } from '@/game/level'
 import { throttleMult } from '@/game/power'
 import { creditsForCp } from '@/game/prestige'
-import type { UnlockCond } from '@/game/types'
+import type { ModelDef, UnlockCond, XpSource } from '@/game/types'
 
 export type Strategy = 'naive' | 'climb'
 
 export interface SimOptions {
   /** Clicks per second as a function of seconds into the active session. */
   clickRate?: (t: number) => number
+  /** Posts per minute as a function of seconds into the active session. */
+  postRate?: (t: number) => number
   /** Extra cps fraction from posting content once unlocked (default 0.3). */
   contentBonus?: number
   /** Treat the AMD consumer family as unlocked (ROCm upgrade owned). Default false. */
@@ -72,12 +123,28 @@ export interface SimResult {
   /** Effective cps at the end (rig × throttle × global × content multipliers). */
   cps: number
   bank: number
-  /** Credits earned over the whole run (the level system's XP backbone). */
+  /** Credits earned over the whole run (the level system's derived XP term). */
   lifetime: number
   /** Generate clicks taken over the whole run. */
   clicks: number
   powerDraw: number
   powerBudget: number
+  /** Level at the end of the run. */
+  level: number
+  /** Total XP at the end of the run: the credits term plus the activity ledger. */
+  xp: number
+  /** The activity ledger alone, per source (the sim's `stats.xpBy`). */
+  xpBy: Partial<Record<XpSource, number>>
+  /** Seconds of active play at which each level was first reached (level 1 at 0). */
+  levels: Record<number, number>
+  /** Level held when the first unit of each hardware id was bought. */
+  levelAtBuy: Record<string, number>
+  /**
+   * Hardware ids in the order their first unit was bought. `firsts` has one-second resolution
+   * and a rung that opens on a level-up is often bought whole in one second, so this is what
+   * settles "A before B".
+   */
+  buyOrder: string[]
 }
 
 const CLIMB_HORIZON_S = 45
@@ -98,6 +165,11 @@ const STARTER_ID = 'pc-4c8t'
 /** Payback ties are decided by rank; quantise so float noise from round3(baseCps) cannot break a tie. */
 const PAYBACK_BUCKET_S = 0.5
 const MAX_BUYS_PER_STEP = 500
+/** Proxies for the parts of the game the sim does not play: one contract, one Graph node per this many active seconds. */
+export const CONTRACT_EVERY_S = 600
+export const MAP_NODE_EVERY_S = 480
+/** A post lands every time the per-minute rate has accumulated one minute's worth. */
+const POST_MINUTE = 60
 
 /** Credits spent on map nodes on the way to each gate (the nodes themselves, not the CP). */
 const REGIONS_NODE_CREDITS = 1e7 + 2e7 // cluster-ops + regions-unlock
@@ -112,23 +184,43 @@ export function defaultClickRate(t: number): number {
   return 0.5
 }
 
+/** Posts per minute at `t` seconds into the session: the click taper, one post per ten-ish clicks. */
+export function defaultPostRate(t: number): number {
+  if (t < 180) return 6
+  if (t < 600) return 4
+  if (t < 1800) return 2
+  return 1
+}
+
 /** Shipped `powerBudget` sources, bought in cost order as one ladder. */
 interface PowerStep {
   key: string
   cost: number
   watts: number
+  /** Where the step came from, which decides the XP it banks: a named upgrade or a Graph node. */
+  source: 'upgrade' | 'mapNode'
 }
 
 const POWER_LADDER: PowerStep[] = [
   ...UPGRADES.flatMap((u) =>
     u.effects
       .filter((e) => e.kind === 'powerBudget' && e.value > 0)
-      .map((e) => ({ key: `power:${u.id}`, cost: u.cost, watts: e.kind === 'powerBudget' ? e.value : 0 })),
+      .map((e): PowerStep => ({
+        key: `power:${u.id}`,
+        cost: u.cost,
+        watts: e.kind === 'powerBudget' ? e.value : 0,
+        source: 'upgrade',
+      })),
   ),
   ...MAP_NODES.filter((n) => n.currency === 'credits').flatMap((n) =>
     n.effects
       .filter((e) => e.kind === 'powerBudget' && e.value > 0)
-      .map((e) => ({ key: `power:${n.id}`, cost: n.cost, watts: e.kind === 'powerBudget' ? e.value : 0 })),
+      .map((e): PowerStep => ({
+        key: `power:${n.id}`,
+        cost: n.cost,
+        watts: e.kind === 'powerBudget' ? e.value : 0,
+        source: 'mapNode',
+      })),
   ),
 ].sort((a, b) => a.cost - b.cost)
 
@@ -141,10 +233,26 @@ const MAP_NODE_PROXY: Record<string, (s: SimState) => boolean> = {
   'dyson-unlock': (s) => s.lifetime >= creditsForCp(DYSON_CP) && (s.owned['orbital-dc'] ?? 0) > 0,
 }
 
+/** The model a post uses at each level (index `level - 1`): the highest-level one the table opens by then. */
+const POST_MODEL_BY_LEVEL: ModelDef[] = Array.from({ length: MAX_LEVEL }, (_, i) => {
+  const level = i + 1
+  let best = MODELS[0] as ModelDef
+  for (const m of MODELS) {
+    const need = m.minLevel ?? 1
+    if (need <= level && need > (best.minLevel ?? 1)) best = m
+  }
+  return best
+})
+
+/** Models each level opens (index `level - 1`), each one a set-up the sim credits on arrival. */
+const MODELS_OPENED_AT: number[] = Array.from({ length: MAX_LEVEL }, (_, i) =>
+  MODELS.filter((m) => (m.minLevel ?? 1) === i + 1).length,
+)
+
 interface SimState {
   /** Total active seconds. */
   t: number
-  /** Seconds into the current active session (drives the click-rate schedule). */
+  /** Seconds into the current active session (drives the click-rate and post-rate schedules). */
   session: number
   bank: number
   lifetime: number
@@ -156,6 +264,21 @@ interface SimState {
   owned: Record<string, number>
   tiers: Record<string, number>
   firsts: Record<string, number>
+  /** Activity XP (the ledger). The credits term is derived from `lifetime`. */
+  xp: number
+  xpBy: Partial<Record<XpSource, number>>
+  level: number
+  levels: Record<number, number>
+  levelAtBuy: Record<string, number>
+  buyOrder: string[]
+  posts: number
+  /** Post-minutes accumulated towards the next post (integer arithmetic, no float drift). */
+  postAcc: number
+  contracts: number
+  mapNodes: number
+  /** Best effective cps seen so far, for the milestone proxy. */
+  bestCps: number
+  achieved: Set<string>
 }
 
 interface Candidate {
@@ -183,9 +306,132 @@ function createState(): SimState {
     owned: { [STARTER_ID]: 1 },
     tiers: {},
     firsts: { [STARTER_ID]: 0 },
+    xp: 0,
+    xpBy: {},
+    level: 1,
+    levels: { 1: 0 },
+    levelAtBuy: { [STARTER_ID]: 1 },
+    buyOrder: [STARTER_ID],
+    posts: 0,
+    postAcc: 0,
+    contracts: 0,
+    mapNodes: 0,
+    bestCps: 0,
+    achieved: new Set(),
   }
 }
 
+// ---------------------------------------------------------------------------
+// XP and level
+// ---------------------------------------------------------------------------
+/** The derived credits term, as level.ts computes it: XP_CREDITS per decade of lifetime credits, floored. */
+export const creditsXp = (lifetime: number): number => Math.floor(XP_CREDITS * Math.log10(1 + Math.max(0, lifetime)))
+
+const totalXp = (s: SimState): number => creditsXp(s.lifetime) + s.xp
+
+function grant(s: SimState, amount: number, source: XpSource): void {
+  if (amount <= 0) return
+  s.xp += amount
+  s.xpBy[source] = (s.xpBy[source] ?? 0) + amount
+}
+
+/**
+ * Recompute the level from the XP banked so far. Each level crossed is stamped with the current
+ * second, pays the level reward into the bank and lifetime credits (as `settleLevelUps` does,
+ * at the `cps` the caller was earning) and pays the set-up XP for the models it opens; either
+ * can itself cross the next one, so the outer loop looks again.
+ */
+function settleLevel(s: SimState, cps: number): void {
+  for (let guard = 0; guard < MAX_LEVEL; guard++) {
+    const level = levelForXp(totalXp(s))
+    if (level <= s.level) return
+    for (let next = s.level + 1; next <= level; next++) {
+      s.levels[next] = s.t
+      const reward = levelReward(next, cps)
+      s.bank += reward
+      s.lifetime += reward
+      grant(s, XP_SETUP * (MODELS_OPENED_AT[next - 1] ?? 0), 'setup')
+    }
+    s.level = level
+  }
+}
+
+function landPosts(s: SimState, opts: SimOptions): void {
+  s.postAcc += (opts.postRate ?? defaultPostRate)(s.session)
+  while (s.postAcc >= POST_MINUTE) {
+    s.postAcc -= POST_MINUTE
+    s.posts += 1
+    grant(s, postXp(POST_MODEL_BY_LEVEL[s.level - 1] as ModelDef, false), 'post')
+  }
+}
+
+/** The contract and Graph-node proxies: one each per fixed slice of active play. */
+function settleProxies(s: SimState): void {
+  while (s.contracts < Math.floor(s.t / CONTRACT_EVERY_S)) {
+    s.contracts += 1
+    grant(s, XP_CONTRACT, 'contract')
+  }
+  while (s.mapNodes < Math.floor(s.t / MAP_NODE_EVERY_S)) {
+    s.mapNodes += 1
+    grant(s, XP_MAP_NODE, 'mapNode')
+  }
+}
+
+function familyCount(s: SimState, family: string): number {
+  let n = 0
+  for (const h of HARDWARE) if (h.family === family) n += s.owned[h.id] ?? 0
+  return n
+}
+
+/**
+ * Achievement conditions the sim can answer. Everything it cannot (flags, models, precisions,
+ * upgrades, social stats, the daily streak) reads false, so the count here is a floor. The level
+ * is the one settled at the end of the previous second, as `checkAchievements` runs before
+ * `settleLevelUps` in the engine too.
+ */
+function achieved(cond: UnlockCond, s: SimState, cps: number): boolean {
+  switch (cond.type) {
+    case 'stat':
+      if (cond.key === 'clicks') return s.clicks >= cond.value
+      if (cond.key === 'lifetimeCredits') return s.lifetime >= cond.value
+      if (cond.key === 'posts') return s.posts >= cond.value
+      if (cond.key === 'playedSec') return s.t >= cond.value
+      if (cond.key === 'level') return s.level >= cond.value
+      if (cond.key === 'contractsDone') return s.contracts >= cond.value
+      if (cond.key === 'mapNodes') return s.mapNodes >= cond.value
+      if (cond.key === 'achievements') return s.achieved.size >= cond.value
+      return false
+    case 'cps':
+      return cps >= cond.value
+    case 'ownHardware':
+      return (s.owned[cond.id] ?? 0) >= (cond.count ?? 1)
+    case 'ownFamily':
+      return familyCount(s, cond.family) >= (cond.count ?? 1)
+    case 'all':
+      return cond.conds.every((c) => achieved(c, s, cps))
+    case 'any':
+      return cond.conds.some((c) => achieved(c, s, cps))
+    default:
+      return false
+  }
+}
+
+function checkAchievements(s: SimState, cps: number): void {
+  for (const a of ACHIEVEMENTS) {
+    if (s.achieved.has(a.id) || !achieved(a.cond, s, cps)) continue
+    s.achieved.add(a.id)
+    grant(s, XP_ACHIEVEMENT, 'achievement')
+  }
+}
+
+function settleMilestones(s: SimState, cps: number): void {
+  grant(s, XP_MILESTONE * crossedMilestones(s.bestCps, cps).length, 'milestone')
+  if (cps > s.bestCps) s.bestCps = cps
+}
+
+// ---------------------------------------------------------------------------
+// Economy
+// ---------------------------------------------------------------------------
 const rigMult = (tier: number): number => TIER_UPGRADE_EFFECT ** tier
 const globalMult = (s: SimState): number => (1 + GLOBAL_UPGRADE_BONUS) ** s.globalBought
 const contentMult = (s: SimState, opts: SimOptions): number =>
@@ -237,11 +483,8 @@ function isUnlocked(cond: UnlockCond | undefined, s: SimState, cps: number): boo
       return true
     case 'ownHardware':
       return (s.owned[cond.id] ?? 0) >= (cond.count ?? 1)
-    case 'ownFamily': {
-      let n = 0
-      for (const h of HARDWARE) if (h.family === cond.family) n += s.owned[h.id] ?? 0
-      return n >= (cond.count ?? 1)
-    }
+    case 'ownFamily':
+      return familyCount(s, cond.family) >= (cond.count ?? 1)
     case 'mapNode':
       return MAP_NODE_PROXY[cond.id]?.(s) ?? false
     case 'cps':
@@ -275,10 +518,21 @@ function powerStepsToCover(from: number, budget: number, draw: number): PowerSte
   return steps
 }
 
+/**
+ * Buy power steps in ladder order. A named upgrade banks XP_UPGRADE; an infra node banks
+ * XP_MAP_NODE as a Graph node and counts towards the node proxy, so `settleProxies` does not
+ * pay a second time for a node the ladder already bought.
+ */
 function buyPower(st: SimState, steps: PowerStep[]): void {
   for (const step of steps) {
     st.powerBought += 1
     if (st.firsts[step.key] === undefined) st.firsts[step.key] = st.t
+    if (step.source === 'mapNode') {
+      st.mapNodes += 1
+      grant(st, XP_MAP_NODE, 'mapNode')
+    } else {
+      grant(st, XP_UPGRADE, 'upgrade')
+    }
   }
 }
 
@@ -298,13 +552,19 @@ function candidates(s: SimState, opts: SimOptions): Candidate[] {
     const owned = s.owned[h.id] ?? 0
     if (h.max !== undefined && owned >= h.max) continue
     if (h.family === 'amd-consumer' && !opts.rocm) continue
+    if ((h.minLevel ?? 1) > s.level) continue
     if (!isUnlocked(h.unlock, s, cps)) continue
     const tier = s.tiers[h.id] ?? 0
     const unitCps = h.baseCps * rigMult(tier)
     const cost = unitCost(h, owned)
     const buyUnit = (st: SimState): void => {
       st.owned[h.id] = (st.owned[h.id] ?? 0) + 1
-      if (st.firsts[h.id] === undefined) st.firsts[h.id] = st.t
+      if (st.firsts[h.id] === undefined) {
+        st.firsts[h.id] = st.t
+        st.levelAtBuy[h.id] = st.level
+        st.buyOrder.push(h.id)
+        grant(st, XP_HARDWARE_FIRST, 'hardware')
+      }
     }
     // As-is: worth it only when its cps/W beats the rack's average once over budget.
     const asIs = gain(unitCps, h.watts, 0)
@@ -339,6 +599,7 @@ function candidates(s: SimState, opts: SimOptions): Candidate[] {
         buy: (st) => {
           st.tiers[h.id] = tier + 1
           if (st.firsts[key] === undefined) st.firsts[key] = st.t
+          grant(st, XP_TIER, 'tier')
         },
       })
     }
@@ -368,6 +629,7 @@ function candidates(s: SimState, opts: SimOptions): Candidate[] {
       buy: (st) => {
         st.globalBought = k + 1
         if (st.firsts[key] === undefined) st.firsts[key] = st.t
+        grant(st, XP_UPGRADE, 'upgrade')
       },
     })
   }
@@ -416,6 +678,12 @@ function spend(s: SimState, strategy: Strategy, opts: SimOptions): void {
   }
 }
 
+/**
+ * One active second: income and clicks, then the posts and proxies that pay XP, the shopping
+ * pass (which pays first-unit, tier and upgrade XP), the cps milestones and achievements the new
+ * rack may have crossed, and finally the level, so a level earned this second gates next second's
+ * shopping.
+ */
 function stepSecond(s: SimState, strategy: Strategy, opts: SimOptions): void {
   const cps = effectiveCps(s, opts)
   const rate = (opts.clickRate ?? defaultClickRate)(s.session)
@@ -428,7 +696,13 @@ function stepSecond(s: SimState, strategy: Strategy, opts: SimOptions): void {
   }
   s.t += 1
   s.session += 1
+  landPosts(s, opts)
+  settleProxies(s)
   spend(s, strategy, opts)
+  const after = effectiveCps(s, opts)
+  settleMilestones(s, after)
+  checkAchievements(s, after)
+  settleLevel(s, after)
 }
 
 function runActive(s: SimState, seconds: number, strategy: Strategy, opts: SimOptions): void {
@@ -436,12 +710,17 @@ function runActive(s: SimState, seconds: number, strategy: Strategy, opts: SimOp
   for (let i = 0; i < seconds; i++) stepSecond(s, strategy, opts)
 }
 
-/** Offline earnings: rig cps (no content bonus, nobody is posting) × OFFLINE_EFFICIENCY for up to the base cap. */
+/** Rig cps with nobody at the keyboard: after the breaker and the global upgrades, no content bonus. */
+const idleCps = (s: SimState): number => throttledRaw(rawCps(s), powerDraw(s), powerBudget(s)) * globalMult(s)
+
+/** Offline earnings: `idleCps` × OFFLINE_EFFICIENCY for up to the base cap. A level the credits cross is paid at that rate. */
 function runOffline(s: SimState, hours: number): number {
   const capped = Math.min(hours, OFFLINE_CAP_HOURS_BASE) * 3600
-  const gain = throttledRaw(rawCps(s), powerDraw(s), powerBudget(s)) * globalMult(s) * capped * OFFLINE_EFFICIENCY
+  const cps = idleCps(s)
+  const gain = cps * capped * OFFLINE_EFFICIENCY
   s.bank += gain
   s.lifetime += gain
+  settleLevel(s, cps)
   return gain
 }
 
@@ -455,6 +734,12 @@ function result(s: SimState, opts: SimOptions): SimResult {
     clicks: s.clicks,
     powerDraw: powerDraw(s),
     powerBudget: powerBudget(s),
+    level: s.level,
+    xp: totalXp(s),
+    xpBy: { ...s.xpBy },
+    levels: { ...s.levels },
+    levelAtBuy: { ...s.levelAtBuy },
+    buyOrder: [...s.buyOrder],
   }
 }
 
@@ -475,9 +760,21 @@ export interface DayProjection {
   best: string
   /** Ids first bought during this day's session, in rank order. */
   firsts: string[]
+  /** Level at the end of the day (after the offline credits have been counted). */
+  level: number
+  /** Everything owned by the end of the day. */
+  owned: Record<string, number>
+  /** Level held when the first unit of each hardware id was bought, over the projection so far. */
+  levelAtBuy: Record<string, number>
+  /** Hardware ids in first-buy order, over the projection so far. */
+  buyOrder: string[]
 }
 
-/** Seven days of one active hour followed by `offlineHours` idle (capped by OFFLINE_CAP_HOURS_BASE). */
+/**
+ * `days` days of one active hour followed by `offlineHours` idle (capped by
+ * OFFLINE_CAP_HOURS_BASE). Each day starts with the daily claim, which pays `dailyXp` for the
+ * streak's cycle day.
+ */
 export function projectWeek(
   strategy: Strategy,
   opts: SimOptions = {},
@@ -489,6 +786,8 @@ export function projectWeek(
   const rows: DayProjection[] = []
   for (let day = 1; day <= days; day++) {
     const before = new Set(Object.keys(s.firsts))
+    grant(s, dailyXp(cycleDay(day)), 'daily')
+    settleLevel(s, effectiveCps(s, opts))
     runActive(s, activeSeconds, strategy, opts)
     const cps = effectiveCps(s, opts)
     const offlineGain = runOffline(s, offlineHours)
@@ -500,6 +799,10 @@ export function projectWeek(
       bank: s.bank,
       best: bestOwned?.id ?? STARTER_ID,
       firsts: HARDWARE.filter((h) => s.firsts[h.id] !== undefined && !before.has(h.id)).map((h) => h.id),
+      level: s.level,
+      owned: { ...s.owned },
+      levelAtBuy: { ...s.levelAtBuy },
+      buyOrder: [...s.buyOrder],
     })
   }
   return rows
@@ -543,6 +846,8 @@ function fmtWatts(w: number): string {
   return `${Math.round(w)} W`
 }
 
+const fmtXp = (n: number): string => Math.round(n).toLocaleString('en-US')
+
 const pad = (v: string, w: number, right = false): string =>
   right ? v.padStart(w) : v.padEnd(w)
 
@@ -554,50 +859,88 @@ function printTable(header: string[], rows: string[][], rightAlign: boolean[]): 
   for (const r of rows) console.log(line(r))
 }
 
+function xpLine(r: SimResult): string {
+  const parts = Object.entries(r.xpBy)
+    .filter(([, xp]) => (xp ?? 0) > 0)
+    .map(([source, xp]) => `${source} ${fmtXp(xp ?? 0)}`)
+  return `${fmtXp(r.xp)} XP, level ${r.level} (credits ${fmtXp(creditsXp(r.lifetime))}, ${parts.join(', ')})`
+}
+
 function main(): void {
   const horizon = 3 * 3600
+  const levelHorizon = 10 * 3600
   const climb = simulate('climb', horizon)
   const naive = simulate('naive', horizon)
+  // The level table needs the long run; its first hours are the 3 h run, so it also fills the
+  // tail of the first-purchase table (`climb 10h`) that the level gate pushes past three hours.
+  const longClimb = simulate('climb', levelHorizon)
+  const longNaive = simulate('naive', levelHorizon)
 
-  console.log(`First-purchase times over ${fmtTime(horizon)} of active play (3/s → 0.5/s clicks)\n`)
+  console.log(
+    `First-purchase times over ${fmtTime(horizon)} of active play (3/s → 0.5/s clicks, 6/min → 1/min posts); \`climb 10h\` is the same climber over ${fmtTime(levelHorizon)}\n`,
+  )
   printTable(
-    ['id', 'family', 'cost', 'cps', 'payback', 'watts', 'climb', 'naive', 'climb×', 'naive×'],
+    ['id', 'family', 'lvl', 'cost', 'cps', 'payback', 'watts', 'climb', 'naive', 'climb 10h', 'climb×', 'naive×'],
     HARDWARE.map((h) => [
       h.id,
       h.family,
+      String(h.minLevel ?? 1),
       fmtNum(h.baseCost),
       fmtNum(h.baseCps),
       fmtPayback(h.baseCost / h.baseCps),
       fmtWatts(h.watts),
       fmtTime(climb.firsts[h.id]),
       fmtTime(naive.firsts[h.id]),
+      fmtTime(longClimb.firsts[h.id]),
       String(climb.owned[h.id] ?? 0),
       String(naive.owned[h.id] ?? 0),
     ]),
-    [false, false, true, true, true, true, true, true, true, true],
+    [false, false, true, true, true, true, true, true, true, true, true, true],
   )
   const powerLine = (r: SimResult): string =>
     `${fmtWatts(r.powerDraw)} drawn of ${fmtWatts(r.powerBudget)}${r.powerDraw > r.powerBudget ? ' (throttled)' : ''}`
   console.log(
     `\nEnd of session · climb: ${fmtNum(climb.cps)}/s, bank ${fmtNum(climb.bank)}, ${powerLine(climb)} · naive: ${fmtNum(naive.cps)}/s, bank ${fmtNum(naive.bank)}, ${powerLine(naive)}`,
   )
+  console.log(`XP at ${fmtTime(horizon)} · climb: ${xpLine(climb)}`)
+  console.log(`XP at ${fmtTime(horizon)} · naive: ${xpLine(naive)}`)
   console.log(`Gates: orbital needs ${fmtNum(creditsForCp(ORBITAL_CP))} season credits (${ORBITAL_CP} CP), Dyson ${fmtNum(creditsForCp(DYSON_CP))} (${DYSON_CP} CP), after a rebrand.`)
 
+  const shown = Math.max(12, longClimb.level, longNaive.level)
+  console.log(`\nLevel arrival times over ${fmtTime(levelHorizon)} of active play (xp is the threshold the level needs)\n`)
+  printTable(
+    ['level', 'title', 'xp', 'climb', 'naive'],
+    Array.from({ length: shown }, (_, i) => {
+      const level = i + 1
+      return [
+        String(level),
+        levelTitle(level),
+        fmtXp(LEVEL_XP[level - 1] as number),
+        fmtTime(longClimb.levels[level]),
+        fmtTime(longNaive.levels[level]),
+      ]
+    }),
+    [true, false, true, true, true],
+  )
+  console.log(`\nXP at ${fmtTime(levelHorizon)} · climb: ${xpLine(longClimb)}`)
+
+  const days = 14
   for (const strategy of ['climb', 'naive'] as const) {
     console.log(
-      `\n7-day projection (${strategy}): 1 h active + 12 h offline (capped at ${OFFLINE_CAP_HOURS_BASE} h × ${Math.round(OFFLINE_EFFICIENCY * 100)} %) per day\n`,
+      `\n${days}-day projection (${strategy}): 1 h active + 12 h offline (capped at ${OFFLINE_CAP_HOURS_BASE} h × ${Math.round(OFFLINE_EFFICIENCY * 100)} %) per day, daily claimed\n`,
     )
     printTable(
-      ['day', 'cps (end of hour)', 'offline gain', 'bank', 'best unit', 'new this day'],
-      projectWeek(strategy).map((d) => [
+      ['day', 'level', 'cps (end of hour)', 'offline gain', 'bank', 'best unit', 'new this day'],
+      projectWeek(strategy, {}, days).map((d) => [
         String(d.day),
+        String(d.level),
         fmtNum(d.cps),
         fmtNum(d.offlineGain),
         fmtNum(d.bank),
         d.best,
         d.firsts.length ? d.firsts.join(', ') : 'none',
       ]),
-      [true, true, true, true, false, false],
+      [true, true, true, true, true, false, false],
     )
   }
 }

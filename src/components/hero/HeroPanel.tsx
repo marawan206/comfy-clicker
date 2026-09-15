@@ -12,6 +12,7 @@ import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { CreditsCounter } from '@/components/hero/CreditsCounter'
 import { ComboMeter } from '@/components/hero/ComboMeter'
 import { GenerateButton, formatClickValue } from '@/components/hero/GenerateButton'
+import { LevelBar } from '@/components/hero/LevelBar'
 
 const FLAVOR_ROTATE_MS = 4200
 
@@ -67,7 +68,8 @@ function RateLine() {
 
 /**
  * Left-column hero: the big credits odometer, the logo click target with its aura and pill,
- * the combo pill riding its shoulder, and a rotating ComfyUI console line.
+ * the combo pill riding its shoulder, a rotating ComfyUI console line, and under a rule the
+ * level bar, which is the one thing here that is not about credits.
  */
 export function HeroPanel() {
   const totalClicks = useGame((s) => s.totalClicks)
@@ -101,6 +103,9 @@ export function HeroPanel() {
         <ComboMeter className="absolute -right-6 -top-3" />
       </div>
       <FlavorLine reduced={reduced} />
+      <div className="relative w-full border-t border-charcoal-400/60 pt-3">
+        <LevelBar />
+      </div>
     </Panel>
   )
 }

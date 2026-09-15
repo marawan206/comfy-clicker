@@ -1,151 +1,71 @@
 /**
- * Layers two and three of the auto-clicker guard: the rate cap and the cadence detector.
+ * Layer two of the auto-clicker guard: a hard cap on accepted clicks per second, and nothing else.
  *
- * Layer one lives in the UI (`src/lib/input.ts`): an untrusted event is not a click. Real
- * automation can still drive the OS pointer, so the engine keeps two more checks:
+ * Layer one lives in the UI (`src/lib/input.ts`): an untrusted event is not a click, so a browser
+ * script cannot press the button. What is left for a real pointer is this: at most
+ * `CLICK_CAP_PER_SEC` **accepted** clicks over a trailing `CLICK_RATE_WINDOW_MS`. A refused click
+ * pays nothing and is not an accusation. Nothing is held against the player, nothing locks, and
+ * the next click counts again the moment the oldest counted one leaves the window. A fast hand is
+ * allowed; past the cap it simply stops paying.
  *
- * 1. A hard cap of `CLICK_CAP_PER_SEC` **accepted** clicks per trailing second. A refused click
- *    pays nothing and is not an accusation: it is not a strike, it just does not count.
- * 2. A cadence check over the last `CADENCE_INTERVALS` **attempted** intervals. A metronome has a
- *    coefficient of variation under 0.02; a human hand at five clicks a second sits at 0.15 to
- *    0.35. Fast plus regular is the only combination that trips. Slow regularity is allowed, so a
- *    patient human tapping a steady 3/s is never touched.
+ * There used to be a third layer here, a cadence detector over the last attempted intervals with
+ * an escalating lockout. It kept flagging fast humans as scripters, so it is gone. The three
+ * fields it persisted (`stats.clickLockUntil / clickStrikes / clickStrikeAt`) stay in the save as
+ * legacy fields, never written by the engine and 0 on every fresh state.
  *
- * Attempted means every call, including the ones the rate cap refuses, so a 25/s tool cannot hide
- * under the cap by having two thirds of its clicks thrown away.
- *
- * The ring of attempted timestamps is per-session bookkeeping that has no business in the save, so
- * it lives in a `WeakMap` side table, the same pattern `engine.ts` uses for its tick memo. The
- * lockout itself is persisted in `stats.clickLockUntil / clickStrikes / clickStrikeAt`, so
- * reloading the page does not wash it away (`hydrate` clamps a far-future value).
+ * The counted timestamps are per-session bookkeeping with no business in the save, so they live
+ * in a `WeakMap` side table, the same pattern `engine.ts` uses for its tick memo.
  *
  * Pure: no React, no DOM, no `Date.now()`. The caller supplies `now`.
- *
- * `evaluateClick` must be called exactly once per click attempt: it is what records the attempt.
  */
-import {
-  CADENCE_INTERVALS,
-  CADENCE_MAX_CV,
-  CADENCE_MAX_MEAN_MS,
-  CLICK_CAP_PER_SEC,
-  CLICK_LOCKOUT_MAX_MS,
-  CLICK_LOCKOUT_MS,
-  CLICK_STRIKE_DECAY_MS,
-} from '@/game/constants'
+import { CLICK_CAP_PER_SEC } from '@/game/constants'
 import type { GameState } from '@/game/types'
 
 /**
- * Flag raised by the first cadence strike. Drives the hidden achievement "Suspiciously Regular".
+ * Raised the first time the cap refuses a click. Drives the hidden achievement "Rate Limited".
  * Defined here rather than in `constants.ts` so this module owns its own vocabulary.
  */
 export const CLICK_GUARD_FLAG = 'clickGuard'
 
-/** Trailing window the hard cap counts over. `CLICK_CAP_PER_SEC` is per *second* by definition. */
+/** Trailing window the cap counts over. `CLICK_CAP_PER_SEC` is per *second* by definition. */
 export const CLICK_RATE_WINDOW_MS = 1_000
 
-/** Timestamps kept: `CADENCE_INTERVALS` intervals need one more timestamp than that. */
-export const CLICK_RING = CADENCE_INTERVALS + 1
+/** Why a click paid nothing, and the moment the next one will count again. */
+export type ClickVerdict = { ok: true } | { ok: false; reason: 'rate'; until: number }
 
-/** Why a click paid nothing, and the moment the player can stop worrying about it. */
-export type ClickVerdict = { ok: true } | { ok: false; reason: 'locked' | 'rate' | 'cadence'; until: number }
+/** Accepted click timestamps still inside the trailing window, oldest first. */
+const MEMO = new WeakMap<GameState, number[]>()
 
-interface GuardMemo {
-  /** Attempted click timestamps, oldest first, at most `CLICK_RING` of them. */
-  attempts: number[]
-  /** Accepted click timestamps still inside the trailing rate window, oldest first. */
-  accepted: number[]
-}
-
-const MEMO = new WeakMap<GameState, GuardMemo>()
-
-function memoFor(state: GameState): GuardMemo {
-  let memo = MEMO.get(state)
-  if (!memo) {
-    memo = { attempts: [], accepted: [] }
-    MEMO.set(state, memo)
+function memoFor(state: GameState): number[] {
+  let accepted = MEMO.get(state)
+  if (!accepted) {
+    accepted = []
+    MEMO.set(state, accepted)
   }
-  return memo
+  return accepted
 }
 
 /**
- * Mean interval and coefficient of variation (population standard deviation over the mean).
+ * Should this click pay? Counts an accepted click as a side effect, so call it once per attempt.
  *
- * Fewer than two timestamps means no intervals at all, so `cadence([])` is `{ mean: 0, cv: 0 }`.
- * A run of identical timestamps has a mean of 0, which reads as "as fast and as regular as it
- * gets" and is exactly what should trip.
- */
-export function cadence(intervals: readonly number[]): { mean: number; cv: number } {
-  const n = intervals.length
-  if (n === 0) return { mean: 0, cv: 0 }
-
-  let sum = 0
-  for (const d of intervals) sum += d
-  const mean = sum / n
-  if (!Number.isFinite(mean) || mean <= 0) return { mean: 0, cv: 0 }
-
-  let acc = 0
-  for (const d of intervals) acc += (d - mean) * (d - mean)
-  return { mean, cv: Math.sqrt(acc / n) / mean }
-}
-
-/** Record the strike, escalate the lockout, raise the flag, and drop the ring. */
-function strike(state: GameState, memo: GuardMemo, now: number): ClickVerdict {
-  const stats = state.stats
-
-  // Strikes decay after a quiet stretch, so one bad afternoon does not follow the player forever.
-  const decayed = now - stats.clickStrikeAt >= CLICK_STRIKE_DECAY_MS
-  const strikes = (decayed ? 0 : Math.max(0, stats.clickStrikes)) + 1
-  const step = CLICK_LOCKOUT_MS[Math.min(strikes, CLICK_LOCKOUT_MS.length) - 1]
-  const lockout = Math.min(step, CLICK_LOCKOUT_MAX_MS)
-
-  stats.clickStrikes = strikes
-  stats.clickStrikeAt = now
-  stats.clickLockUntil = now + lockout
-  state.flags[CLICK_GUARD_FLAG] = true
-
-  // Start the next stretch from a clean ring: the player gets a fresh 24 intervals to be human in.
-  memo.attempts.length = 0
-  memo.accepted.length = 0
-
-  return { ok: false, reason: 'cadence', until: stats.clickLockUntil }
-}
-
-/**
- * Should this click pay? Records the attempt as a side effect, so call it once per attempt.
- *
- * Order: a lockout in progress short-circuits (nothing is recorded while paused, so the ring is
- * clean when the lock lifts), then the attempt joins the ring and the cadence check runs once the
- * ring is full, then the hard cap, then the click is accepted.
+ * A refused click records nothing except, the first time, the `clickGuard` flag. Its `until` is
+ * the moment the oldest counted click leaves the window, which is when the button pays again.
  */
 export function evaluateClick(state: GameState, now: number): ClickVerdict {
-  const stats = state.stats
-  if (stats.clickLockUntil > now) return { ok: false, reason: 'locked', until: stats.clickLockUntil }
+  const accepted = memoFor(state)
 
-  const memo = memoFor(state)
-  const attempts = memo.attempts
+  // A clock that stepped backwards would strand the counted clicks in a window that never
+  // expires, so the ledger starts over.
+  if (accepted.length > 0 && now < accepted[accepted.length - 1]) accepted.length = 0
 
-  // A clock that stepped backwards would manufacture negative intervals and strand the counted
-  // clicks in a window that never expires, so both ledgers start over.
-  if (attempts.length > 0 && now < attempts[attempts.length - 1]) {
-    attempts.length = 0
-    memo.accepted.length = 0
-  }
-  attempts.push(now)
-  if (attempts.length > CLICK_RING) attempts.splice(0, attempts.length - CLICK_RING)
-
-  if (attempts.length === CLICK_RING) {
-    const intervals: number[] = []
-    for (let i = 1; i < attempts.length; i++) intervals.push(attempts[i] - attempts[i - 1])
-    const { mean, cv } = cadence(intervals)
-    if (mean < CADENCE_MAX_MEAN_MS && cv < CADENCE_MAX_CV) return strike(state, memo, now)
-  }
-
-  const accepted = memo.accepted
   const cutoff = now - CLICK_RATE_WINDOW_MS
   let drop = 0
   while (drop < accepted.length && accepted[drop] <= cutoff) drop++
   if (drop > 0) accepted.splice(0, drop)
+
   if (accepted.length >= CLICK_CAP_PER_SEC) {
+    // Hitting the cap is an achievement, not a strike.
+    state.flags[CLICK_GUARD_FLAG] = true
     return { ok: false, reason: 'rate', until: accepted[0] + CLICK_RATE_WINDOW_MS }
   }
 
@@ -154,9 +74,9 @@ export function evaluateClick(state: GameState, now: number): ClickVerdict {
 }
 
 /**
- * Forget everything the guard knows about this state: the ring, the counted clicks and the
- * persisted lockout. For tests and for replacing a state wholesale (import, new game). It is not
- * part of the click path: a strike clears its own ring, and only time lifts a lockout.
+ * Forget the counted clicks for this state, and zero the three legacy lockout fields a save from
+ * before the cap may still carry. For tests and for replacing a state wholesale (import, new
+ * game). It is not part of the click path: the window empties itself.
  */
 export function resetClickGuard(state: GameState): void {
   MEMO.delete(state)

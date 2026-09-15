@@ -11,6 +11,8 @@ import {
   type ActionContext,
   LUCKY_SEED_FLAG,
   TUTORIAL_FLAG,
+  buyHardware,
+  buyUpgrade,
   click,
   completeTutorial,
   declineGift,
@@ -24,7 +26,8 @@ import {
 } from '@/game/actions'
 import { checkAchievements } from '@/game/achievements'
 import { buildIndex } from '@/game/catalog'
-import { BET_MIN, LOUNGE_MIN_LEVEL, LUCKY_CLICK_CHANCE, LUCKY_CLICK_MULT } from '@/game/constants'
+import { CLICK_GUARD_FLAG, CLICK_RATE_WINDOW_MS } from '@/game/clickGuard'
+import { BET_MIN, CLICK_CAP_PER_SEC, LOUNGE_MIN_LEVEL, LUCKY_CLICK_CHANCE, LUCKY_CLICK_MULT } from '@/game/constants'
 import { computeDerived } from '@/game/derived'
 import { mulberry32 } from '@/game/rng'
 import { createInitialState } from '@/game/state'
@@ -118,8 +121,11 @@ function makePost(over: Partial<Post> = {}): Post {
 describe('click: the auto-clicker guard', () => {
   it('a blocked click moves nothing at all', () => {
     const state = richState(0)
-    state.stats.clickLockUntil = T0 + 10_000
     state.queue.push(runningJob(T0))
+    // Fill the trailing second to the cap; every one of these pays.
+    for (let i = 0; i < CLICK_CAP_PER_SEC; i++) {
+      expect(ids(click(ctxFor(state, { rng: () => 1 })).events)).toEqual(['click'])
+    }
     const before = {
       credits: state.credits,
       lifetime: state.lifetimeCredits,
@@ -132,7 +138,7 @@ describe('click: the auto-clicker guard', () => {
     const result = click(ctxFor(state))
 
     expect(result.dirty).toBe(false)
-    expect(result.events).toEqual([{ type: 'clickBlocked', reason: 'locked', until: T0 + 10_000 }])
+    expect(result.events).toEqual([{ type: 'clickBlocked', reason: 'rate', until: T0 + CLICK_RATE_WINDOW_MS }])
     // The deliberate deviation is the event, not the bookkeeping: nothing else may move.
     expect(ids(result.events)).not.toContain('click')
     expect(state.credits).toBe(before.credits)
@@ -141,6 +147,8 @@ describe('click: the auto-clicker guard', () => {
     expect(state.totalClicks).toBe(before.clicks)
     expect(state.stats.clicksWindow.length).toBe(before.window)
     expect((state.queue[0] as Job).clickBonusMs).toBe(before.bonus)
+    // The one thing a refusal writes: the flag behind the hidden achievement "Rate Limited".
+    expect(state.flags[CLICK_GUARD_FLAG]).toBe(true)
   })
 
   it('an accepted click pays, counts and shaves as before', () => {
@@ -168,7 +176,7 @@ describe('click: the lucky seed', () => {
     const result = click(ctxFor(state, { rng: lucky }))
 
     const event = result.events[0]
-    expect(event).toEqual({ type: 'click', value: derived.clickValue * LUCKY_CLICK_MULT, lucky: true })
+    expect(event).toEqual({ type: 'click', value: derived.clickValue * LUCKY_CLICK_MULT, combo: 1, mult: 1, lucky: true })
     expect(state.credits).toBeCloseTo(derived.clickValue * LUCKY_CLICK_MULT, 6)
     expect(state.stats.luckyClicks).toBe(1)
     expect(state.flags[LUCKY_SEED_FLAG]).toBe(true)
@@ -179,14 +187,14 @@ describe('click: the lucky seed', () => {
     const derived = computeDerived(state, CATALOG)
     const result = click(ctxFor(state, { rng: plain }))
 
-    expect(result.events[0]).toEqual({ type: 'click', value: derived.clickValue })
+    expect(result.events[0]).toEqual({ type: 'click', value: derived.clickValue, combo: 1, mult: 1 })
     expect(state.stats.luckyClicks).toBe(0)
     expect(state.flags[LUCKY_SEED_FLAG]).toBeUndefined()
   })
 
   it('a refused click never burns the lucky roll', () => {
     const state = richState(0)
-    state.stats.clickLockUntil = T0 + 5_000
+    for (let i = 0; i < CLICK_CAP_PER_SEC; i++) click(ctxFor(state, { rng: plain }))
     click(ctxFor(state, { rng: lucky }))
     expect(state.stats.luckyClicks).toBe(0)
     expect(state.flags[LUCKY_SEED_FLAG]).toBeUndefined()
@@ -532,5 +540,23 @@ describe('upscalePost', () => {
     state.posts.push(makePost())
     expect(upscalePost(ctxFor(state), 'post-1').error).toBeUndefined()
     expect(state.posts[0]?.upscaled).toBe(true)
+  })
+})
+
+describe('buyHardware and the breaker', () => {
+  it('refuses the unit that would trip it, and max stops at the units that fit', () => {
+    const state = richState()
+    // 650 W base budget with the 65 W starter box plugged in: four 120 W boxes fit, the fifth trips.
+    const max = buyHardware(ctxFor(state), 'pc-8c16t', 'max')
+    expect(max.error).toBeUndefined()
+    expect(state.hardware['pc-8c16t']).toBe(4)
+    const refused = buyHardware(ctxFor(state), 'pc-8c16t')
+    expect(refused.error).toBe('Trips the breaker · 15 W over budget · install 850 W PSU first')
+    expect(refused.events).toEqual([])
+    expect(state.hardware['pc-8c16t']).toBe(4)
+    // The PSU is the purchase that reopens the shelf.
+    expect(buyUpgrade(ctxFor(state), 'psu-850').error).toBeUndefined()
+    expect(buyHardware(ctxFor(state), 'pc-8c16t').error).toBeUndefined()
+    expect(state.hardware['pc-8c16t']).toBe(5)
   })
 })

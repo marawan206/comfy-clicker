@@ -42,6 +42,7 @@ import {
   normalizePromptText,
   trendMult,
 } from '@/game/hashtags'
+import { grantXp, postXp } from '@/game/level'
 import { chance, hashString, uniform } from '@/game/rng'
 import { addFollowers, audienceMult, removeFollowers } from '@/game/social'
 import type { Derived, GameEvent, GameState, Job, ModelDef, Post, Rng } from '@/game/types'
@@ -281,15 +282,19 @@ export function likesAt(post: Post, now: number): number {
  * followers away. `lifetimeLikes`, `lifetimeCredits`, `seasonCredits`, `lifetimeFollowers` and
  * `bestPostLikes` never move for one: those feed XP, achievements and the leaderboard, and a
  * ratio is not an accomplishment.
+ *
+ * XP lands exactly once per post, the moment it is granted: `postXp` of the model it ran, as
+ * `viral` (double) or `post`, and nothing at all for a ratio. Offline replay settles through this
+ * same function, so a night away pays its posts' XP on the way back in.
  */
 export function settlePosts(
   state: GameState,
   derived: Derived,
-  // Contract signature; every lookup is snapshotted on the post at roll time.
-  _catalog: Catalog,
+  catalog: Catalog,
   now: number,
 ): GameEvent[] {
   const events: GameEvent[] = []
+  const { modelById } = buildIndex(catalog)
   for (const post of state.posts) {
     if (post.granted && post.likes >= post.targetLikes) continue
     const ratioed = post.ratioed === true
@@ -340,6 +345,11 @@ export function settlePosts(
         flop: post.flop,
         ratioed,
       })
+      if (!ratioed) {
+        const model = modelById[post.modelId]
+        const xp = model ? grantXp(state, postXp(model, post.viral), post.viral ? 'viral' : 'post') : null
+        if (xp) events.push(xp)
+      }
     }
   }
   return events

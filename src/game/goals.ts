@@ -15,8 +15,9 @@ import { buildIndex } from '@/game/catalog'
 import { unitCost } from '@/game/economy'
 import { formatInt, formatNum } from '@/game/format'
 import { runsOn } from '@/game/hardware'
-import { levelProgress, modelLevelLock, playerLevel } from '@/game/level'
+import { hardwareLevelLock, levelProgress, modelLevelLock, nextUnlocks, playerLevel } from '@/game/level'
 import { currencyBalance, mapNodeAvailable, mapNodeCost } from '@/game/map'
+import { wouldThrottle } from '@/game/power'
 import { setupFee } from '@/game/quantize'
 import { FAMILY_LABELS, STAT_LABELS, statValue } from '@/game/state'
 import { describeUnlock, isUnlocked, ownedInFamily } from '@/game/unlock'
@@ -274,7 +275,15 @@ export type Goal =
       unlocksModel: string | null
     }
   | { kind: 'node'; nodeId: string; title: string; cost: number; currency: Currency }
-  | { kind: 'level'; level: number; pct: number; xpToGo: number }
+  | {
+      kind: 'level'
+      /** The level to reach: the current one plus one. */
+      level: number
+      pct: number
+      xpToGo: number
+      /** Up to LEVEL_GOAL_UNLOCKS names that level opens, hardware first, then models. */
+      unlocks: string[]
+    }
 
 export interface HardwareTarget {
   def: HardwareDef
@@ -289,17 +298,22 @@ export interface HardwareTarget {
  * The cheapest visible, purchasable-but-unaffordable unit: what the player is implicitly saving
  * for. Null when everything visible is affordable (or locked for a reason credits cannot fix).
  *
- * The gates mirror `canBuy`'s non-credit checks (family unlocked, store unlock condition, cap) in
- * the same order; the price is `unitCost`, so the store row and this never disagree.
+ * The gates mirror `canBuy`'s non-credit checks (family unlocked, store unlock condition, player
+ * level, cap, breaker) in the same order; the price is `unitCost`, so the store row and this never
+ * disagree. A level-locked unit is skipped: saving for it buys nothing until the bar moves, and
+ * `levelBlocked` is the function that says so. A unit the circuit cannot carry is skipped the same
+ * way: the store would refuse it, so the PSU is what the credits are really for.
  */
 export function saveTarget(state: GameState, derived: Derived, catalog: Catalog): HardwareTarget | null {
   let best: HardwareDef | null = null
   let bestCost = Infinity
   for (const def of catalog.hardware) {
-    if (!isUnlocked(def.unlock, state, derived, catalog)) continue
     if (!derived.unlockedFamilies.includes(def.family)) continue
+    if (!isUnlocked(def.unlock, state, derived, catalog)) continue
+    if (hardwareLevelLock(def, state)) continue
     const owned = state.hardware[def.id] ?? 0
     if (def.max !== undefined && owned >= def.max) continue
+    if (wouldThrottle(def, 1, derived)) continue
     const cost = unitCost(def, owned)
     if (cost > state.credits && cost < bestCost) {
       best = def
@@ -313,6 +327,23 @@ export function saveTarget(state: GameState, derived: Derived, catalog: Catalog)
     pct: pctOf(state.credits / bestCost),
     etaSec: derived.cps > 0 ? Math.ceil((bestCost - state.credits) / derived.cps) : Infinity,
   }
+}
+
+/**
+ * True when the level is the only thing between the player and a unit already paid for: some
+ * unit passes the family, unlock and cap checks, fails the level, and its next unit costs no more
+ * than the bank. That is the moment the Next up panel points at the bar instead of the shelf.
+ */
+export function levelBlocked(state: GameState, derived: Derived, catalog: Catalog): boolean {
+  for (const def of catalog.hardware) {
+    if (!derived.unlockedFamilies.includes(def.family)) continue
+    if (!isUnlocked(def.unlock, state, derived, catalog)) continue
+    if (!hardwareLevelLock(def, state)) continue
+    const owned = state.hardware[def.id] ?? 0
+    if (def.max !== undefined && owned >= def.max) continue
+    if (state.credits >= unitCost(def, owned)) return true
+  }
+  return false
 }
 
 /** Whether anything already installed runs the model at native precision. */
@@ -406,9 +437,27 @@ function nodeGoal(state: GameState, derived: Derived, catalog: Catalog): Goal | 
   return best
 }
 
+/** Names on the level goal: enough for one line under the bar. */
+export const LEVEL_GOAL_UNLOCKS = 3
+
+/**
+ * The level bar as a goal: the next level, how far along the bar is, and up to LEVEL_GOAL_UNLOCKS
+ * of the names it opens, hardware before models. Null at MAX_LEVEL, where there is no bar.
+ */
+function levelGoal(state: GameState, catalog: Catalog): Goal | null {
+  const progress = levelProgress(state)
+  if (progress.xpToGo <= 0) return null
+  const next = nextUnlocks(progress.level, catalog)
+  const unlocks: string[] = []
+  for (const def of next.hardware) if (unlocks.length < LEVEL_GOAL_UNLOCKS) unlocks.push(def.name)
+  for (const def of next.models) if (unlocks.length < LEVEL_GOAL_UNLOCKS) unlocks.push(def.name)
+  return { kind: 'level', level: progress.level + 1, pct: pctOf(progress.fraction), xpToGo: progress.xpToGo, unlocks }
+}
+
 /**
  * What to do next, first match wins: claim a finished contract, set up a model you can afford,
- * save for the next rig, take a Graph node you can already pay for, or push the level bar.
+ * push the level bar when it is all that stands between you and a unit you can already pay for,
+ * save for the next rig, take a Graph node you can already pay for, or push the level bar anyway.
  * Null only at max level with nothing else outstanding.
  */
 export function nextGoal(state: GameState, derived: Derived, catalog: Catalog): Goal | null {
@@ -417,6 +466,11 @@ export function nextGoal(state: GameState, derived: Derived, catalog: Catalog): 
 
   const setup = setupGoal(state, derived, catalog)
   if (setup) return setup
+
+  if (levelBlocked(state, derived, catalog)) {
+    const level = levelGoal(state, catalog)
+    if (level) return level
+  }
 
   const target = saveTarget(state, derived, catalog)
   if (target) {
@@ -435,9 +489,7 @@ export function nextGoal(state: GameState, derived: Derived, catalog: Catalog): 
   const node = nodeGoal(state, derived, catalog)
   if (node) return node
 
-  const level = levelProgress(state)
-  if (level.xpToGo <= 0) return null
-  return { kind: 'level', level: level.level + 1, pct: pctOf(level.fraction), xpToGo: level.xpToGo }
+  return levelGoal(state, catalog)
 }
 
 /** Stable identity of a goal: the selector key the panel animates on (append the percent yourself). */

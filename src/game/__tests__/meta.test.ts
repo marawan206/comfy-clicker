@@ -13,6 +13,9 @@ import {
   EVENT_MAX_GAP_MS,
   EVENT_MIN_GAP_MS,
   POWER_BUDGET_BASE,
+  XP_ACHIEVEMENT,
+  XP_CONTRACT,
+  XP_REBRAND,
 } from '@/game/constants'
 import {
   acceptContract,
@@ -36,6 +39,7 @@ import {
   SPARK_CAUGHT_FLAG,
   SPARK_FLAG,
 } from '@/game/events'
+import { dailyXp } from '@/game/level'
 import { canRebrand, creditsForCp, rebrand, rebrandCp } from '@/game/prestige'
 import { mulberry32 } from '@/game/rng'
 import { createInitialState } from '@/game/state'
@@ -260,7 +264,7 @@ describe('contracts: rotation', () => {
 })
 
 describe('contracts: progress', () => {
-  const clicks = (n: number): GameEvent[] => Array.from({ length: n }, () => ({ type: 'click', value: 1 }))
+  const clicks = (n: number): GameEvent[] => Array.from({ length: n }, () => ({ type: 'click', value: 1, combo: 1, mult: 1 }))
 
   it('counts clicks from events and completes exactly once', () => {
     const state = fresh()
@@ -357,7 +361,9 @@ describe('contracts: claim', () => {
     c.done = true
     c.progress = c.target
     state.contracts.active = [c]
-    expect(claimContract(state, 0, CATALOG)).toEqual([])
+    // The completion was announced by progressContracts; the claim answers with the XP it banked.
+    expect(claimContract(state, 0, CATALOG)).toEqual([{ type: 'xp', amount: XP_CONTRACT, source: 'contract' }])
+    expect(state.stats.xpBy.contract).toBe(XP_CONTRACT)
     expect(state.credits).toBe(4200)
     expect(state.lifetimeCredits).toBe(4200)
     expect(state.seasonCredits).toBe(4200)
@@ -571,20 +577,30 @@ describe('daily', () => {
     const state = fresh()
     const derived = derivedWith({ cps: 1 })
     expect(canClaim(state, T0)).toBe(true)
-    expect(claimDaily(state, derived, T0)).toEqual([{ type: 'daily', day: 1, credits: DAILY_BASE_SECS }])
+    expect(claimDaily(state, derived, T0)).toEqual([
+      { type: 'daily', day: 1, credits: DAILY_BASE_SECS },
+      { type: 'xp', amount: dailyXp(1), source: 'daily' },
+    ])
     expect(state.credits).toBe(DAILY_BASE_SECS)
     expect(state.daily).toEqual({ lastClaimDay: '2026-09-13', streak: 1, claimed: ['2026-09-13'] })
     expect(canClaim(state, T0 + 3600_000)).toBe(false)
     expect(claimDaily(state, derived, T0 + 3600_000)).toEqual([])
     expect(state.credits).toBe(DAILY_BASE_SECS)
 
-    expect(claimDaily(state, derived, T0 + DAY)).toEqual([{ type: 'daily', day: 2, credits: 2 * DAILY_BASE_SECS }])
+    expect(claimDaily(state, derived, T0 + DAY)).toEqual([
+      { type: 'daily', day: 2, credits: 2 * DAILY_BASE_SECS },
+      { type: 'xp', amount: dailyXp(2), source: 'daily' },
+    ])
     expect(state.daily.streak).toBe(2)
+    expect(state.stats.xpBy.daily).toBe(dailyXp(1) + dailyXp(2))
   })
 
   it('floors the reward at DAILY_MIN_CREDITS', () => {
     const state = fresh()
-    expect(claimDaily(state, derivedWith({ cps: 0 }), T0)).toEqual([{ type: 'daily', day: 1, credits: DAILY_MIN_CREDITS }])
+    expect(claimDaily(state, derivedWith({ cps: 0 }), T0)).toEqual([
+      { type: 'daily', day: 1, credits: DAILY_MIN_CREDITS },
+      { type: 'xp', amount: dailyXp(1), source: 'daily' },
+    ])
   })
 
   it('grants RP on day 3, CP on day 7 and wraps the cycle on day 8', () => {
@@ -699,7 +715,10 @@ describe('prestige', () => {
     state.stats.lastPostKey = 'sd15|cats'
 
     const now = T0 + 1000
-    expect(rebrand(state, CATALOG, now)).toEqual([{ type: 'rebrand', cp: 7 }])
+    expect(rebrand(state, CATALOG, now)).toEqual([
+      { type: 'rebrand', cp: 7 },
+      { type: 'xp', amount: XP_REBRAND, source: 'rebrand' },
+    ])
 
     expect(state.credits).toBe(0)
     expect(state.seasonCredits).toBe(0)
@@ -759,15 +778,17 @@ describe('achievements', () => {
     state.totalClicks = 1
     expect(checkAchievements(state, derivedWith(), CATALOG)).toEqual([
       { type: 'achievement', id: 'first-click', reward: 0 },
+      { type: 'xp', amount: XP_ACHIEVEMENT, source: 'achievement' },
     ])
     expect(checkAchievements(state, derivedWith(), CATALOG)).toEqual([])
     expect(state.achievements).toEqual(['first-click'])
+    expect(state.stats.xpBy.achievement).toBe(XP_ACHIEVEMENT)
   })
 
   it('reads cps and flags through the unlock predicate', () => {
     const state = fresh()
     state.flags.konami = true
-    const ids = checkAchievements(state, derivedWith({ cps: 10 }), CATALOG).map((e) => (e.type === 'achievement' ? e.id : ''))
+    const ids = checkAchievements(state, derivedWith({ cps: 10 }), CATALOG).flatMap((e) => (e.type === 'achievement' ? [e.id] : []))
     expect(ids).toEqual(['cps-10', 'konami'])
   })
 
@@ -781,8 +802,12 @@ describe('achievements', () => {
     })
     const state = fresh()
     state.totalClicks = 1
-    const ids = checkAchievements(state, derivedWith(), catalog).map((e) => (e.type === 'achievement' ? e.id : ''))
+    const events = checkAchievements(state, derivedWith(), catalog)
+    const ids = events.flatMap((e) => (e.type === 'achievement' ? [e.id] : []))
     expect(ids).toEqual(['a', 'b', 'c'])
+    // Each grant is followed by its own XP, inside the pass that granted it.
+    expect(events.map((e) => e.type)).toEqual(['achievement', 'xp', 'achievement', 'xp', 'achievement', 'xp'])
+    expect(state.stats.xpBy.achievement).toBe(3 * XP_ACHIEVEMENT)
     expect(checkAchievements(state, derivedWith(), catalog)).toEqual([])
   })
 })

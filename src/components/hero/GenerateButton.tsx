@@ -5,6 +5,10 @@
  * floating "+N" and a burst of credit diamonds at the pointer. Space is handled by `useHotkeys`;
  * keyboard clicks still get the squash and a centred float via the store's `click` event.
  *
+ * The combo rides on the same event: past the first tier the float carries the multiplier
+ * (`+24 · ×2`), the burst grows with the tier, and the click that reaches a tier gets a bigger
+ * burst, a rising cash cue and, from the double-pay tier, a screen flash in the tier's colour.
+ *
  * There are two controls here and they are one button. The square is the click target and the pill
  * under it is the same click with a word on it, which is not obvious the first time: a QA reader
  * took the square for artwork and the pill for something that queued a job, the way the Studio's
@@ -14,24 +18,25 @@
  * square wears a breathing ring. The tour cuts its first spotlight around `data-tour="hero-controls"`,
  * which holds both; `data-tour="generate"` stays on the square because `focusHero` focuses it.
  *
- * The guard has three visible states. A synthetic event never reaches the store at all
- * (`trustedInput`). A click the engine refuses pays nothing, so it draws nothing: no float, no
- * burst, no ripple, no squash, because a "+N" for a click that earned nothing is a lie. While a
- * cadence lockout runs, the logo greys out and the pill counts the lock down, but the aura keeps
- * spinning: the rack is still earning, and the player should see that.
+ * The guard has two visible states. A synthetic event never reaches the store at all
+ * (`trustedInput`). A click the engine refuses, past the rate cap, pays nothing, so it draws
+ * nothing: no float, no burst, no ripple, no squash, because a "+N" for a click that earned
+ * nothing is a lie. The combo pill says `MAX` for it; this button stays exactly as it is, since
+ * the next click inside the window pays and there is nothing to wait out.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { Play, Timer } from 'lucide-react'
+import { Play } from 'lucide-react'
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from 'motion/react'
 import { useGame, useGameEvents, useGameStore } from '@/state/useGame'
-import { formatDuration, formatNum } from '@/game/format'
+import { comboTier, isComboTierUp } from '@/game/combo'
+import { formatNum } from '@/game/format'
+import { formatMult } from '@/components/hero/ComboMeter'
 import { fx } from '@/components/fx/fxBus'
 import { Tooltip } from '@/components/common/Tooltip'
 import { generateButtonTip } from '@/components/common/tooltipCopy'
 import { playCue } from '@/audio/sfxEngine'
 import { GENERATE_HOTKEY_ATTR } from '@/hooks/useHotkeys'
-import { useNow } from '@/hooks/useNow'
 import { trustedInput } from '@/lib/input'
 import { cn } from '@/lib/utils'
 
@@ -43,6 +48,23 @@ const LOGO = 300
 const MAX_RIPPLES = 6
 /** `electric-400`: the lucky-seed float, the one click in two hundred that pays ten times. */
 const ELECTRIC = '#f0ff41'
+/** The aura's pink: the top combo tier. */
+const PINK = '#ff9cf9'
+
+/** What one accepted click was worth, straight off the engine's `click` event. */
+interface ClickFeedback {
+  value: number
+  lucky: boolean
+  combo: number
+  mult: number
+}
+
+/** Float colour for a click: pink at the top tier, electric from double pay, the credits amber below. */
+function comboColor(tier: number): string | undefined {
+  if (tier >= 4) return PINK
+  if (tier >= 3) return ELECTRIC
+  return undefined
+}
 
 /**
  * `formatNum` rounds everything under 1000 to a whole number, which turns a halved 0.5 click
@@ -67,22 +89,12 @@ function auraDuration(cps: number): number {
   return Math.round(Math.max(2, d) * 10) / 10
 }
 
-/** `Paused · 0:07`, ticking on its own 250 ms clock so the rest of the hero stays still. */
-function PausedLabel({ until }: { until: number }) {
-  const now = useNow(250)
-  return <>Paused · {formatDuration(Math.max(0, Math.ceil((until - now) / 1000)))}</>
-}
-
 export function GenerateButton() {
   const store = useGameStore()
   const cps = useGame((_s, d) => d.cps)
   const clickValue = useGame((_s, d) => d.clickValue)
   // A boolean, so the 20 Hz loop re-renders this once: on the first click of the save.
   const untouched = useGame((s) => s.totalClicks === 0)
-  const lockUntil = useGame((s) => s.stats.clickLockUntil)
-  // The 20 Hz loop is the clock: the selector returns a boolean, so the logo re-renders twice per
-  // lockout (once when it lands, once when it lifts) rather than on every frame of the countdown.
-  const locked = useGame((s) => s.stats.clickLockUntil > Date.now())
   const reducedSetting = useGame((s) => s.settings.reducedMotion)
   const reduced = Boolean(useReducedMotion()) || reducedSetting
   const reducedRef = useRef(reduced)
@@ -112,17 +124,28 @@ export function GenerateButton() {
 
   /** Feedback for a click at a viewport point, whatever produced it. Never called for a refusal. */
   const feedback = useCallback(
-    (clientX: number, clientY: number, value: number, lucky: boolean) => {
+    (clientX: number, clientY: number, { value, lucky, combo, mult }: ClickFeedback) => {
       squash()
       ripple(clientX, clientY)
+      const tier = comboTier(combo)
+      const color = comboColor(tier)
       if (lucky) {
         fx.floatText(clientX, clientY - 14, `+${formatClickValue(value)} · seed 42`, ELECTRIC)
         fx.burst(clientX, clientY, 12)
         playCue({ name: 'cash' })
         return
       }
-      fx.floatText(clientX, clientY - 12, `+${formatClickValue(value)}`)
-      fx.burst(clientX, clientY)
+      const tag = mult > 1 ? ` · ${formatMult(mult)}` : ''
+      fx.floatText(clientX, clientY - 12, `+${formatClickValue(value)}${tag}`, color)
+      if (isComboTierUp(combo)) {
+        // The click that raised the multiplier: a bigger burst, a cue a step higher per tier, and
+        // from double pay a wash of the tier's colour over the whole screen.
+        fx.burst(clientX, clientY, 8 + tier * 4)
+        if (tier >= 3) fx.flash(color)
+        playCue({ name: 'cash', rate: 1 + tier * 0.15 })
+        return
+      }
+      fx.burst(clientX, clientY, tier > 0 ? 3 + tier * 2 : undefined)
     },
     [squash, ripple],
   )
@@ -132,12 +155,11 @@ export function GenerateButton() {
       fromPointer.current = true
       const result = store.click()
       fromPointer.current = false
-      // Rate-capped or locked out: the click paid nothing, so it draws nothing.
+      // Past the rate cap: the click paid nothing, so it draws nothing.
       if (result.events.some((e) => e.type === 'clickBlocked')) return
       const event = result.events.find((e) => e.type === 'click')
-      const value = event && event.type === 'click' ? event.value : store.derived.clickValue
-      const lucky = event !== undefined && event.type === 'click' && event.lucky === true
-      feedback(clientX, clientY, value, lucky)
+      if (!event || event.type !== 'click') return
+      feedback(clientX, clientY, { value: event.value, lucky: event.lucky === true, combo: event.combo, mult: event.mult })
     },
     [store, feedback],
   )
@@ -167,7 +189,12 @@ export function GenerateButton() {
     if (event.type !== 'click' || fromPointer.current) return
     const rect = buttonRef.current?.getBoundingClientRect()
     if (!rect) return
-    feedback(rect.left + rect.width / 2, rect.top + rect.height * 0.42, event.value, event.lucky === true)
+    feedback(rect.left + rect.width / 2, rect.top + rect.height * 0.42, {
+      value: event.value,
+      lucky: event.lucky === true,
+      combo: event.combo,
+      mult: event.mult,
+    })
   })
 
   useEffect(() => {
@@ -204,7 +231,7 @@ export function GenerateButton() {
             'relative isolate flex select-none items-center justify-center overflow-hidden border-2 border-charcoal-300 bg-charcoal-700 shadow-[0_6px_0_#0e0e0f] outline-none transition-colors duration-150 [-webkit-tap-highlight-color:transparent] focus-visible:ring-4 focus-visible:ring-electric-400',
             // A 245 px target with no hover answer reads as artwork. Colours only: the scale is a
             // Motion value on this element and a CSS transform transition would fight it.
-            locked ? 'cursor-not-allowed grayscale' : 'cursor-pointer hover:border-electric-400 hover:bg-charcoal-600',
+            'cursor-pointer hover:border-electric-400 hover:bg-charcoal-600',
           )}
         >
           <span
@@ -215,7 +242,7 @@ export function GenerateButton() {
           {/* Until the first click of a save, the square says press me. A sibling span rather than
               a class on the button: `cc-breathe` animates a transform and the button's scale is a
               Motion value. The utility is already reduced-motion guarded in globals.css. */}
-          {untouched && !locked ? (
+          {untouched ? (
             <span
               aria-hidden="true"
               className="cc-breathe pointer-events-none absolute inset-0 rounded-[inherit] ring-4 ring-electric-400 ring-inset"
@@ -255,32 +282,21 @@ export function GenerateButton() {
           // The square above owns the same action, so the two names differ. The visible label is
           // still "Generate" and the accessible name still opens with it, which is what a voice
           // control listens for.
-          aria-label={locked ? 'Clicks paused' : 'Generate. Same as the logo above'}
+          aria-label="Generate. Same as the logo above"
           {...{ [GENERATE_HOTKEY_ATTR]: 'true' }}
           onPointerDown={onPointerDown}
           onKeyDown={onKeyDown}
-          whileTap={reduced || locked ? undefined : { y: 3, boxShadow: '0 1px 0 #0e0e0f' }}
-          whileHover={reduced || locked ? undefined : { scale: 1.03 }}
+          whileTap={reduced ? undefined : { y: 3, boxShadow: '0 1px 0 #0e0e0f' }}
+          whileHover={reduced ? undefined : { scale: 1.03 }}
           transition={{ type: 'spring', stiffness: 600, damping: 30 }}
           style={{ touchAction: 'manipulation' }}
           className={cn(
             'inline-flex select-none items-center gap-2 rounded-full px-6 py-2.5 text-base font-bold shadow-[0_4px_0_#0e0e0f] outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-4 focus-visible:ring-electric-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-charcoal-600',
-            locked
-              ? 'cursor-not-allowed border-2 border-charcoal-300 bg-charcoal-700 text-smoke-600 tabular-nums'
-              : 'cursor-pointer bg-electric-400 text-charcoal-800',
+            'cursor-pointer bg-electric-400 text-charcoal-800',
           )}
         >
-          {locked ? (
-            <>
-              <Timer size={18} strokeWidth={3} aria-hidden="true" />
-              <PausedLabel until={lockUntil} />
-            </>
-          ) : (
-            <>
-              <Play size={18} strokeWidth={3} fill="currentColor" aria-hidden="true" />
-              Generate
-            </>
-          )}
+          <Play size={18} strokeWidth={3} fill="currentColor" aria-hidden="true" />
+          Generate
         </motion.button>
       </Tooltip>
     </div>

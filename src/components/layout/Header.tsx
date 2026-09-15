@@ -32,14 +32,14 @@ import { msUntilDayEnd, markVisited, useNavBadges } from '@/components/layout/na
 import { BOARD_PULSE_CREDITS, activeTileId, navTile, pulseTiles, type NavTileId } from '@/components/layout/navMeta'
 import { canClaim, cycleDay, dailyReward, effectiveStreak } from '@/game/daily'
 import { formatCps, formatNum } from '@/game/format'
-import { levelProgress, levelTitle, modelsUnlockedAt } from '@/game/level'
+import { levelProgress, levelTitle, nextUnlocks } from '@/game/level'
 import { canRebrand, rebrandCp } from '@/game/prestige'
 import { useNow } from '@/hooks/useNow'
 import { cn } from '@/lib/utils'
 import { useGame, useGameEvents, useGameShallow, useGameStore } from '@/state/useGame'
 
-/** Modal ids the header raises. `lounge` and `help` belong to the overlays and tutorial work. */
-type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' | 'help'
+/** Modal ids the header raises. `lounge`, `help` and `level` belong to the overlays and tutorial work. */
+type ModalId = 'settings' | 'stats' | 'daily' | 'rebrand' | 'lounge' | 'help' | 'level'
 
 function openModal(id: ModalId): void {
   window.dispatchEvent(new CustomEvent<ModalId>('comfy:open-modal', { detail: id }))
@@ -200,9 +200,10 @@ const CHIP_BASE =
 const CHIP_IDLE = 'border-charcoal-400 bg-charcoal-600 text-smoke-600 hover:border-charcoal-300 hover:text-smoke-100'
 
 /**
- * `LV 4` with a 3 px electric fill bar. The selector returns the level and the percent as a whole
- * number, so the chip re-renders at most a hundred times per level instead of twenty times a
- * second; the tooltip's XP figures are read off the store when that percent moves.
+ * `LV 4` with a 3 px electric fill bar: the compact twin of the hero panel's `LevelBar`, and a
+ * click on either opens the Level screen. The selector returns the level and the percent as a
+ * whole number, so the chip re-renders at most a hundred times per level instead of twenty times
+ * a second; the tooltip's XP figures are read off the store when that percent moves.
  */
 function LevelChip() {
   const store = useGameStore()
@@ -220,12 +221,13 @@ function LevelChip() {
 
   const tip = useMemo(() => {
     const p = levelProgress(store.state)
+    const next = nextUnlocks(p.level, store.catalog)
     return levelChipTip({
       level: p.level,
       levelTitle: levelTitle(p.level),
       xp: p.xp,
       ceiling: p.ceiling > p.floor ? p.ceiling : null,
-      unlocks: modelsUnlockedAt(p.level + 1, store.catalog).map((m) => m.name),
+      unlocks: [...next.hardware.map((h) => h.name), ...next.models.map((m) => m.name)],
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuilt when the bar moves, not every tick
   }, [store, level, pct])
@@ -234,11 +236,11 @@ function LevelChip() {
     <Tooltip {...tip} side="bottom">
       <motion.button
         type="button"
-        onClick={() => openModal('stats')}
+        onClick={() => openModal('level')}
         animate={controls}
         whileTap={off ? undefined : { scale: 0.94 }}
         transition={TAP}
-        aria-label={`Level ${level}, ${pct}% of the way to level ${level + 1}. Open stats.`}
+        aria-label={`Level ${level}, ${pct}% of the way to level ${level + 1}. Open your level.`}
         className={cn(CHIP_BASE, 'overflow-hidden border-electric-400/40 bg-electric-400/10 text-smoke-100 hover:border-electric-400/80')}
       >
         <span className="text-[10px] font-bold tracking-[0.08em] text-electric-400 uppercase">LV</span>

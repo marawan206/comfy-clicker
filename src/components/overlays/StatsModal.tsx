@@ -1,7 +1,8 @@
 'use client'
 /**
- * Level, lifetime numbers, what to chase next, and the achievement grid. The stat selector returns
- * pre-formatted strings so the modal only re-renders when a displayed value actually changes, not
+ * The level line, lifetime numbers, what to chase next, and the achievement grid. The XP breakdown
+ * and the roadmap live on the Level screen; the level card here is the bar and a button to it.
+ * The stat selector returns pre-formatted strings so the modal only re-renders when a displayed value actually changes, not
  * on every tick; the grid and the Next up list recompute once a second off a `useNow` clock,
  * because a bar for every locked row is a hundred unlock conditions and that has no business
  * running at 20 Hz.
@@ -13,16 +14,16 @@
  * Once earned it shows the secret badge and the real name, because found means revealed.
  */
 import { memo, useMemo, type ReactNode } from 'react'
-import { ChartColumn, Lock } from 'lucide-react'
+import { ArrowRight, ChartColumn, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Art } from '@/components/common/Art'
 import { CreditsIcon } from '@/components/brand/CreditsIcon'
 import { AchievementGlyph, badgeFor } from '@/components/overlays/AchievementToast'
-import { ModalBase, SectionLabel } from '@/components/overlays/ModalBase'
+import { ModalBase, ModalButton, OPEN_MODAL_EVENT, SectionLabel } from '@/components/overlays/ModalBase'
 import { ACHIEVEMENT_MULT, MAX_LEVEL } from '@/game/constants'
 import { formatCps, formatDuration, formatInt, formatNum, formatPct } from '@/game/format'
 import { condProgress, nextAchievements, type NextAchievement } from '@/game/goals'
-import { levelProgress, levelTitle, modelsUnlockedAt, playerXp, xpBreakdown } from '@/game/level'
+import { levelProgress, levelTitle } from '@/game/level'
 import type { AchievementDef, Catalog, Derived, GameState } from '@/game/types'
 import { useNow } from '@/hooks/useNow'
 import { useGame, useGameShallow, useGameStore } from '@/state/useGame'
@@ -177,9 +178,13 @@ function StatRow({ stat }: { stat: Stat }) {
 // Level
 // ---------------------------------------------------------------------------
 
-/** The level, the bar, where the XP came from and what the next level opens. */
+/** Opening the Level screen replaces this modal: `Overlays` keeps one modal id, so no close is needed. */
+function openLevel(): void {
+  window.dispatchEvent(new CustomEvent<'level'>(OPEN_MODAL_EVENT, { detail: 'level' }))
+}
+
+/** The level, the bar and the figure. Everything else about XP is one button away. */
 function LevelSection() {
-  const store = useGameStore()
   const p = useGameShallow((state) => {
     const prog = levelProgress(state)
     return {
@@ -190,16 +195,7 @@ function LevelSection() {
       xpToGo: prog.xpToGo,
     }
   })
-  // The breakdown is eight floors over the whole state; it only moves when the total moves.
-  const xp = useGame(playerXp)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `xp` is the change signal for the live store
-  const rows = useMemo(() => xpBreakdown(store.state), [store, xp])
-  const next = useMemo(
-    () => (p.level >= MAX_LEVEL ? [] : modelsUnlockedAt(p.level + 1, store.catalog)),
-    [p.level, store],
-  )
   const maxed = p.level >= MAX_LEVEL
-  const earned = rows.filter((r) => r.xp > 0)
 
   return (
     <section
@@ -230,32 +226,15 @@ function LevelSection() {
         />
       </div>
 
-      <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 sm:grid-cols-[1fr_auto_1fr_auto]">
-        {earned.map((r) => (
-          <div key={r.key} className="contents">
-            <dt className="text-xs text-smoke-600">{r.label}</dt>
-            <dd className="text-right text-xs font-bold text-smoke-100 tabular-nums">{formatInt(r.xp)}</dd>
-          </div>
-        ))}
-      </dl>
-
-      {maxed ? (
-        <p className="mt-3 text-xs text-smoke-600">Level {MAX_LEVEL}. There is nothing above this except more compute.</p>
-      ) : next.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-smoke-600">Next: level {p.level + 1} unlocks</span>
-          {next.map((m) => (
-            <span key={m.id} className="flex items-center gap-1.5 rounded-comfy border border-charcoal-400 bg-charcoal-600 py-0.5 pr-2 pl-0.5">
-              <Art id={`model-${m.id}`} size={24} alt="" />
-              <span className="text-[11px] font-semibold text-smoke-100">{m.name}</span>
-            </span>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-3 text-xs text-smoke-600">
-          Next: level {p.level + 1}. No new model at that one, but the credits land all the same.
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-smoke-600">
+          {maxed ? `Level ${MAX_LEVEL}. There is nothing above this except more compute.` : 'Every way to earn XP and what each level opens.'}
         </p>
-      )}
+        <ModalButton size="sm" onClick={openLevel}>
+          Open the level screen
+          <ArrowRight size={13} aria-hidden="true" />
+        </ModalButton>
+      </div>
     </section>
   )
 }

@@ -13,7 +13,9 @@ import { bulkCost, maxAffordable, unitCost } from '@/game/economy'
 import { saveTarget } from '@/game/goals'
 import { explainBuy } from '@/game/guidance'
 import { canBuy } from '@/game/hardware'
+import { hardwareLevelLock } from '@/game/level'
 import { currencyBalance } from '@/game/map'
+import { unitsWithinBudget } from '@/game/power'
 import { hasUpgrade, isUnlocked } from '@/game/unlock'
 import type { Derived, Effect, GameState, HardwareDef, HardwareFamily, UpgradeCategory, UpgradeDef } from '@/game/types'
 import type { BuyCount } from '@/game/actions'
@@ -179,17 +181,20 @@ export interface HardwareRowState {
   /** Price of `count` units, or of the next single unit when `count` is 0. */
   cost: number
   affordable: boolean
-  /** Non-credit lock (family, unlock condition, cap); null when the only blocker could be credits. */
+  /** Non-credit lock (family, unlock condition, level, cap, breaker); null when the only blocker could be credits. */
   lockReason: string | null
   /** Effective credits/s one unit produces right now (rig × family × global multipliers). */
   cpsEach: number
   paybackSec: number
   /** Reached tier (0..4). */
   tier: number
-  /** True when this purchase would trip the breaker that is currently off. */
-  tripsBreaker: boolean
   /** Units still purchasable under `def.max` (Infinity when uncapped). */
   room: number
+  /**
+   * The level the unit asks for while the player is under it (`hardwareLevelLock`), 0 otherwise.
+   * The row prints it as an `LV N` pill next to the name; the lock line already carries the words.
+   */
+  levelNeed: number
 }
 
 /** Per-unit rate matching `paybackSec`'s denominator. */
@@ -216,18 +221,19 @@ export function useHardwareRow(id: string, amount: BuyCount): HardwareRowState {
     (s: GameState, d: Derived, store: GameStore): HardwareRowState => {
       const def = buildIndex(store.catalog).hardwareById[id]
       if (!def) {
-        return { owned: 0, count: 0, cost: 0, affordable: false, lockReason: 'Unknown unit', cpsEach: 0, paybackSec: Infinity, tier: 0, tripsBreaker: false, room: 0 }
+        return { owned: 0, count: 0, cost: 0, affordable: false, lockReason: 'Unknown unit', cpsEach: 0, paybackSec: Infinity, tier: 0, room: 0, levelNeed: 0 }
       }
       const owned = s.hardware[id] ?? 0
       const room = def.max === undefined ? Infinity : Math.max(0, def.max - owned)
       const lockReason = nonCreditLock(def, s, d, store.catalog)
+      const levelNeed = hardwareLevelLock(def, s)?.need ?? 0
       let count: number
-      if (amount === 'max') count = Math.min(room, maxAffordable(def, owned, s.credits))
+      // 'max' is every unit that fits the bank and the breaker, the same count buyHardware lands on.
+      if (amount === 'max') count = Math.min(room, maxAffordable(def, owned, s.credits), unitsWithinBudget(def, d))
       else count = Math.min(room, amount)
       const cost = count > 0 ? bulkCost(def, owned, count) : unitCost(def, owned)
       const affordable = lockReason === null && count > 0 && s.credits >= cost
       const rate = unitRate(def, d)
-      const projectedDraw = d.powerDraw + Math.max(1, count) * def.watts
       return {
         owned,
         count,
@@ -237,8 +243,8 @@ export function useHardwareRow(id: string, amount: BuyCount): HardwareRowState {
         cpsEach: rate,
         paybackSec: rate > 0 ? unitCost(def, owned) / rate : Infinity,
         tier: s.hardwareTiers[id] ?? 0,
-        tripsBreaker: !d.throttled && projectedDraw > d.powerBudget,
         room,
+        levelNeed,
       }
     },
     [id, amount],
@@ -256,8 +262,8 @@ function shallowRow(a: HardwareRowState, b: HardwareRowState): boolean {
     a.cpsEach === b.cpsEach &&
     a.paybackSec === b.paybackSec &&
     a.tier === b.tier &&
-    a.tripsBreaker === b.tripsBreaker &&
-    a.room === b.room
+    a.room === b.room &&
+    a.levelNeed === b.levelNeed
   )
 }
 

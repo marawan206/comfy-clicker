@@ -106,13 +106,14 @@ const credits = (n: number): ReactNode => (
 
 export function AchievementToast() {
   const store = useGameStore()
-  const { achievementById, contractById, modelById, hashtagById } = useMemo(() => {
+  const { achievementById, contractById, hardwareById, modelById, hashtagById } = useMemo(() => {
     const index = buildIndex(store.catalog)
     const achievementById: Record<string, AchievementDef> = {}
     for (const a of store.catalog.achievements) achievementById[a.id] = a
     return {
       achievementById,
       contractById: index.contractById,
+      hardwareById: index.hardwareById,
       modelById: index.modelById,
       hashtagById: index.hashtagById,
     }
@@ -144,7 +145,11 @@ export function AchievementToast() {
       case 'levelUp': {
         // The banner says the same thing in the middle of the screen, but the banner is one card and
         // level-ups can land while the player is elsewhere; the toast is the copy that persists.
-        const unlocked = e.unlocked.map((id) => modelById[id]?.name ?? id)
+        // Cards before checkpoints: the card is what the level was gating, the checkpoint runs on it.
+        const unlocked = [
+          ...e.hardware.map((id) => hardwareById[id]?.name ?? id),
+          ...e.unlocked.map((id) => modelById[id]?.name ?? id),
+        ]
         toast(`Level ${e.level} · ${levelTitle(e.level)}`, {
           title: 'Level up',
           description: (

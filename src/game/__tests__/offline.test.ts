@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createCatalog } from '@/data'
-import { OFFLINE_EFFICIENCY, POWER_BUDGET_BASE, SHORT_GAP_S } from '@/game/constants'
+import { OFFLINE_EFFICIENCY, POWER_BUDGET_BASE, SHORT_GAP_S, XP_CREDITS } from '@/game/constants'
 import { createInitialState } from '@/game/state'
 import type { Derived, GameEvent, GameState, Job, Post } from '@/game/types'
 
@@ -77,7 +77,7 @@ vi.mock('@/game/virality', () => ({
   },
 }))
 
-import { levelReward } from '@/game/level'
+import { levelReward, xpForLevel } from '@/game/level'
 import { applyOffline, OFFLINE_CLAIM_MIN_S, offlineGain, replayQueue } from '@/game/offline'
 import { ACHIEVEMENTS } from '@/data/achievements'
 import { CONTRACTS } from '@/data/contracts'
@@ -155,6 +155,9 @@ function stateAt(lastTickAt: number): GameState {
   return s
 }
 
+/** Lifetime credits whose derived term alone reaches `xp`: the inverse of `creditsXp`, rounded up. */
+const creditsForXp = (xp: number): number => Math.ceil(10 ** (xp / XP_CREDITS))
+
 describe('offlineGain', () => {
   it('pays the full rate, uncapped, for short gaps', () => {
     expect(offlineGain(100, derivedWith({ cps: 2 }))).toEqual({ paidSec: 100, gain: 200, short: true })
@@ -207,8 +210,10 @@ describe('applyOffline', () => {
   it('long gap: capped income and an offline report first in the event list', () => {
     const state = stateAt(T0)
     const now = T0 + 48 * 3600_000
-    const r = applyOffline(state, derivedWith({ cps: 2, offlineCapHours: 12 }), catalog, now)
     const gain = 2 * 12 * 3600 * OFFLINE_EFFICIENCY
+    // Seeded so the gap's income tips the credits term over level 2, and no further.
+    state.lifetimeCredits = creditsForXp(xpForLevel(2)) - gain
+    const r = applyOffline(state, derivedWith({ cps: 2, offlineCapHours: 12 }), catalog, now)
     expect(r.elapsedSec).toBe(48 * 3600)
     expect(r.gain).toBe(gain)
     expect(r.events[0]).toEqual({ type: 'offline', gain, elapsedSec: 48 * 3600 })
@@ -231,14 +236,18 @@ describe('applyOffline', () => {
     const state = stateAt(T0)
     state.queue = [job('j1', { startedAt: T0 - 5000, endsAt: T0 + 5000 }), job('j2'), job('j3')]
     const now = T0 + 3600_000
+    // Seeded so the hour's income plus the three posts tip the credits term over level 2.
+    state.lifetimeCredits = creditsForXp(xpForLevel(2)) - (3600 * OFFLINE_EFFICIENCY + 300)
     const r = applyOffline(state, derivedWith({ cps: 1, concurrency: 1 }), catalog, now)
 
     expect(state.queue).toEqual([])
     expect(state.posts.map((p) => p.id)).toEqual(['post-j3', 'post-j2', 'post-j1'])
     expect(state.posts.map((p) => p.createdAt)).toEqual([T0 + 25_000, T0 + 15_000, T0 + 5_000])
     expect(state.posts.every((p) => p.granted && p.likes === 100)).toBe(true)
-    // 1 cps × 3600 s of income at the offline rate + 3 posts × 100 likes × 1 credit.
-    expect(state.credits).toBe(3600 * OFFLINE_EFFICIENCY + 300)
+    // 1 cps × 3600 s of income at the offline rate + 3 posts × 100 likes × 1 credit, which is
+    // enough lifetime credits for level 2, so settleLevelUps pays for it on the way out.
+    expect(state.stats.levelSeen).toBe(2)
+    expect(state.credits).toBe(3600 * OFFLINE_EFFICIENCY + 300 + levelReward(2, 1))
 
     const types = r.events.map((e) => e.type)
     expect(types[0]).toBe('offline')

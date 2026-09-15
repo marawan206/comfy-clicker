@@ -240,6 +240,10 @@ export function cueForEvent(event: GameEvent, ctx: CueContext = {}): Cue | null 
     case 'levelUp':
       return cue('levelup')
 
+    // XP rides on the action that earned it, and that action already made its sound.
+    case 'xp':
+      return null
+
     case 'offline':
       // Fires while the tab is still catching up, before any gesture has unlocked audio.
       return null
@@ -314,6 +318,8 @@ export type BetLanding = { table: 'wheel'; mult: number } | { table: 'coin'; won
 
 /** Wheel multiplier from which the landing gets the jackpot fanfare. */
 export const JACKPOT_MULT = 10
+/** Losing wheel multiplier from which the landing gets the lighter sting; below it is the NaN. */
+export const HALF_BACK_MULT = 0.5
 
 /**
  * The payoff half of a bet. `cueForEvent` covers the toss and the ticking reel; this is what the
@@ -328,8 +334,9 @@ export function cueForLanding(landing: BetLanding): Cue {
   if (mult > 1) return cue('cash')
   // Same seed, same image: the stake comes back and nothing else happens.
   if (mult === 1) return cue('tick', undefined, 0.6)
-  // Half back is a smaller, shorter sting than a NaN.
-  return mult > 0 ? cue('lose', 1.15, 0.5) : cue('lose', undefined, 0.8)
+  // Half back is a smaller, shorter sting than a NaN, which hands a quarter back and still stings
+  // like the dud it is (a hot NaN pays 0.375 and lands here too).
+  return mult >= HALF_BACK_MULT ? cue('lose', 1.15, 0.5) : cue('lose', undefined, 0.8)
 }
 
 /**

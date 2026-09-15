@@ -19,8 +19,9 @@ import { checkAchievements } from '@/game/achievements'
 import { runCitizens } from '@/game/citizens'
 import { contractsDue, progressContracts, rotateContracts } from '@/game/contracts'
 import { expireEvents, maybeStartEvent } from '@/game/events'
+import { XP_MILESTONE } from '@/game/constants'
 import { currentTrending, weekIndex } from '@/game/hashtags'
-import { settleLevelUps } from '@/game/level'
+import { grantXp, settleLevelUps } from '@/game/level'
 import { advanceQueue } from '@/game/studio'
 import type { Derived, GameEvent, GameState, Rng } from '@/game/types'
 import { settlePosts } from '@/game/virality'
@@ -162,8 +163,12 @@ export function tick(
     memo.week = week
   }
 
-  // 8. cps milestones: announced the first time a power of ten is reached.
-  for (const cps of crossedMilestones(state.stats.bestCps, derived.cps)) events.push({ type: 'milestone', cps })
+  // 8. cps milestones: announced the first time a power of ten is reached, each one worth XP.
+  for (const cps of crossedMilestones(state.stats.bestCps, derived.cps)) {
+    events.push({ type: 'milestone', cps })
+    const xp = grantXp(state, XP_MILESTONE, 'milestone')
+    if (xp) events.push(xp)
+  }
   if (derived.cps > state.stats.bestCps) state.stats.bestCps = derived.cps
 
   // 9. Breaker flip.

@@ -1,13 +1,18 @@
 /**
  * Player level.
  *
- * XP is derived from lifetime stats and never stored: credits earned are the backbone, posts are
- * log-compressed so nothing can be farmed, and achievements are the completionist lane. Everything
- * it reads survives a rebrand, so a prestige never demotes.
+ * XP has two parts. The credits term is derived from lifetime credits and never stored
+ * (`creditsXp`: XP_CREDITS per decade). Everything else is an activity ledger, `stats.xpBy`,
+ * banked per source by `grantXp` the moment the player does the thing: a landed post, a claimed
+ * contract, an achievement, a Graph node, the first unit of a card, an upgrade, a tier, a model
+ * set up, a quantization, a LoRA, the daily, an income milestone, a rebrand. Every grant returns
+ * an `xp` event so the UI can float it. Lifetime credits and the ledger both survive a rebrand,
+ * so a prestige never demotes.
  *
- * The only saved field is `stats.levelSeen`, the watermark that makes the level-up reward
- * idempotent across reloads and cloud merges. An old save gets its retroactive level for free with
- * no migration and no back-pay (`hydrate` seeds the watermark).
+ * The only other saved field is `stats.levelSeen`, the watermark that makes the level-up reward
+ * idempotent across reloads and cloud merges. A save from before the ledger gets it seeded from
+ * the counters it already has (`legacyXp` in save.ts); the next `settleLevelUps` then pays and
+ * announces whatever level that adds up to.
  *
  * Import rule: this module may import only `@/game/types` and `@/game/constants`. `state.ts`
  * imports `playerLevel` for `statValue('level')`, so anything richer would be a cycle.
@@ -17,17 +22,15 @@ import {
   LEVEL_REWARD_SECS,
   LEVEL_TITLES,
   LEVEL_XP,
+  LOUNGE_MIN_LEVEL,
   MAX_LEVEL,
-  XP_ACHIEVEMENT,
-  XP_CONTRACT,
   XP_CREDITS,
-  XP_LORA,
-  XP_MAP_NODE,
-  XP_POSTS,
-  XP_QUANTIZE,
-  XP_REBRAND,
+  XP_DAILY_PER_DAY,
+  XP_POST_BASE,
+  XP_POST_PER_LEVEL,
+  XP_VIRAL_MULT,
 } from '@/game/constants'
-import type { Catalog, Derived, GameEvent, GameState, ModelDef } from '@/game/types'
+import type { Catalog, Derived, GameEvent, GameState, HardwareDef, ModelDef, XpSource } from '@/game/types'
 
 export interface XpRow {
   key: string
@@ -47,33 +50,120 @@ export interface LevelProgress {
   xpToGo: number
 }
 
-const log10 = (n: number): number => Math.log10(1 + Math.max(0, n))
-const log2 = (n: number): number => Math.log2(1 + Math.max(0, n))
-const whole = (n: number): number => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0)
-
-/**
- * Every XP source with its label, in display order. Each row is floored on its own, so the rows
- * always add up to `playerXp` exactly (the UI shows both).
- */
-export function xpBreakdown(state: GameState): XpRow[] {
-  const stats = state.stats
-  return [
-    { key: 'credits', label: 'credits earned', xp: whole(XP_CREDITS * log10(state.lifetimeCredits)) },
-    { key: 'posts', label: 'posts', xp: whole(XP_POSTS * log2(stats.posts)) },
-    { key: 'achievements', label: 'achievements', xp: whole(XP_ACHIEVEMENT * state.achievements.length) },
-    { key: 'contracts', label: 'contracts done', xp: whole(XP_CONTRACT * stats.contractsDone) },
-    { key: 'mapNodes', label: 'Graph nodes', xp: whole(XP_MAP_NODE * state.mapNodes.length) },
-    { key: 'quantizations', label: 'quantizations', xp: whole(XP_QUANTIZE * stats.quantizations) },
-    { key: 'loras', label: 'LoRAs trained', xp: whole(XP_LORA * stats.lorasTrained) },
-    { key: 'rebrands', label: 'rebrands', xp: whole(XP_REBRAND * stats.rebrands) },
-  ]
+/** One rung of the roadmap: what reaching the level opens. */
+export interface LevelRung {
+  level: number
+  title: string
+  /** XP threshold of the level. */
+  xp: number
+  models: ModelDef[]
+  hardware: HardwareDef[]
+  features: string[]
 }
 
-/** Total XP: the sum of `xpBreakdown`. */
-export function playerXp(state: GameState): number {
+/** Every activity source, in the order the breakdown lists them. */
+export const XP_SOURCES: readonly XpSource[] = [
+  'post',
+  'viral',
+  'contract',
+  'achievement',
+  'mapNode',
+  'hardware',
+  'upgrade',
+  'tier',
+  'setup',
+  'quantize',
+  'lora',
+  'daily',
+  'milestone',
+  'rebrand',
+]
+
+export const XP_SOURCE_LABELS: Record<XpSource, string> = {
+  post: 'posts',
+  viral: 'viral posts',
+  contract: 'contracts done',
+  achievement: 'achievements',
+  mapNode: 'Graph nodes',
+  hardware: 'new cards',
+  upgrade: 'upgrades',
+  tier: 'tier upgrades',
+  setup: 'models set up',
+  quantize: 'quantizations',
+  lora: 'LoRAs trained',
+  daily: 'daily logins',
+  milestone: 'income milestones',
+  rebrand: 'rebrands',
+}
+
+/** The feature the Lounge level opens, as the roadmap names it. */
+export const LOUNGE_FEATURE_NAME = 'The Latent Lounge'
+
+/** The daily cycle length (DAILY_CYCLE_DAYS in daily.ts, which this module cannot import). */
+const DAILY_XP_MAX_DAY = 7
+
+/** A whole, non-negative number, or 0 for anything that is not one. */
+const whole = (n: number | undefined): number =>
+  typeof n === 'number' && Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0
+
+/** One source's banked XP, sanitised: a corrupt ledger value reads as zero, never as NaN. */
+function banked(state: GameState, source: XpSource): number {
+  return whole(state.stats.xpBy?.[source])
+}
+
+/** The derived term: XP_CREDITS per decade of lifetime credits, floored. */
+export function creditsXp(state: GameState): number {
+  return whole(XP_CREDITS * Math.log10(1 + Math.max(0, state.lifetimeCredits)))
+}
+
+/** The activity ledger, summed. Only finite, non-negative values count. */
+export function activityXp(state: GameState): number {
   let total = 0
-  for (const row of xpBreakdown(state)) total += row.xp
+  for (const source of XP_SOURCES) total += banked(state, source)
   return total
+}
+
+/** Total XP: the credits term plus the ledger. */
+export function playerXp(state: GameState): number {
+  return creditsXp(state) + activityXp(state)
+}
+
+/**
+ * Every XP source with its label, in display order: the credits term first, then each ledger row
+ * that has banked anything. Every row is a whole number, so the rows add up to `playerXp` exactly
+ * (the UI shows both).
+ */
+export function xpBreakdown(state: GameState): XpRow[] {
+  const rows: XpRow[] = [{ key: 'credits', label: 'credits earned', xp: creditsXp(state) }]
+  for (const source of XP_SOURCES) {
+    const xp = banked(state, source)
+    if (xp > 0) rows.push({ key: source, label: XP_SOURCE_LABELS[source], xp })
+  }
+  return rows
+}
+
+/**
+ * Bank `amount` of XP under `source` and return the `xp` event to announce it. The amount is
+ * floored; nothing at all happens for a grant that rounds to zero or is not a number.
+ */
+export function grantXp(state: GameState, amount: number, source: XpSource): GameEvent | null {
+  const xp = Number.isFinite(amount) ? Math.floor(amount) : 0
+  if (xp <= 0) return null
+  const ledger = state.stats.xpBy ?? (state.stats.xpBy = {})
+  ledger[source] = whole(ledger[source]) + xp
+  return { type: 'xp', amount: xp, source }
+}
+
+/** XP for a landed post on `model`: a base plus a slice per level the model needs, doubled when viral. */
+export function postXp(model: ModelDef, viral: boolean): number {
+  const level = Math.max(1, Math.floor(Number.isFinite(model.minLevel) ? (model.minLevel as number) : 1))
+  return (XP_POST_BASE + XP_POST_PER_LEVEL * level) * (viral ? XP_VIRAL_MULT : 1)
+}
+
+/** XP for claiming the daily on cycle day `day` (1..7): the streak is what pays. */
+export function dailyXp(day: number): number {
+  const d = Number.isFinite(day) ? Math.floor(day) : 1
+  return XP_DAILY_PER_DAY * Math.min(DAILY_XP_MAX_DAY, Math.max(1, d))
 }
 
 /** Highest level whose threshold `xp` has reached. Clamped to 1..MAX_LEVEL. */
@@ -127,17 +217,85 @@ export function levelReward(level: number, cps: number): number {
   return Math.max(flat, income)
 }
 
-/** Models whose `minLevel` is exactly `level`, in catalog order. */
+/** `null` when `minLevel` is within reach, otherwise the level it needs and the level you are on. */
+function levelLock(minLevel: number | undefined, state: GameState): { need: number; have: number } | null {
+  const need = Math.max(1, Math.floor(Number.isFinite(minLevel) ? (minLevel as number) : 1))
+  if (need <= 1) return null
+  const have = playerLevel(state)
+  return have >= need ? null : { need, have }
+}
+
+/** Models whose `minLevel` is exactly `level`, in catalog order. Level 1 takes the ones with none. */
 export function modelsUnlockedAt(level: number, catalog: Catalog): ModelDef[] {
   return catalog.models.filter((m) => (m.minLevel ?? 1) === level)
 }
 
+/** Hardware whose `minLevel` is exactly `level`, in catalog order. Level 1 takes the units with none. */
+export function hardwareUnlockedAt(level: number, catalog: Catalog): HardwareDef[] {
+  return catalog.hardware.filter((h) => (h.minLevel ?? 1) === level)
+}
+
 /** `null` when the model is within reach, otherwise the level it needs and the level you are on. */
 export function modelLevelLock(model: ModelDef, state: GameState): { need: number; have: number } | null {
-  const need = Math.max(1, Math.floor(model.minLevel ?? 1))
-  if (need <= 1) return null
-  const have = playerLevel(state)
-  return have >= need ? null : { need, have }
+  return levelLock(model.minLevel, state)
+}
+
+/** The same rule for a unit in the store: `null` within reach, else `{ need, have }`. */
+export function hardwareLevelLock(def: HardwareDef, state: GameState): { need: number; have: number } | null {
+  return levelLock(def.minLevel, state)
+}
+
+/** Features (not cards, not checkpoints) a level opens: the Lounge at its level, nothing elsewhere. */
+export function featuresUnlockedAt(level: number): string[] {
+  return level === LOUNGE_MIN_LEVEL ? [LOUNGE_FEATURE_NAME] : []
+}
+
+function buildRung(level: number, catalog: Catalog): LevelRung {
+  return {
+    level,
+    title: levelTitle(level),
+    xp: xpForLevel(level),
+    models: modelsUnlockedAt(level, catalog),
+    hardware: hardwareUnlockedAt(level, catalog),
+    features: featuresUnlockedAt(level),
+  }
+}
+
+/**
+ * The roadmap per catalog object (the tick-memo pattern, as `buildIndex` does). A rung is a pure
+ * function of the level and the catalog, and `nextUnlocks` sits under a 20 Hz selector through
+ * `goals.nextGoal`, so scanning the catalog twice per tick for an answer that never changes was
+ * garbage for nothing.
+ */
+const roadmaps = new WeakMap<Catalog, LevelRung[]>()
+
+/**
+ * One rung per level, 1..MAX_LEVEL, with everything each one opens. Built once per catalog object
+ * and shared from then on: read it, never mutate it.
+ */
+export function levelRoadmap(catalog: Catalog): LevelRung[] {
+  let rungs = roadmaps.get(catalog)
+  if (!rungs) {
+    rungs = []
+    for (let level = 1; level <= MAX_LEVEL; level++) rungs.push(buildRung(level, catalog))
+    roadmaps.set(catalog, rungs)
+  }
+  return rungs
+}
+
+function rungAt(level: number, catalog: Catalog): LevelRung {
+  return levelRoadmap(catalog)[level - 1] as LevelRung
+}
+
+/** What the level after `level` opens: the cached rung's lists, shared. Empty at MAX_LEVEL. */
+export function nextUnlocks(
+  level: number,
+  catalog: Catalog,
+): { models: ModelDef[]; hardware: HardwareDef[]; features: string[] } {
+  const current = Math.max(1, Math.floor(Number.isFinite(level) ? level : 1))
+  if (current >= MAX_LEVEL) return { models: [], hardware: [], features: [] }
+  const rung = rungAt(current + 1, catalog)
+  return { models: rung.models, hardware: rung.hardware, features: rung.features }
 }
 
 /**
@@ -165,6 +323,7 @@ export function settleLevelUps(state: GameState, derived: Derived, catalog: Cata
       level: next,
       credits,
       unlocked: modelsUnlockedAt(next, catalog).map((m) => m.id),
+      hardware: hardwareUnlockedAt(next, catalog).map((h) => h.id),
     })
   }
   return out

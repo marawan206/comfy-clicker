@@ -6,6 +6,37 @@ the data file and regenerate, so the game and the repo always say the same thing
 Versions are semver. A release bumps the minor, a hotfix bumps the patch, and the major stays
 at 0 until the game is feature complete. See `docs/RELEASING.md`.
 
+## 0.3.0 · Levels that mean it
+
+Release · 2026-09-15
+
+XP is a ledger of things you did, every card has a rung, and the store stops selling the card that trips the breaker.
+
+### Added
+
+- A level bar under the Generate button: it floats the XP a thing just paid, fills and flashes on a level-up, and names what the next level opens
+- The Level screen, from the bar, the header chip, a locked card or Stats: every way to earn XP with a button to it, where your XP came from, and the whole roadmap with your rung marked
+- Combos pay. Keep clicks under 400 ms apart and from the tenth every click pays 1.25 times, from the 25th 1.5, from the 50th double, from the 100th triple. The pill shows the multiplier, a tier-up bursts and flashes, and two achievements sit at 50 and 100
+
+### Changed
+
+- XP is earned by doing things. A landed post pays 4 plus 3 per level of its checkpoint, double when it goes viral and nothing when it is ratioed; a contract 60, an achievement 50, a Graph node 40, the first unit of a card 50, an upgrade 40, a tier 60, a set-up 20, a quantization 30, a LoRA 40, the daily 40 per day of the cycle, an income milestone 100, a rebrand 500. Credits still count, 150 per decade of lifetime earnings
+- Every card needs a level and wears an LV pill until you have it: the used 3060 at level 2, the 4090 at 4, the 5090 at 5, the PRO 6000 at 7, a B200 at 10, the first region at 12. A locked card stays on the shelf with its reason
+- The level-up card shows the new cards beside the new checkpoints, and Show me opens the shelf the first one sits on
+- A save from before the ledger gets its XP seeded from what it already did, and the next settle pays whatever level that adds up to
+- The Lounge result line prints what the bet moved your bank by, so a NaN on 1,000 reads -750 instead of a green +250. The bet box follows the bank down after a loss, never up, and the footer says what each table can take
+- The hidden row Suspiciously Regular is now Rate Limited and lands on the first click the cap refuses. Anyone who had it keeps it
+
+### Balance
+
+- A new level table: 700 XP to level 2, 1,500 to 3, 2,200 to 4, 3,700 to 5, 6,600 to 6, then 9,000, 11,500, 14,500, 18,500, 23,500 and 32,000 to level 12, each step after that 1.1 times the last
+- A NaN latent hands a quarter of the stake back and comes up 30 percent of the time. It used to eat the whole stake 35 percent of the time. The wheel still returns under 1 per credit staked: 0.9555 before the pity reroll, the hot sampler and the pot, about 0.98 after
+
+### Fixed
+
+- The store refuses a card the power budget cannot carry and names the PSU to install first, with a button to it. Buying one card too far used to leave the rack dark, and the way back was clicking to the next PSU with no income, 12,000 credits of it at the Three-Phase step. A max buy stops at the units that fit
+- The cadence check is gone. A fast hand on a real mouse was being read as a script and sat through a 10, 30 or 60 second lockout. At most 20 clicks a second still pay, and a refused click costs nothing
+
 ## 0.2.5 · Checkpoints on shelves
 
 Hotfix · 2026-09-14

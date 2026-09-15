@@ -11,7 +11,19 @@ import { GIFTS } from '@/data/gifts'
 import { checkAchievements } from '@/game/achievements'
 import { buildIndex } from '@/game/catalog'
 import { evaluateClick } from '@/game/clickGuard'
-import { LUCKY_CLICK_CHANCE, LUCKY_CLICK_MULT, POST_WINDOW_MS } from '@/game/constants'
+import { advanceCombo, comboMult } from '@/game/combo'
+import {
+  LUCKY_CLICK_CHANCE,
+  LUCKY_CLICK_MULT,
+  POST_WINDOW_MS,
+  XP_HARDWARE_FIRST,
+  XP_LORA,
+  XP_MAP_NODE,
+  XP_QUANTIZE,
+  XP_SETUP,
+  XP_TIER,
+  XP_UPGRADE,
+} from '@/game/constants'
 import { claimContract as payContract, progressContracts } from '@/game/contracts'
 import { canClaim, claimDaily as payDaily } from '@/game/daily'
 import { maxAffordable } from '@/game/economy'
@@ -19,8 +31,9 @@ import { addCredits, pushEvents } from '@/game/engine'
 import { RESOLVABLE_KINDS, resolveEvent as resolveActiveEvent } from '@/game/events'
 import { applyFlip, applySpin, canBet } from '@/game/gamble'
 import { applyPurchase, canBuy } from '@/game/hardware'
-import { modelLevelLock } from '@/game/level'
+import { grantXp, modelLevelLock } from '@/game/level'
 import { canAffordNode, currencyBalance, isNodeUnlocked, mapNodeAvailable, unlockNode } from '@/game/map'
+import { unitsWithinBudget } from '@/game/power'
 import { canRebrand, rebrand as applyRebrand } from '@/game/prestige'
 import { applyQuantize, canQuantize, quantFee, setupFee } from '@/game/quantize'
 import { chance } from '@/game/rng'
@@ -122,6 +135,11 @@ function ok(events: GameEvent[], dirty: boolean): ActionResult {
   return { events, dirty }
 }
 
+/** Append an XP grant to the batch when there was one (`grantXp` answers null for nothing). */
+function award(events: GameEvent[], xp: GameEvent | null): void {
+  if (xp) events.push(xp)
+}
+
 /**
  * Pay in a currency. Credits leave the bank; CP is tracked through `cpSpent` (map.ts convention,
  * so the prestige multiplier keeps reading `state.cp`); RP has no spent counter outside the map,
@@ -204,14 +222,20 @@ export function upscaleCost(post: Post, ctx: Pick<ActionContext, 'derived' | 'ca
  *
  * One click in `1 / LUCKY_CLICK_CHANCE` pays `LUCKY_CLICK_MULT` times over and raises
  * `LUCKY_SEED_FLAG` (the "Lucky Seed" achievement keys off it). The roll happens on accepted
- * clicks only, so a refused one cannot burn the lucky seed.
+ * clicks only, so a refused one cannot burn the lucky seed. An accepted click also joins the
+ * combo (`advanceCombo`, combo.ts): from the first tier in `COMBO_TIERS` the streak's multiplier
+ * rides on top of the lucky one, and the event carries `combo` and `mult` so the pill and the
+ * float can say so.
  *
  * **Deliberate deviation from the contract.** Every other action answers a validation failure with
  * `{ events: [], dirty: false, error }`. A click refused by the auto-clicker guard instead returns
  * a single `clickBlocked` event and no error: the button has to be able to say why it went quiet,
  * and a toast is the only place to say it. What it must never do is move anything. No credits, no
  * `totalClicks`, no `recordClick`, no `applyClickToJobs` and above all no `click` event, so
- * contracts, the combo meter and the click-frenzy egg all see a click that never happened.
+ * contracts, the combo meter and the click-frenzy egg all see a click that never happened. The
+ * one thing a refusal writes is `flags.clickGuard`, raised by the guard itself behind the hidden
+ * achievement "Rate Limited". The only reason left is `rate`: the cap on accepted clicks per
+ * second is the whole guard now that the cadence detector is gone.
  */
 export function click(ctx: ActionContext): ActionResult {
   const { state, derived, catalog, now, rng } = ctx
@@ -221,7 +245,9 @@ export function click(ctx: ActionContext): ActionResult {
   }
 
   const lucky = chance(rng, LUCKY_CLICK_CHANCE)
-  const value = Math.max(0, derived.clickValue) * (lucky ? LUCKY_CLICK_MULT : 1)
+  const combo = advanceCombo(state, now)
+  const mult = comboMult(combo)
+  const value = Math.max(0, derived.clickValue) * (lucky ? LUCKY_CLICK_MULT : 1) * mult
   addCredits(state, value)
   state.totalClicks += 1
   if (lucky) {
@@ -230,7 +256,7 @@ export function click(ctx: ActionContext): ActionResult {
   }
   recordClick(state, now)
   applyClickToJobs(state, now)
-  const events: GameEvent[] = [lucky ? { type: 'click', value, lucky: true } : { type: 'click', value }]
+  const events: GameEvent[] = [lucky ? { type: 'click', value, combo, mult, lucky: true } : { type: 'click', value, combo, mult }]
   pushEvents(events, progressContracts(state, events, catalog))
   return ok(events, false)
 }
@@ -251,7 +277,9 @@ export function buyHardware(ctx: ActionContext, id: string, n: BuyCount = 1): Ac
   const gate = canBuy(def, state, derived, catalog, 1)
   if (!gate.ok) return fail(gate.reason ?? `${def.name} is locked`)
 
-  const count = n === 'max' ? Math.min(room, maxAffordable(def, owned, state.credits)) : Math.min(room, n)
+  // 'max' stops at the breaker as well as the bank: every unit that fits, never the one that trips it.
+  const count =
+    n === 'max' ? Math.min(room, maxAffordable(def, owned, state.credits), unitsWithinBudget(def, derived)) : Math.min(room, n)
   if (count < 1) return fail('Not enough credits')
   if (count > 1) {
     const bulk = canBuy(def, state, derived, catalog, count)
@@ -262,6 +290,8 @@ export function buyHardware(ctx: ActionContext, id: string, n: BuyCount = 1): Ac
   noteSpend(state)
   if (def.family === 'cloud-node' && state.meta.playedSec < SPEEDRUN_SECS) state.flags[SPEEDRUN_FLAG] = true
   const events: GameEvent[] = [{ type: 'purchase', hardwareId: id, count }]
+  // The first unit of a kind you have never owned banks XP, once, whatever the count.
+  if (owned === 0) award(events, grantXp(state, XP_HARDWARE_FIRST, 'hardware'))
   pushEvents(events, progressContracts(state, events, catalog))
   return ok(events, true)
 }
@@ -288,7 +318,9 @@ export function buyUpgrade(ctx: ActionContext, id: string): ActionResult {
   if (currency === 'credits') noteSpend(state)
   if (tier) state.hardwareTiers[tier.hardwareId] = tier.tier
   else state.upgrades.push(id)
-  return ok([{ type: 'upgrade', id }], true)
+  const events: GameEvent[] = [{ type: 'upgrade', id }]
+  award(events, tier ? grantXp(state, XP_TIER, 'tier') : grantXp(state, XP_UPGRADE, 'upgrade'))
+  return ok(events, true)
 }
 
 /** Unlock a node on the Graph. Parents, unlock condition and balance are all checked. */
@@ -308,7 +340,9 @@ export function unlockMapNode(ctx: ActionContext, id: string): ActionResult {
   if (!canAffordNode(node, state, catalog)) return fail(`Not enough ${CURRENCY_LABEL[node.currency]}`)
   if (!unlockNode(state, node, catalog)) return fail(`Could not unlock ${node.title}`)
   if (node.currency === 'credits') noteSpend(state)
-  return ok([{ type: 'mapUnlock', id }], true)
+  const events: GameEvent[] = [{ type: 'mapUnlock', id }]
+  award(events, grantXp(state, XP_MAP_NODE, 'mapNode'))
+  return ok(events, true)
 }
 
 /**
@@ -321,9 +355,13 @@ export function quantize(ctx: ActionContext, modelId: string, precision: Precisi
   if (!model) return fail(`Unknown model: ${modelId}`)
   const check = canQuantize(model, precision, state, catalog)
   if (!check.ok) return fail(check.reason ?? `${model.name} can’t be quantized right now`)
+  const tiers = state.stats.quantizations
   applyQuantize(state, modelId, precision, quantFee(model, precision, catalog))
   noteSpend(state)
-  return ok([], false)
+  const events: GameEvent[] = []
+  // A new tier only: `applyQuantize` moves the counter exactly when the precision is new.
+  if (state.stats.quantizations !== tiers) award(events, grantXp(state, XP_QUANTIZE, 'quantize'))
+  return ok(events, false)
 }
 
 /**
@@ -352,7 +390,9 @@ export function setupModel(ctx: ActionContext, modelId: string): ActionResult {
   if (fee > 0) noteSpend(state)
   if (existing) existing.setup = true
   else state.models[modelId] = { precisions: ['native'], setup: true }
-  return ok([], false)
+  const events: GameEvent[] = []
+  award(events, grantXp(state, XP_SETUP, 'setup'))
+  return ok(events, false)
 }
 
 /** Train a style LoRA for a hashtag (permanent likes bonus on it, applied in derived.ts). */
@@ -368,7 +408,9 @@ export function trainLora(ctx: ActionContext, tagId: string): ActionResult {
   noteSpend(state)
   state.loras.push(tagId)
   state.stats.lorasTrained += 1
-  return ok([], true)
+  const events: GameEvent[] = []
+  award(events, grantXp(state, XP_LORA, 'lora'))
+  return ok(events, true)
 }
 
 /** Queue a generation. Starts it immediately when a slot is free. */
@@ -423,8 +465,9 @@ export function claimDaily(ctx: ActionContext): ActionResult {
  * reads any of them.
  *
  * Two things this must never become. It is not reachable from the click path or a hotkey, so a
- * wager is always a deliberate press. And it does not call `noteSpend`: a bank that lands on zero
- * because a seed ate the wager is not "Out Of Credits, Not Ideas".
+ * wager is always a deliberate press. And neither it nor `flip` calls `noteSpend`: the wheel
+ * keeps a quarter, so it cannot land the bank on zero on its own, and a bank that lands on zero
+ * because a coin came up Comfy is not "Out Of Credits, Not Ideas".
  */
 export function spin(ctx: ActionContext, wager: number | 'free'): ActionResult {
   const { state, derived, catalog, now, rng } = ctx
@@ -569,6 +612,8 @@ export function grantGift(ctx: ActionContext, kind: GiftKind): ActionResult {
     if (count > 0) {
       state.hardware[hardware.id] = owned + count
       events.push({ type: 'purchase', hardwareId: hardware.id, count })
+      // A gifted card is your first of its kind exactly as a bought one would be.
+      if (owned === 0) award(events, grantXp(state, XP_HARDWARE_FIRST, 'hardware'))
     }
   }
   for (const id of upgrades) if (!hasUpgrade(state, id)) state.upgrades.push(id)

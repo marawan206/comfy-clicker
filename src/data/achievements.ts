@@ -8,14 +8,15 @@
  * Hidden achievements are easter eggs that key off `state.flags`. Flag keys used here and who raises them:
  *   speedrun, brokeAtZero, luckySeed (actions.ts) · spaghetti, bad-hands, masterpiece,
  *   sd15-forever (studio.ts, compared before and after `createJob`) · founderMention, ratioed
- *   (virality.ts) · sparkCaught, fixedNode (events.ts) · clickGuard (clickGuard.ts, on a cadence
- *   strike) · jackpot42, nanStreak3, hotSeed (gamble.ts) · gift:founder, gift:sonam (actions.ts,
- *   `grantGift`) · konami, comfy-wave, click-frenzy, ticker-seven, seed42, rickroll, title-25,
- *   grand-tour, night-shift, ctrl-enter (UI, through `actions.setFlag`: src/hooks/useEasterEggs.ts,
- *   NewsTicker, PromptInput, the header wordmark and the Generate button)
+ *   (virality.ts) · sparkCaught, fixedNode (events.ts) · clickGuard (clickGuard.ts, the first
+ *   click the rate cap refuses) · jackpot42, nanStreak3, hotSeed (gamble.ts) · gift:founder,
+ *   gift:sonam (actions.ts, `grantGift`) · konami, comfy-wave, click-frenzy, ticker-seven, seed42,
+ *   rickroll, title-25, grand-tour, night-shift, ctrl-enter (UI, through `actions.setFlag`:
+ *   src/hooks/useEasterEggs.ts, NewsTicker, PromptInput, the header wordmark and the Generate button)
  * `level-20` is the one hidden row that is not flag-driven; it keys off the `level` stat.
  * Icon strings are lucide kebab-case names or `src/assets/brand/nodes` file stems.
  */
+import { CLICK_CAP_PER_SEC } from '@/game/constants'
 import type { AchievementDef, HardwareFamily, StatKey, UnlockCond } from '@/game/types'
 
 const stat = (key: StatKey, value: number): UnlockCond => ({ type: 'stat', key, value })
@@ -63,6 +64,20 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     desc: 'Click Generate 100,000 times. We believe you.',
     icon: 'repeat',
     cond: stat('clicks', 100_000),
+  },
+  {
+    id: 'clicks-combo-50',
+    name: 'Sampler on Fire',
+    desc: 'A 50-click combo. Every click in it paid double.',
+    icon: 'flame',
+    cond: stat('bestCombo', 50),
+  },
+  {
+    id: 'clicks-combo-100',
+    name: 'CFG Overdrive',
+    desc: 'A 100-click combo. Triple pay, and the mouse is still warm.',
+    icon: 'zap',
+    cond: stat('bestCombo', 100),
   },
 
   // ---- credits & income --------------------------------------------------
@@ -755,9 +770,11 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     hidden: true,
   },
   {
+    // The id and the flag predate the rate cap (this was the cadence detector's row), so anyone
+    // who owns it keeps it; the cap is what raises the flag now.
     id: 'click-guard',
-    name: 'Suspiciously Regular',
-    desc: 'Trip the autoclicker guard. That was a very even hand.',
+    name: 'Rate Limited',
+    desc: `Hit the click cap. ${CLICK_CAP_PER_SEC} in a second, and the button asked for a breather.`,
     icon: 'timer',
     cond: flag('clickGuard'),
     hidden: true,

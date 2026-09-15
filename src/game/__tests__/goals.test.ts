@@ -2,17 +2,21 @@ import { describe, expect, it } from 'vitest'
 
 import { CATALOG, createCatalog } from '@/data'
 import type { Catalog } from '@/data'
+import { LEVEL_XP } from '@/game/constants'
 import { computeDerived, createEmptyDerived } from '@/game/derived'
 import { unitCost } from '@/game/economy'
 import {
+  LEVEL_GOAL_UNLOCKS,
   condProgress,
   goalKey,
   isGoalDone,
+  levelBlocked,
   nextAchievements,
   nextGoal,
   saveTarget,
   type Goal,
 } from '@/game/goals'
+import { explainBuy } from '@/game/guidance'
 import { createInitialState } from '@/game/state'
 import { describeUnlock, isUnlocked } from '@/game/unlock'
 import type {
@@ -465,7 +469,104 @@ describe('nextGoal', () => {
   })
 
   it('falls back to the level bar', () => {
-    expect(nextGoal(fresh(), base, createCatalog())).toEqual({ kind: 'level', level: 2, pct: 0, xpToGo: 500 })
+    expect(nextGoal(fresh(), base, createCatalog())).toEqual({
+      kind: 'level',
+      level: 2,
+      pct: 0,
+      xpToGo: LEVEL_XP[1],
+      unlocks: [],
+    })
+  })
+
+  describe('the level gate', () => {
+    const rung = createCatalog({
+      hardware: [
+        hardware({ id: 'cpu', name: 'Office PC', baseCost: 50, growth: 1 }),
+        hardware({ id: 'card', name: 'Test Card', baseCost: 100, growth: 1, minLevel: 2 }),
+      ],
+      models: [model({ id: 'm', name: 'Model M', minLevel: 2 })],
+    })
+
+    it('points at the bar when the next rung is affordable but level-locked, naming what it opens', () => {
+      const s = lived((st) => {
+        st.credits = 100
+      })
+      expect(levelBlocked(s, base, rung)).toBe(true)
+      expect(nextGoal(s, base, rung)).toEqual({
+        kind: 'level',
+        level: 2,
+        pct: 0,
+        xpToGo: LEVEL_XP[1],
+        unlocks: ['Test Card', 'Model M'],
+      })
+    })
+
+    it('saves for the rung it can reach when the locked one is out of pocket too', () => {
+      const s = lived((st) => {
+        st.credits = 20
+      })
+      expect(levelBlocked(s, base, rung)).toBe(false)
+      expect(nextGoal(s, base, rung)).toMatchObject({ kind: 'buy', hardwareId: 'cpu' })
+    })
+
+    it('stops pointing at the bar once the level is reached', () => {
+      const s = lived((st) => {
+        st.credits = 100
+        st.stats.levelSeen = 2
+      })
+      expect(levelBlocked(s, base, rung)).toBe(false)
+      // Model M is now within reach and free, so it leads.
+      expect(nextGoal(s, base, rung)).toMatchObject({ kind: 'setup', modelId: 'm' })
+    })
+
+    it('ignores a locked unit whose unlock condition, family or cap also fails', () => {
+      const c = createCatalog({
+        hardware: [
+          hardware({ id: 'gated', baseCost: 10, growth: 1, minLevel: 2, unlock: { type: 'flag', key: 'nope' } }),
+          hardware({ id: 'amd', baseCost: 10, growth: 1, minLevel: 2, family: 'amd-consumer' }),
+          hardware({ id: 'maxed', baseCost: 10, growth: 1, minLevel: 2, max: 1 }),
+        ],
+      })
+      const s = lived((st) => {
+        st.credits = 1_000
+        st.hardware = { maxed: 1 }
+      })
+      expect(levelBlocked(s, base, c)).toBe(false)
+    })
+
+    it('caps the names at LEVEL_GOAL_UNLOCKS, hardware first', () => {
+      const c = createCatalog({
+        hardware: [
+          hardware({ id: 'a', name: 'A', baseCost: 10, growth: 1, minLevel: 2 }),
+          hardware({ id: 'b', name: 'B', baseCost: 20, growth: 1, minLevel: 2 }),
+          hardware({ id: 'later', name: 'Later', baseCost: 30, growth: 1, minLevel: 3 }),
+        ],
+        models: [
+          model({ id: 'x', name: 'X', minLevel: 2 }),
+          model({ id: 'y', name: 'Y', minLevel: 2 }),
+          model({ id: 'z', name: 'Z', minLevel: 3 }),
+        ],
+      })
+      const s = lived((st) => {
+        st.credits = 1_000
+      })
+      const goal = nextGoal(s, base, c)
+      expect(goal?.kind).toBe('level')
+      expect(goal?.kind === 'level' && goal.unlocks).toEqual(['A', 'B', 'X'])
+      expect(LEVEL_GOAL_UNLOCKS).toBe(3)
+    })
+
+    it('names the shipped rung for a level 1 player who can afford it', () => {
+      const s = fresh((st) => {
+        st.hardware['pc-8c16t'] = 1
+        st.credits = 500
+      })
+      const goal = nextGoal(s, computeDerived(s, CATALOG), CATALOG)
+      expect(goal).toMatchObject({ kind: 'level', level: 2 })
+      expect(goal?.kind === 'level' && goal.unlocks).toEqual(
+        CATALOG.hardware.filter((h) => h.minLevel === 2).map((h) => h.name).slice(0, LEVEL_GOAL_UNLOCKS),
+      )
+    })
   })
 
   it('returns a goal for a fresh player on the shipped catalog', () => {
@@ -498,7 +599,7 @@ describe('goalKey', () => {
       'buy:rtx-4090',
     ],
     [{ kind: 'node', nodeId: 'quant-fp8', title: 'FP8', cost: 1500, currency: 'credits' }, 'node:quant-fp8'],
-    [{ kind: 'level', level: 5, pct: 80, xpToGo: 42 }, 'level:5'],
+    [{ kind: 'level', level: 5, pct: 80, xpToGo: 42, unlocks: ['RTX 5090'] }, 'level:5'],
   ]
 
   it('is stable and distinct per goal', () => {
@@ -564,7 +665,7 @@ describe('isGoalDone', () => {
   })
 
   it('level: done once the level is reached', () => {
-    const goal: Goal = { kind: 'level', level: 3, pct: 10, xpToGo: 400 }
+    const goal: Goal = { kind: 'level', level: 3, pct: 10, xpToGo: 400, unlocks: [] }
     expect(isGoalDone(goal, fresh())).toBe(false)
     expect(isGoalDone(goal, fresh((s) => {
       s.stats.levelSeen = 3
@@ -577,8 +678,10 @@ describe('isGoalDone', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * The body of `useSaveTarget` in src/components/store/storeHooks.ts, transcribed. The hook is
- * meant to become a thin wrapper over `saveTarget`; this pins the semantics it has to keep.
+ * The store's view of the shelf, transcribed from src/components/store/storeHooks.ts:
+ * `visibleHardware` (the unlock condition passes) and `nonCreditLock` (the first `explainBuy`
+ * cause is anything but the money). `useSaveTarget` is a thin wrapper over `saveTarget`; this
+ * pins that the engine picks the same unit the shelf would let the player buy.
  */
 function hookSaveTarget(s: GameState, d: Derived, catalog: Catalog) {
   const visibleHardware = (): HardwareDef[] => {
@@ -587,11 +690,9 @@ function hookSaveTarget(s: GameState, d: Derived, catalog: Catalog) {
     return out
   }
   const nonCreditLock = (def: HardwareDef): string | null => {
-    if (!d.unlockedFamilies.includes(def.family)) return 'Locked'
-    if (!isUnlocked(def.unlock, s, d, catalog)) return 'Locked'
-    const owned = s.hardware[def.id] ?? 0
-    if (def.max !== undefined && owned >= def.max) return `Maxed out · ${def.max} owned`
-    return null
+    const cause = explainBuy(def, s, d, catalog)[0]
+    if (!cause || cause.kind === 'credits') return null
+    return 'Locked'
   }
   let best: HardwareDef | null = null
   let bestCost = Infinity
@@ -614,7 +715,8 @@ describe('saveTarget', () => {
     return fresh((s) => {
       s.credits = credits
       s.hardware = { 'pc-4c8t': 2, 'rtx-3060': 3, 'rtx-3090': 1 }
-      s.upgrades = ['rocm-setup']
+      // 990 W of rack: the two PSUs keep it under the breaker, so the shelf is not all power-locked.
+      s.upgrades = ['rocm-setup', 'psu-850', 'psu-1600']
       s.mapNodes = ['core-root']
       s.lifetimeCredits = 250_000
       s.totalClicks = 2_400
@@ -622,9 +724,11 @@ describe('saveTarget', () => {
     })
   }
 
-  it('matches the store hook over a lived-in save at every scale', () => {
+  it('matches the store hook over a lived-in save at every scale and level', () => {
     for (const credits of [0, 250, 1_000, 25_000, 400_000, 9_000_000]) {
+      for (const level of [1, 2, 4, 8]) {
       const s = livedIn(credits)
+      s.stats.levelSeen = level
       const d = computeDerived(s, CATALOG)
       const hook = hookSaveTarget(s, d, CATALOG)
       const engine = saveTarget(s, d, CATALOG)
@@ -641,7 +745,37 @@ describe('saveTarget', () => {
         pct: engine?.pct,
         etaSec: engine?.etaSec,
       }).toEqual(hook)
+      }
     }
+  })
+
+  it('skips a level-locked unit, however cheap, until the level is reached', () => {
+    const catalog = createCatalog({
+      hardware: [
+        hardware({ id: 'locked', baseCost: 120, growth: 1, minLevel: 3 }),
+        hardware({ id: 'open', baseCost: 150, growth: 1 }),
+      ],
+    })
+    const s = fresh((st) => {
+      st.credits = 100
+    })
+    expect(saveTarget(s, base, catalog)?.def.id).toBe('open')
+    s.stats.levelSeen = 3
+    expect(saveTarget(s, base, catalog)?.def.id).toBe('locked')
+  })
+
+  it('skips a unit the circuit cannot carry, however cheap, until the budget grows', () => {
+    const catalog = createCatalog({
+      hardware: [
+        hardware({ id: 'hot', baseCost: 120, growth: 1, watts: 700 }),
+        hardware({ id: 'cool', baseCost: 150, growth: 1, watts: 100 }),
+      ],
+    })
+    const s = fresh((st) => {
+      st.credits = 100
+    })
+    expect(saveTarget(s, base, catalog)?.def.id).toBe('cool')
+    expect(saveTarget(s, derivedWith({ powerBudget: 1000 }), catalog)?.def.id).toBe('hot')
   })
 
   it('picks the cheapest unaffordable unit, skipping locked, maxed and affordable ones', () => {

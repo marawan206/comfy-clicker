@@ -7,8 +7,9 @@ import { describe, expect, it } from 'vitest'
 import { CATALOG } from '@/data'
 import { MAX_LEVEL } from '@/game/constants'
 import { createEmptyDerived } from '@/game/derived'
-import { formatNum } from '@/game/format'
+import { formatInt, formatNum } from '@/game/format'
 import { explainBuy, explainMapNode, explainRun, type LockCause } from '@/game/guidance'
+import { levelProgress } from '@/game/level'
 import { createInitialState } from '@/game/state'
 import type { Derived, GameState, HardwareDef, ModelDef, Precision } from '@/game/types'
 import { stepFor, stepsFor, whyLine, type GuideStore } from '../lockGuide'
@@ -49,6 +50,25 @@ describe('one cause, one step', () => {
     expect(step.detail).toBe('1:00 at your rate, or click Generate.')
     expect(step.action).toEqual({ type: 'hero' })
     expect(step.etaSec).toBe(60)
+  })
+
+  it('the breaker points at the PSU in the Power tab, or at the Graph, or at the meter', () => {
+    const cause: LockCause = { kind: 'power', short: 70, upgradeId: 'psu-850', nodeId: null }
+    const step = stepFor(cause, store)
+    expect(step.label).toBe('Install 850 W PSU')
+    expect(step.detail).toBe('200 credits in Power & cooling · +300 W')
+    expect(step.cost).toBe(200)
+    expect(step.currency).toBe('credits')
+    expect(step.action).toEqual({ type: 'store', tab: 'power', focusId: 'psu-850' })
+    expect(whyLine(cause, store)).toBe('Plugging it in puts the rack 70 W over budget, and a tripped breaker earns nothing.')
+
+    const node = stepFor({ kind: 'power', short: 70, upgradeId: null, nodeId: 'infra-undervolt' }, store)
+    expect(node.label).toBe('Unlock Undervolt on the Graph')
+    expect(node.action).toEqual({ type: 'map', nodeId: 'infra-undervolt' })
+
+    const spent = stepFor({ kind: 'power', short: 70, upgradeId: null, nodeId: null }, store)
+    expect(spent.label).toBe('Needs more power budget')
+    expect(spent.action).toEqual({ type: 'store', tab: 'power' })
   })
 
   it('credits with no income say so instead of quoting infinity', () => {
@@ -96,9 +116,10 @@ describe('one cause, one step', () => {
 
   it('the level gate sends them to the level screen', () => {
     const step = stepFor({ kind: 'level', need: 4, have: 2 }, store)
+    const toGo = formatInt(levelProgress(store.state).xpToGo)
     expect(step.label).toBe('Reach level 4')
-    expect(step.detail).toBe('You are level 2. XP comes from credits earned, posts and achievements.')
-    expect(step.action).toEqual({ type: 'modal', id: 'stats' })
+    expect(step.detail).toBe(`You are level 2. ${toGo} XP to go: post, finish a contract, unlock a Graph node.`)
+    expect(step.action).toEqual({ type: 'modal', id: 'level' })
   })
 
   it('a stat goes where that stat is made', () => {
@@ -108,7 +129,7 @@ describe('one cause, one step', () => {
       action: { type: 'hero' },
     })
     expect(stepFor({ kind: 'stat', key: 'posts', need: 50, have: 3 }, store).action).toEqual({ type: 'center', tab: 'studio' })
-    expect(stepFor({ kind: 'stat', key: 'level', need: 4, have: 1 }, store).action).toEqual({ type: 'modal', id: 'stats' })
+    expect(stepFor({ kind: 'stat', key: 'level', need: 4, have: 1 }, store).action).toEqual({ type: 'modal', id: 'level' })
   })
 
   it('income sends them shopping', () => {

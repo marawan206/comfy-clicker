@@ -89,7 +89,7 @@ function lines(...parts: (string | null | undefined | false)[]): string | undefi
 export function generateButtonTip(clickValue: number): TooltipCopy {
   return {
     title: 'Generate',
-    description: 'The logo and the pill are the same button. One click, one credit, and 150 ms off the running job.',
+    description: 'The logo and the pill are the same button. One click, one credit, 150 ms off the job, and a streak pays more: ×2 at 50 clicks, ×3 at 100.',
     meta: `+${clickValueText(clickValue)} per click`,
     shortcut: 'Space',
     tone: 'electric',
@@ -149,13 +149,13 @@ export interface LevelTipState {
   xp: number
   /** XP the next level needs, or null at the top of the table. */
   ceiling: number | null
-  /** Names of the models the next level unlocks, in catalog order. */
+  /** Names of what the next level unlocks: the hardware first, then the models, each in catalog order. */
   unlocks: readonly string[]
 }
 
-const XP_SOURCES = 'XP comes from credits earned, posts, achievements, contracts and Graph nodes.'
+const XP_SOURCES = 'XP comes from posting, contracts, the Graph, achievements and every new card.'
 
-/** The header `LV 4` chip. Takes plain numbers so it never imports the level module. */
+/** The header `LV 4` chip and the hero level bar. Takes plain numbers so it never imports the level module. */
 export function levelChipTip({ level, levelTitle, xp, ceiling, unlocks }: LevelTipState): TooltipCopy {
   const progress = ceiling === null ? `${formatInt(xp)} XP. Top of the table.` : `${formatInt(xp)} of ${formatInt(ceiling)} XP.`
   return {

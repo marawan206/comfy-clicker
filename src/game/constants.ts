@@ -62,30 +62,55 @@ export const HUB_RUN_LIKES_BOOST = 1.15
 // Player level (src/game/level.ts)
 // ---------------------------------------------------------------------------
 /**
- * XP needed for each level, indexed by `level - 1`. Strictly increasing, `LEVEL_XP[0] === 0`.
- * Levels 1 to 12 are hand-placed against the balance simulator (see the arrival table in
- * `docs/HOW-IT-WORKS.md`); 13 to 30 are a flat LEVEL_XP_TAIL_STEP per level.
+ * XP needed for each level, indexed by `level - 1`. Strictly increasing, `LEVEL_XP[0] === 0`,
+ * `MAX_LEVEL` entries. The first rungs are hand-placed against `scripts/balance.ts` (see the
+ * arrival table in `docs/HOW-IT-WORKS.md`); past them each step is the previous step times
+ * LEVEL_XP_TAIL_GROWTH, rounded to the nearest hundred, so the tail keeps stretching without a
+ * hand-tuned number per level (L13 lands at 41.4K, L20 near 138.7K, L30 near 457.2K).
  */
 export const MAX_LEVEL = 30
-const LEVEL_XP_HAND = [0, 500, 900, 1_550, 2_050, 2_450, 2_800, 3_150, 3_500, 3_850, 4_200, 4_550] as const
-export const LEVEL_XP_TAIL_STEP = 400
-export const LEVEL_XP: readonly number[] = [
-  ...LEVEL_XP_HAND,
-  ...Array.from(
-    { length: MAX_LEVEL - LEVEL_XP_HAND.length },
-    (_, i) => (LEVEL_XP_HAND[LEVEL_XP_HAND.length - 1] as number) + LEVEL_XP_TAIL_STEP * (i + 1),
-  ),
-]
+/** Hand-placed against scripts/balance.ts (see the arrival table in docs/HOW-IT-WORKS.md). */
+const LEVEL_XP_HAND = [0, 700, 1_500, 2_200, 3_700, 6_600, 9_000, 11_500, 14_500, 18_500, 23_500, 32_000] as const
+/** Past the hand-placed rungs each step is the previous step × this. */
+export const LEVEL_XP_TAIL_GROWTH = 1.1
+export const LEVEL_XP: readonly number[] = (() => {
+  const out: number[] = [...LEVEL_XP_HAND]
+  let step = (out[out.length - 1] as number) - (out[out.length - 2] as number)
+  while (out.length < MAX_LEVEL) {
+    step = Math.round((step * LEVEL_XP_TAIL_GROWTH) / 100) * 100
+    out.push((out[out.length - 1] as number) + step)
+  }
+  return out
+})()
 
-/** XP weights. Credits are the backbone; posts are log-compressed so nothing can be farmed. */
+/**
+ * XP weights. Credits earned are the derived backbone (XP_CREDITS per decade of lifetime
+ * credits); everything else is banked in `stats.xpBy` the moment the player does the thing.
+ */
 export const XP_CREDITS = 150
-export const XP_POSTS = 25
-export const XP_ACHIEVEMENT = 20
-export const XP_CONTRACT = 10
-export const XP_MAP_NODE = 6
-export const XP_QUANTIZE = 15
-export const XP_LORA = 15
-export const XP_REBRAND = 50
+/** A landed post pays XP_POST_BASE + XP_POST_PER_LEVEL × the model's minLevel. */
+export const XP_POST_BASE = 4
+export const XP_POST_PER_LEVEL = 3
+/** A viral post pays double. */
+export const XP_VIRAL_MULT = 2
+export const XP_ACHIEVEMENT = 50
+export const XP_CONTRACT = 60
+export const XP_MAP_NODE = 40
+/** The first unit of a kind you have never owned, whatever the count bought. */
+export const XP_HARDWARE_FIRST = 50
+/** A named upgrade. */
+export const XP_UPGRADE = 40
+/** A `tier:<id>:<n>` upgrade. */
+export const XP_TIER = 60
+/** A model set up. */
+export const XP_SETUP = 20
+export const XP_QUANTIZE = 30
+export const XP_LORA = 40
+/** × the cycle day, so day 7 pays 280. */
+export const XP_DAILY_PER_DAY = 40
+/** Each power-of-ten cps milestone. */
+export const XP_MILESTONE = 100
+export const XP_REBRAND = 500
 
 /** Level-up payout: `max(LEVEL_REWARD_PER_LEVEL × level, round(LEVEL_REWARD_SECS × cps))`. */
 export const LEVEL_REWARD_PER_LEVEL = 100
@@ -158,17 +183,28 @@ export const COIN_PAYOUT = 2
 // ---------------------------------------------------------------------------
 // Click guard (src/game/clickGuard.ts)
 // ---------------------------------------------------------------------------
-/** Counted clicks per trailing second. Refused clicks pay nothing and are not a strike. */
-export const CLICK_CAP_PER_SEC = 15
-/** Attempted intervals examined for machine cadence. */
-export const CADENCE_INTERVALS = 24
-export const CADENCE_MAX_MEAN_MS = 200
-/** Human inter-click CV sits at 0.15 to 0.35; timer-driven tools sit under 0.02. */
-export const CADENCE_MAX_CV = 0.05
-/** Lockout length by strike count. */
-export const CLICK_LOCKOUT_MS = [10_000, 30_000, 60_000] as const
-export const CLICK_LOCKOUT_MAX_MS = 60_000
-export const CLICK_STRIKE_DECAY_MS = 5 * 60_000
+/**
+ * Accepted clicks per trailing second, and the only cap there is. A refused click pays nothing and
+ * is not a strike: there is no cadence detector and no lockout, so a fast hand is allowed and
+ * simply stops paying past this.
+ */
+export const CLICK_CAP_PER_SEC = 20
+
+// ---------------------------------------------------------------------------
+// Click combo (src/game/combo.ts)
+// ---------------------------------------------------------------------------
+/** Two accepted clicks belong to the same streak when no more than this many ms pass between them. */
+export const COMBO_GAP_MS = 400
+/**
+ * Streak tiers. From `at` clicks in one streak every click pays `mult` times, until the streak
+ * breaks. The pill restyles per tier, and the click that reaches one is the loud one.
+ */
+export const COMBO_TIERS: ReadonlyArray<{ at: number; mult: number }> = [
+  { at: 10, mult: 1.25 },
+  { at: 25, mult: 1.5 },
+  { at: 50, mult: 2 },
+  { at: 100, mult: 3 },
+]
 
 // ---------------------------------------------------------------------------
 // Ratioed posts (src/game/virality.ts)

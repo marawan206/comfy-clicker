@@ -10,7 +10,8 @@
  */
 import type { Catalog } from '@/data'
 import { buildIndex } from '@/game/catalog'
-import { EVENT_MIN_GAP_MS, REBRAND_CP_DIVISOR, REBRAND_CP_EXP } from '@/game/constants'
+import { EVENT_MIN_GAP_MS, REBRAND_CP_DIVISOR, REBRAND_CP_EXP, XP_REBRAND } from '@/game/constants'
+import { grantXp } from '@/game/level'
 import { STARTER_HARDWARE_ID, STARTER_MODEL_ID } from '@/game/state'
 import type { Effect, GameEvent, GameState, HardwareFamily } from '@/game/types'
 
@@ -96,9 +97,13 @@ export function rebrand(state: GameState, catalog: Catalog, now: number): GameEv
   }
   state.hardware = hardware
 
-  // Bank the season.
+  // Bank the season. Stats survive it, so the XP ledger does too: the rebrand itself is XP the
+  // new season starts with.
   state.cp += cp
   state.meta.season += 1
   state.stats.rebrands += 1
-  return [{ type: 'rebrand', cp }]
+  const events: GameEvent[] = [{ type: 'rebrand', cp }]
+  const xp = grantXp(state, XP_REBRAND, 'rebrand')
+  if (xp) events.push(xp)
+  return events
 }

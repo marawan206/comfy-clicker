@@ -35,6 +35,8 @@ import {
   freeSpinAvailable,
   freeStake,
   isHot,
+  isLoss,
+  lossFloor,
   pityDue,
   rollOutcome,
   spinEv,
@@ -108,16 +110,29 @@ const seg = (id: string, mult: number, weight: number): GambleOutcomeDef => ({
   line: `${id}.`,
 })
 
-/** A one-segment table: every draw lands on it, whatever the rng says. */
-const only = (o: GambleOutcomeDef): Catalog => createCatalog({ gamble: [o] })
-
-const NAN_SEG = seg('nan', 0, 1)
+/** The shipped floor: a NaN hands a quarter back. */
+const NAN_SEG = seg('nan', 0.25, 1)
 const HALF_SEG = seg('half', 0.5, 1)
 const CLEAN_SEG = seg('clean', 2, 1)
 const S42_SEG = seg('s42', 42, 1)
+/** A floor that pays nothing, for the tables that still have one. */
+const DUD_SEG = seg('dud', 0, 1)
+
+/**
+ * A table where `o` is the only drawable segment, whatever the rng says. The NaN floor rides
+ * along at weight 0: the dud is whichever segment pays the table's lowest multiplier, so a
+ * one-segment table would otherwise make its own segment the dud.
+ */
+const only = (o: GambleOutcomeDef): Catalog =>
+  createCatalog({ gamble: o.id === NAN_SEG.id ? [o] : [o, { ...NAN_SEG, weight: 0 }] })
+
+/** The shipped segment with this id. */
+const shipped = (id: string): GambleOutcomeDef => CATALOG.gamble.find((o) => o.id === id) as GambleOutcomeDef
 
 /** NaN is the only drawable segment; `half` sits at weight 0 purely as the pity consolation. */
 const PITY_TABLE: Catalog = createCatalog({ gamble: [NAN_SEG, seg('half', 0.5, 0)] })
+/** The same shape with a zero floor: 0 is then the dud, not a special case. */
+const ZERO_FLOOR_TABLE: Catalog = createCatalog({ gamble: [DUD_SEG, seg('half', 0.5, 0)] })
 
 const rng = () => mulberry32(1)
 
@@ -132,7 +147,8 @@ describe('outcome table', () => {
     expect(new Set(ids).size).toBe(ids.length)
     for (const o of CATALOG.gamble) {
       expect(o.line.length).toBeGreaterThan(0)
-      expect(o.mult).toBeGreaterThanOrEqual(0)
+      // Every spin returns something: no segment on the shipped table pays nothing.
+      expect(o.mult).toBeGreaterThan(0)
       expect(o.weight).toBeGreaterThan(0)
     }
   })
@@ -143,7 +159,7 @@ describe('spinEv', () => {
     const ev = spinEv(CATALOG.gamble)
     expect(ev).toBeLessThan(1)
     expect(ev).toBeGreaterThanOrEqual(0.9)
-    expect(ev).toBeCloseTo(0.954, 6)
+    expect(ev).toBeCloseTo(0.9555, 6)
   })
 
   it('normalises a fixture table that does not sum to 1', () => {
@@ -167,9 +183,10 @@ describe('spinEv', () => {
       if (o.id === 's42') jackpots += 1
     }
     expect(Math.abs(total / rolls - analytic)).toBeLessThan(0.02)
+    // Seed 42 sits at 0.2 %: 400 hits in 200k, give or take a couple of standard deviations.
     const rate = jackpots / rolls
-    expect(rate).toBeGreaterThanOrEqual(0.002)
-    expect(rate).toBeLessThanOrEqual(0.004)
+    expect(rate).toBeGreaterThan(0.0015)
+    expect(rate).toBeLessThan(0.0025)
   })
 
   it('leaves the coin below break-even too', () => {
@@ -282,18 +299,43 @@ describe('canBet', () => {
   })
 })
 
+describe('the floor', () => {
+  it('is the lowest multiplier on the table, a quarter on the shipped one', () => {
+    expect(lossFloor(CATALOG.gamble)).toBe(0.25)
+    expect(isLoss(shipped('nan'), CATALOG.gamble)).toBe(true)
+    expect(isLoss(shipped('half'), CATALOG.gamble)).toBe(false)
+    expect(isLoss(shipped('same'), CATALOG.gamble)).toBe(false)
+  })
+
+  it('is zero when a table still has a segment paying nothing', () => {
+    expect(lossFloor(ZERO_FLOOR_TABLE.gamble)).toBe(0)
+    expect(isLoss(DUD_SEG, ZERO_FLOOR_TABLE.gamble)).toBe(true)
+  })
+
+  it('is infinite for an empty table', () => {
+    expect(lossFloor([])).toBe(Infinity)
+  })
+})
+
 describe('rollOutcome', () => {
   it('draws from the table', () => {
     expect(rollOutcome([NAN_SEG], rng(), false).id).toBe('nan')
   })
 
-  it('converts a loss into the cheapest winning segment under pity', () => {
+  it('converts a dud into the cheapest segment above the floor under pity', () => {
     expect(rollOutcome(PITY_TABLE.gamble, rng(), true).id).toBe('half')
     expect(rollOutcome(PITY_TABLE.gamble, rng(), false).id).toBe('nan')
+    expect(rollOutcome(ZERO_FLOOR_TABLE.gamble, rng(), true).id).toBe('half')
+  })
+
+  it('converts a NaN on the shipped table into half', () => {
+    // An rng of 0 lands on the first segment, which is the NaN.
+    expect(rollOutcome(CATALOG.gamble, () => 0, false).id).toBe('nan')
+    expect(rollOutcome(CATALOG.gamble, () => 0, true).id).toBe('half')
   })
 
   it('leaves a winning draw alone under pity', () => {
-    expect(rollOutcome([CLEAN_SEG], rng(), true).id).toBe('clean')
+    expect(rollOutcome(only(CLEAN_SEG).gamble, rng(), true).id).toBe('clean')
   })
 })
 
@@ -314,14 +356,24 @@ describe('applySpin', () => {
     expect(s.gamble.dryStreak).toBe(0)
   })
 
-  it('keeps the wager on a NaN latent', () => {
+  it('pays a quarter back on a NaN latent and counts it as a dud', () => {
     const s = spinState({ credits: 100_000 })
     const events = applySpin(s, d, only(NAN_SEG), T0, rng(), 1000)
 
     expect(events).toHaveLength(1)
-    expect(events[0]).toMatchObject({ outcome: 'nan', mult: 0, payout: 0 })
+    expect(events[0]).toMatchObject({ outcome: 'nan', mult: 0.25, payout: 250 })
+    expect(s.credits).toBe(100_000 - 1000 + 250)
+    expect(s.stats.spinNet).toBe(-750)
+    expect(s.gamble.dryStreak).toBe(1)
+    expect(s.gamble.winStreak).toBe(0)
+  })
+
+  it('still eats the whole wager on a table whose floor is zero', () => {
+    const s = spinState({ credits: 100_000 })
+    const events = applySpin(s, d, ZERO_FLOOR_TABLE, T0, rng(), 1000)
+
+    expect(events[0]).toMatchObject({ outcome: 'dud', mult: 0, payout: 0 })
     expect(s.credits).toBe(99_000)
-    expect(s.stats.spinNet).toBe(-1000)
     expect(s.gamble.dryStreak).toBe(1)
   })
 
@@ -352,14 +404,15 @@ describe('applySpin', () => {
     const s = spinState({ credits: 100_000 })
     for (let i = 0; i < 5; i++) expect(applySpin(s, d, only(NAN_SEG), T0, rng(), 1000)).toHaveLength(1)
     expect(s.stats.spins).toBe(5)
-    expect(s.credits).toBe(95_000)
+    expect(s.credits).toBe(100_000 - 5 * 1000 + 5 * 250)
   })
 
   it('stops at the bank: a bet bigger than the balance is refused', () => {
     const s = spinState({ credits: 1_500 })
     applySpin(s, d, only(NAN_SEG), T0, rng(), 1000)
+    // 500 left plus the quarter back: 750, still short of the next 1,000.
     expect(applySpin(s, d, only(NAN_SEG), T0, rng(), 1000)).toEqual([])
-    expect(s.credits).toBe(500)
+    expect(s.credits).toBe(750)
     expect(s.stats.spins).toBe(1)
   })
 
@@ -378,11 +431,12 @@ describe('applySpin', () => {
       expect(s.stats.spinNet).toBe(stake * 2)
     })
 
-    it('costs nothing on a NaN latent', () => {
+    it('costs nothing on a NaN latent, and the quarter of the house stake is yours', () => {
       const s = spinState({ credits: 100_000 })
+      const quarter = Math.round(freeStake(d) * 0.25)
       applySpin(s, d, only(NAN_SEG), T0, rng(), 'free')
-      expect(s.credits).toBe(100_000)
-      expect(s.stats.spinNet).toBe(0)
+      expect(s.credits).toBe(100_000 + quarter)
+      expect(s.stats.spinNet).toBe(quarter)
     })
 
     it('is gone for the rest of the day', () => {
@@ -425,10 +479,10 @@ describe('applySpin', () => {
       const hot = applySpin(s, d, only(CLEAN_SEG), T0 + SPIN_HOT_STREAK, rng(), 1000)
       expect(hot[0]).toMatchObject({ mult: 2, payout: 1000 * 2 * SPIN_HOT_MULT, hot: true })
 
-      // The losing spin was still taken while the sampler was fixed, so the event says so; a x1.5
-      // share of nothing is still nothing, and the streak ends here.
+      // The dud was still drawn while the sampler was fixed, so the event says so: the quarter
+      // carries the x1.5 like any other payout, and the streak ends here.
       const cold = applySpin(s, d, only(NAN_SEG), T0 + SPIN_HOT_STREAK + 1, rng(), 1000)
-      expect(cold[0]).toMatchObject({ outcome: 'nan', payout: 0, hot: true })
+      expect(cold[0]).toMatchObject({ outcome: 'nan', payout: 1000 * 0.25 * SPIN_HOT_MULT, hot: true })
       expect(s.gamble.winStreak).toBe(0)
       expect(isHot(s)).toBe(false)
 

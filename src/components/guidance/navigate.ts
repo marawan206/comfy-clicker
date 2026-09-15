@@ -175,7 +175,22 @@ export function actionLabel(action: GuideAction): string {
     case 'center':
       return action.tab === 'studio' ? 'Open the Studio' : action.tab === 'feed' ? 'Open the Feed' : 'Open Contracts'
     case 'modal':
-      return action.id === 'stats' ? 'Show my level' : action.id === 'rebrand' ? 'Open Rebrand' : 'Open Settings'
+      switch (action.id) {
+        case 'level':
+          return 'Show my level'
+        case 'stats':
+          return 'Open Stats'
+        case 'rebrand':
+          return 'Open Rebrand'
+        case 'daily':
+          return 'Open the daily'
+        case 'lounge':
+          return 'Open the Lounge'
+        case 'patch':
+          return 'Open the patch notes'
+        default:
+          return 'Open Settings'
+      }
     case 'hero':
       return 'Take me to Generate'
     case 'act':

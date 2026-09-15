@@ -6,8 +6,13 @@
  * A def may also carry `reward`, a one-off credit payout handed over the moment the row is granted
  * (`achievement` carries it, so the toast can show `+1,000`). That is what lets an easter egg, its
  * achievement and its credits land on the same click rather than a second later.
+ *
+ * Every grant also banks XP_ACHIEVEMENT of XP, announced as an `xp` event right behind its
+ * `achievement` event.
  */
 import type { Catalog } from '@/data'
+import { XP_ACHIEVEMENT } from '@/game/constants'
+import { grantXp } from '@/game/level'
 import type { AchievementDef, Derived, GameEvent, GameState } from '@/game/types'
 import { isUnlocked } from '@/game/unlock'
 
@@ -50,6 +55,8 @@ export function checkAchievements(state: GameState, derived: Derived, catalog: C
       owned.add(def.id)
       state.achievements.push(def.id)
       out.push({ type: 'achievement', id: def.id, reward: payReward(state, def) })
+      const xp = grantXp(state, XP_ACHIEVEMENT, 'achievement')
+      if (xp) out.push(xp)
       granted += 1
     }
     if (granted === 0) break

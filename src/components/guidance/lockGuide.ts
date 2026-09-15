@@ -11,9 +11,10 @@ import { HARDWARE_FAMILIES } from '@/data/hardware'
 import type { Catalog } from '@/data'
 import { buildIndex } from '@/game/catalog'
 import { unitCost } from '@/game/economy'
-import { formatCps, formatDuration, formatInt, formatNum } from '@/game/format'
+import { formatCps, formatDuration, formatInt, formatNum, formatWatts } from '@/game/format'
 import { causeEta, describeCause, type LockCause } from '@/game/guidance'
 import { withArticle } from '@/game/hardware'
+import { levelProgress } from '@/game/level'
 import { mapNodeCost } from '@/game/map'
 import { setupFee } from '@/game/quantize'
 import { FAMILY_LABELS } from '@/game/state'
@@ -226,7 +227,7 @@ export function stepFor(cause: LockCause, store: GuideStore): GuideStep {
         detail: `You are at ${formatInt(cause.have)}.`,
       }
       if (cause.key === 'level') {
-        step.action = { type: 'modal', id: 'stats' }
+        step.action = { type: 'modal', id: 'level' }
       } else if (CLICK_STATS.has(cause.key)) {
         step.action = { type: 'hero' }
       } else {
@@ -243,8 +244,8 @@ export function stepFor(cause: LockCause, store: GuideStore): GuideStep {
     case 'level':
       return {
         label: `Reach level ${cause.need}`,
-        detail: `You are level ${cause.have}. XP comes from credits earned, posts and achievements.`,
-        action: { type: 'modal', id: 'stats' },
+        detail: `You are level ${cause.have}. ${formatInt(levelProgress(store.state).xpToGo)} XP to go: post, finish a contract, unlock a Graph node.`,
+        action: { type: 'modal', id: 'level' },
       }
     case 'vram': {
       const steps = cause.fixes.map((fix) => {
@@ -343,6 +344,29 @@ export function stepFor(cause: LockCause, store: GuideStore): GuideStep {
     }
     case 'max':
       return { label: 'Maxed out', detail: `${cause.max} owned. That is all of them.` }
+    case 'power': {
+      const def = cause.upgradeId ? index.upgradeById[cause.upgradeId] : undefined
+      if (def) {
+        const cost = Math.max(0, Math.ceil(def.cost))
+        const adds = def.effects.reduce((sum, e) => (e.kind === 'powerBudget' ? sum + e.value : sum), 0)
+        const step: GuideStep = {
+          label: `Install ${def.name}`,
+          detail: `${formatNum(cost)} credits in Power & cooling · +${formatWatts(adds)}`,
+          cost,
+          currency: def.currency ?? 'credits',
+          action: { type: 'store', tab: 'power', focusId: def.id },
+        }
+        const eta = causeEta({ kind: 'credits', need: cost, have: store.state.credits }, store.derived)
+        if (Number.isFinite(eta) && eta > 0) step.etaSec = eta
+        return step
+      }
+      if (cause.nodeId) return nodeStep(cause.nodeId, store)
+      return {
+        label: 'Needs more power budget',
+        detail: 'Every power step is bought. The Power tab shows the draw by family.',
+        action: { type: 'store', tab: 'power' },
+      }
+    }
     case 'flag':
       return { label: 'Secret', detail: 'Found, not bought.' }
     default: {
@@ -403,6 +427,8 @@ export function whyLine(cause: LockCause, store: GuideStore): string {
       return `${familyLabel(cause.family)} cards need a driver stack first.`
     case 'max':
       return 'You own every one of these.'
+    case 'power':
+      return `Plugging it in puts the rack ${formatWatts(cause.short)} over budget, and a tripped breaker earns nothing.`
     case 'flag':
       return 'This one is found, not bought.'
     case 'apiNodes':

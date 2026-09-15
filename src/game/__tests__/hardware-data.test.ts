@@ -18,6 +18,10 @@ import {
   tailPayback,
   vendorPaybackMult,
 } from '@/data/hardware'
+import { createCatalog } from '@/data'
+import { MODELS } from '@/data/models'
+import { MAX_LEVEL } from '@/game/constants'
+import { nativeHardware } from '@/game/quantize'
 import { FAMILY_LABELS } from '@/game/state'
 import type { HardwareDef, HardwareFamily, UnlockCond } from '@/game/types'
 
@@ -356,5 +360,93 @@ describe('HARDWARE_FAMILIES', () => {
     for (const f of HARDWARE_FAMILIES) {
       expect(f.label.toLowerCase().startsWith(FAMILY_LABELS[f.id].toLowerCase()), `${f.id}: ${f.label} vs ${FAMILY_LABELS[f.id]}`).toBe(true)
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The level gate
+// ---------------------------------------------------------------------------
+
+/** The gate table from the design spec: the units each level opens. Level 1 is the default. */
+const LEVEL_TABLE: Record<number, string[]> = {
+  1: ['pc-4c8t', 'pc-8c16t'],
+  2: ['mac-mini-m4', 'rx-7600-xt', 'rtx-3060'],
+  3: ['rx-9070-xt', 'rtx-4070-ti-super', 'rtx-3090'],
+  4: ['rx-7900-xtx', 'rtx-4090', 'rtx-5080', 'mac-studio-m4-max'],
+  5: ['rtx-5090', 'radeon-pro-w7900'],
+  6: ['rtx-a6000', 'l4', 'rtx-6000-ada'],
+  7: ['a40', 'l40s', 'rtx-pro-6000'],
+  8: ['a100-80', 'mi300x'],
+  9: ['h100-80', 'mi325x', 'h200'],
+  10: ['b200', 'b300', 'aws-p4d', 'azure-nd-mi300x'],
+  11: ['aws-p5', 'aws-p5e', 'aws-p6', 'runpod-8xb300'],
+  12: ['region-us-east'],
+  13: ['region-eu-west'],
+  14: ['region-ap-southeast'],
+  16: ['orbital-dc'],
+  20: ['dyson-swarm'],
+}
+
+const levelOf = (h: HardwareDef): number => h.minLevel ?? 1
+
+describe('hardware ladder: level gate', () => {
+  it('gives every unit an integer minLevel in 1..MAX_LEVEL, absent reading as 1', () => {
+    for (const h of HARDWARE) {
+      const level = levelOf(h)
+      expect(Number.isInteger(level), `${h.id}: ${h.minLevel}`).toBe(true)
+      expect(level, h.id).toBeGreaterThanOrEqual(1)
+      expect(level, h.id).toBeLessThanOrEqual(MAX_LEVEL)
+      // Level 1 is the default and is never spelled out.
+      if (level === 1) expect(h.minLevel, h.id).toBeUndefined()
+    }
+  })
+
+  it('starts the two CPUs at level 1', () => {
+    expect(levelOf(get('pc-4c8t'))).toBe(1)
+    expect(levelOf(get('pc-8c16t'))).toBe(1)
+  })
+
+  it('follows the gate table, every unit on exactly one rung', () => {
+    for (const [level, ids] of Object.entries(LEVEL_TABLE)) {
+      expect(HARDWARE.filter((h) => levelOf(h) === Number(level)).map((h) => h.id), `level ${level}`).toEqual(ids)
+    }
+    expect(Object.values(LEVEL_TABLE).flat().sort()).toEqual(HARDWARE.map((h) => h.id).sort())
+  })
+
+  it('opens at least one unit at every level from 2 to 12', () => {
+    for (let level = 2; level <= 12; level++) {
+      expect(HARDWARE.some((h) => levelOf(h) === level), `level ${level}`).toBe(true)
+    }
+  })
+
+  it('never lowers the level as baseCost rises along the main chain', () => {
+    for (let i = 1; i < MAIN_CHAIN.length; i++) {
+      const prev = get(MAIN_CHAIN[i - 1] as string)
+      const cur = get(MAIN_CHAIN[i] as string)
+      expect(levelOf(cur), `${prev.id} → ${cur.id}`).toBeGreaterThanOrEqual(levelOf(prev))
+    }
+  })
+
+  it('never gates a prerequisite above the unit that needs it', () => {
+    for (const h of HARDWARE) {
+      const refs = { hardware: [], nodes: [], other: [] } as { hardware: string[]; nodes: string[]; other: string[] }
+      collectRefs(h.unlock, refs)
+      for (const id of refs.hardware) {
+        expect(levelOf(get(id)), `${h.id} needs ${id}`).toBeLessThanOrEqual(levelOf(h))
+      }
+    }
+  })
+
+  it('never unlocks a checkpoint before a card that holds it natively', () => {
+    const catalog = createCatalog({ hardware: HARDWARE, models: MODELS })
+    let checked = 0
+    for (const model of MODELS) {
+      if (model.api || !model.quantizable) continue
+      const rig = nativeHardware(model, catalog)
+      expect(rig, model.id).not.toBeNull()
+      expect(levelOf(rig as HardwareDef), `${model.id} on ${rig?.id}`).toBeLessThanOrEqual(model.minLevel ?? 1)
+      checked += 1
+    }
+    expect(checked).toBeGreaterThan(0)
   })
 })

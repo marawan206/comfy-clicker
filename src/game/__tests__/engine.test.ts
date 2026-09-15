@@ -22,7 +22,21 @@ import {
   upscalePost,
   type ActionContext,
 } from '@/game/actions'
-import { CONTRACT_SLOTS, POST_WINDOW_MS, SETUP_FEE_MULT, STEP_S, TIER_UPGRADE_THRESHOLDS, TRENDING_COUNT, WEEK_MS } from '@/game/constants'
+import {
+  CONTRACT_SLOTS,
+  POST_WINDOW_MS,
+  SETUP_FEE_MULT,
+  STEP_S,
+  TIER_UPGRADE_THRESHOLDS,
+  TRENDING_COUNT,
+  WEEK_MS,
+  XP_ACHIEVEMENT,
+  XP_CONTRACT,
+  XP_LORA,
+  XP_MAP_NODE,
+  XP_QUANTIZE,
+  XP_UPGRADE,
+} from '@/game/constants'
 import { CONTRACTS } from '@/data/contracts'
 import { acceptContract } from '@/game/contracts'
 import { addDrop } from '@/game/citizens'
@@ -215,8 +229,8 @@ describe('crossedMilestones / needsDerived', () => {
   })
 
   it('flags batches that change what computeDerived reads', () => {
-    expect(needsDerived([{ type: 'click', value: 1 }])).toBe(false)
-    expect(needsDerived([{ type: 'click', value: 1 }, { type: 'purchase', hardwareId: 'x', count: 1 }])).toBe(true)
+    expect(needsDerived([{ type: 'click', value: 1, combo: 1, mult: 1 }])).toBe(false)
+    expect(needsDerived([{ type: 'click', value: 1, combo: 1, mult: 1 }, { type: 'purchase', hardwareId: 'x', count: 1 }])).toBe(true)
     expect(needsDerived([{ type: 'signup', total: 1 }])).toBe(true)
     expect(needsDerived([])).toBe(false)
   })
@@ -301,7 +315,7 @@ describe('actions', () => {
     const result = click(ctxFor(state, CATALOG, derivedWith({ clickValue: 2.5 })))
     expect(result.error).toBeUndefined()
     expect(result.dirty).toBe(false)
-    expect(result.events).toEqual([{ type: 'click', value: 2.5 }])
+    expect(result.events).toEqual([{ type: 'click', value: 2.5, combo: 1, mult: 1 }])
     expect(state.credits).toBe(2.5)
     expect(state.lifetimeCredits).toBe(2.5)
     expect(state.seasonCredits).toBe(2.5)
@@ -313,6 +327,7 @@ describe('actions', () => {
     const cpu = hw('pc-8c16t')
 
     it("'max' buys exactly maxAffordable units", () => {
+      state.upgrades.push('psu-850') // five boxes draw 600 W: the bank, not the breaker, sets the count
       state.credits = bulkCost(cpu, 0, 5) + 3
       const expected = maxAffordable(cpu, 0, state.credits)
       expect(expected).toBe(5)
@@ -351,7 +366,9 @@ describe('actions', () => {
       expect(state.flags.brokeAtZero).toBe(true)
 
       const node = hw('aws-p4d')
+      state.upgrades.push('psu-850', 'psu-1600', 'three-phase') // 3.2 kW a node: the circuit has to carry two
       state.hardware['a100-80'] = 1 // aws-p4d's unlock
+      state.stats.levelSeen = node.minLevel ?? 1 // and the level it needs
       state.credits = node.baseCost + 1
       state.meta.playedSec = 25 * 60
       expect(buyHardware(ctxFor(state), node.id, 1).error).toBeUndefined()
@@ -369,7 +386,13 @@ describe('actions', () => {
       expect(buyUpgrade(ctxFor(state), 'better-prompts').error).toMatch(/clicks/)
       state.totalClicks = 10
       const result = buyUpgrade(ctxFor(state), 'better-prompts')
-      expect(result).toEqual({ events: [{ type: 'upgrade', id: 'better-prompts' }], dirty: true })
+      expect(result).toEqual({
+        events: [
+          { type: 'upgrade', id: 'better-prompts' },
+          { type: 'xp', amount: XP_UPGRADE, source: 'upgrade' },
+        ],
+        dirty: true,
+      })
       expect(state.upgrades).toEqual(['better-prompts'])
       expect(state.credits).toBe(0)
       expect(buyUpgrade(ctxFor(state), 'better-prompts').error).toMatch(/already/i)
@@ -393,7 +416,13 @@ describe('actions', () => {
   it('unlockMapNode walks the graph from the root and charges the node cost', () => {
     state.credits = 500
     expect(unlockMapNode(ctxFor(state), 'core-manager').error).toMatch(/first/)
-    expect(unlockMapNode(ctxFor(state), 'core-root')).toEqual({ events: [{ type: 'mapUnlock', id: 'core-root' }], dirty: true })
+    expect(unlockMapNode(ctxFor(state), 'core-root')).toEqual({
+      events: [
+        { type: 'mapUnlock', id: 'core-root' },
+        { type: 'xp', amount: XP_MAP_NODE, source: 'mapNode' },
+      ],
+      dirty: true,
+    })
     expect(unlockMapNode(ctxFor(state), 'core-root').error).toMatch(/already/i)
     expect(unlockMapNode(ctxFor(state), 'core-manager').error).toBeUndefined()
     expect(state.mapNodes).toEqual(['core-root', 'core-manager'])
@@ -426,7 +455,10 @@ describe('actions', () => {
     state.models.sdxl = { precisions: ['native'], setup: true }
     expect(quantize(ctxFor(state), 'sdxl', 'fp8').error).toMatch(/Unlock/)
     state.mapNodes.push('quant-fp8')
-    expect(quantize(ctxFor(state), 'sdxl', 'fp8')).toEqual({ events: [], dirty: false })
+    expect(quantize(ctxFor(state), 'sdxl', 'fp8')).toEqual({
+      events: [{ type: 'xp', amount: XP_QUANTIZE, source: 'quantize' }],
+      dirty: false,
+    })
     expect(state.models.sdxl?.precisions).toEqual(['native', 'fp8'])
     expect(state.credits).toBe(0)
     expect(state.stats.quantizations).toBe(1)
@@ -442,7 +474,10 @@ describe('actions', () => {
     expect(trainLora(ctxFor(state, CATALOG, slow), 'comfyui').error).toMatch(/LoRA Training/)
     state.mapNodes.push('lora-training')
     expect(trainLora(ctxFor(state, CATALOG, slow), 'nope').error).toMatch(/Unknown/)
-    expect(trainLora(ctxFor(state, CATALOG, slow), 'comfyui')).toEqual({ events: [], dirty: true })
+    expect(trainLora(ctxFor(state, CATALOG, slow), 'comfyui')).toEqual({
+      events: [{ type: 'xp', amount: XP_LORA, source: 'lora' }],
+      dirty: true,
+    })
     expect(state.loras).toEqual(['comfyui'])
     expect(state.stats.lorasTrained).toBe(1)
     expect(state.credits).toBe(0)
@@ -470,6 +505,7 @@ describe('actions', () => {
       events: [
         { type: 'easterEgg', id: 'konami' },
         { type: 'achievement', id: 'konami', reward: 0 },
+        { type: 'xp', amount: XP_ACHIEVEMENT, source: 'achievement' },
       ],
       dirty: true,
     })
@@ -505,7 +541,10 @@ describe('actions', () => {
     })
     expect(claimContract(ctxFor(state), 0).error).toMatch(/not finished/i)
     ;(state.contracts.active[0] as { done: boolean }).done = true
-    expect(claimContract(ctxFor(state), 0)).toEqual({ events: [], dirty: false })
+    expect(claimContract(ctxFor(state), 0)).toEqual({
+      events: [{ type: 'xp', amount: XP_CONTRACT, source: 'contract' }],
+      dirty: false,
+    })
     expect(state.credits).toBe(300)
     expect(state.stats.contractsDone).toBe(1)
     expect(state.contracts.active).toEqual([])

@@ -112,7 +112,7 @@ export function HardwareTab({ focus = null }: Props) {
           ))}
         </AnimatePresence>
         {rows.length === 0 && (
-          <p className="px-2 py-6 text-center text-xs text-smoke-700">Nothing on this shelf yet. Keep generating.</p>
+          <p className="px-2 py-6 text-center text-xs text-smoke-700">Nothing on this shelf yet. Levels bring cards.</p>
         )}
       </div>
     </div>
