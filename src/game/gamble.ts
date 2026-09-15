@@ -2,8 +2,9 @@
  * The Latent Lounge: two bets, one bank.
  *
  * **The wheel** is the KSampler spin. You stake credits, the seed decides, and the table in
- * `src/data/gamble.ts` pays back 0.954 on the credit before the pity reroll and the hot sampler
- * push it to roughly 0.98.
+ * `src/data/gamble.ts` pays back 0.9555 on the credit before the pity reroll, the hot sampler and
+ * the minted pot push it to roughly 0.98. Every seed hands something back: the dud is whichever
+ * segment pays the table's lowest multiplier, a quarter of the stake on the shipped table.
  *
  * **The coin** is one flip against the house. Your side pays COIN_PAYOUT, Comfy's side takes the
  * stake, and your side lands COIN_WIN_CHANCE of the time. Same shape, tighter edge, no memory.
@@ -52,9 +53,24 @@ export const COIN_STREAK_TARGET = 5
 /** Which side of the coin came up. */
 export type CoinSide = 'you' | 'comfy'
 
-/** The losing segment: a zero multiplier eats the wager and feeds the pity meter. */
-const isLoss = (o: GambleOutcomeDef): boolean => !(o.mult > 0)
-/** A "win" for the hot sampler: x2 or better. x1 (`same`) breaks the streak like a loss does. */
+/**
+ * The table's floor: its lowest multiplier. Whatever pays exactly that is the dud (`nan` on the
+ * shipped table, a quarter back), and the dud is what feeds the pity meter. Zero is not special,
+ * the floor is, so a table that still has a segment paying nothing treats that one as the dud.
+ * Infinity for an empty table.
+ */
+export function lossFloor(outcomes: readonly GambleOutcomeDef[]): number {
+  let floor = Infinity
+  for (const o of outcomes) if (Number.isFinite(o.mult) && o.mult < floor) floor = o.mult
+  return floor
+}
+
+/** The dud: a segment paying the table's lowest multiplier. */
+export function isLoss(o: GambleOutcomeDef, outcomes: readonly GambleOutcomeDef[]): boolean {
+  return o.mult <= lossFloor(outcomes)
+}
+
+/** A "win" for the hot sampler: x2 or better. x1 (`same`) breaks the streak like a dud does. */
 const isWin = (o: GambleOutcomeDef): boolean => o.mult >= 2
 
 export type BetCheck =
@@ -148,9 +164,9 @@ export function canBet(
 }
 
 /**
- * Draw one segment. With `pity` the losing segment is converted once into the cheapest winning one
- * (`half` on the shipped table), which is what the third pip on the denoise meter promises. The
- * draw itself still happens, so the rng sequence is the same either way.
+ * Draw one segment. With `pity` a dud is converted once into the cheapest segment above the
+ * table's floor (`half` on the shipped table), which is what the third pip on the denoise meter
+ * promises. The draw itself still happens, so the rng sequence is the same either way.
  */
 export function rollOutcome(
   outcomes: readonly GambleOutcomeDef[],
@@ -158,11 +174,13 @@ export function rollOutcome(
   pity: boolean,
 ): GambleOutcomeDef {
   const rolled = weightedPick(rng, outcomes)
-  if (!pity || !isLoss(rolled)) return rolled
+  if (!pity) return rolled
+  const floor = lossFloor(outcomes)
+  if (rolled.mult > floor) return rolled
 
   let consolation: GambleOutcomeDef | undefined
   for (const o of outcomes) {
-    if (isLoss(o)) continue
+    if (!(o.mult > floor)) continue
     if (!consolation || o.mult < consolation.mult) consolation = o
   }
   return consolation ?? rolled
@@ -214,7 +232,7 @@ export function applySpin(
 
   if (payout > 0) state.credits += payout
 
-  if (isLoss(outcome)) {
+  if (isLoss(outcome, catalog.gamble)) {
     g.dryStreak += 1
     g.winStreak = 0
     if (g.dryStreak >= SPIN_PITY_DRY) state.flags[NAN_STREAK_FLAG] = true

@@ -183,17 +183,12 @@ export const COIN_PAYOUT = 2
 // ---------------------------------------------------------------------------
 // Click guard (src/game/clickGuard.ts)
 // ---------------------------------------------------------------------------
-/** Counted clicks per trailing second. Refused clicks pay nothing and are not a strike. */
-export const CLICK_CAP_PER_SEC = 15
-/** Attempted intervals examined for machine cadence. */
-export const CADENCE_INTERVALS = 24
-export const CADENCE_MAX_MEAN_MS = 200
-/** Human inter-click CV sits at 0.15 to 0.35; timer-driven tools sit under 0.02. */
-export const CADENCE_MAX_CV = 0.05
-/** Lockout length by strike count. */
-export const CLICK_LOCKOUT_MS = [10_000, 30_000, 60_000] as const
-export const CLICK_LOCKOUT_MAX_MS = 60_000
-export const CLICK_STRIKE_DECAY_MS = 5 * 60_000
+/**
+ * Accepted clicks per trailing second, and the only cap there is. A refused click pays nothing and
+ * is not a strike: there is no cadence detector and no lockout, so a fast hand is allowed and
+ * simply stops paying past this.
+ */
+export const CLICK_CAP_PER_SEC = 20
 
 // ---------------------------------------------------------------------------
 // Ratioed posts (src/game/virality.ts)

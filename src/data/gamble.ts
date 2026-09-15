@@ -3,15 +3,18 @@
  *
  * You bet credits, the sampler decides. `weight` is the outcome's probability and the table sums
  * to exactly 1, so `weightedPick` draws from it directly and the expected value is
- * `Σ weight × mult` = 0.954. Something comes back 64.5 % of the time and 17.5 % of bets turn a
- * profit.
+ * `Σ weight × mult` = 0.9555. Every spin returns something (a NaN latent hands a quarter of the
+ * stake back) and 13.7 % of bets turn a profit.
  *
  * The table pays back less than it takes, and that is the whole reason there is no cooldown: a
  * player may bet anything, as often as they like, because grinding the wheel is a slow way to go
- * broke rather than a way to farm credits. The pity reroll and the hot sampler push the real
- * return back up toward 0.98, the 2 % pot skim is minted on top of that, and `gamble.test.ts`
- * pins the whole lot under break-even. If a future table crosses 1, the Lounge has become an
- * income source and the change is wrong.
+ * broke rather than a way to farm credits. The pity reroll and the hot sampler add a few
+ * thousandths to that, the 2 % pot skim is minted on top and comes back through seed 42, and the
+ * whole loop lands near 0.98 on the credit; `gamble.test.ts` pins it under break-even. If a
+ * future table crosses 1, the Lounge has become an income source and the change is wrong.
+ *
+ * The engine knows one id by name (`s42`, the pot). The dud is whichever segment pays the table's
+ * lowest multiplier, and pity converts it into the cheapest segment above that floor.
  */
 import type { GambleOutcomeDef } from '@/game/types'
 
@@ -19,15 +22,15 @@ export const GAMBLE_OUTCOMES: GambleOutcomeDef[] = [
   {
     id: 'nan',
     label: 'NaN latent',
-    mult: 0,
-    weight: 0.355,
-    line: 'NaN. Black image. The seed owes you nothing.',
+    mult: 0.25,
+    weight: 0.3,
+    line: 'NaN. Black image. A quarter of the stake survived the VAE.',
   },
   {
     id: 'half',
     label: 'Half denoised',
     mult: 0.5,
-    weight: 0.3,
+    weight: 0.393,
     line: 'Half denoised. Ship it anyway.',
   },
   {
@@ -41,14 +44,14 @@ export const GAMBLE_OUTCOMES: GambleOutcomeDef[] = [
     id: 'clean',
     label: 'Clean sample',
     mult: 2,
-    weight: 0.12,
+    weight: 0.085,
     line: 'Clean sample. Frame it.',
   },
   {
     id: 'batch',
     label: 'Batch of four',
     mult: 4,
-    weight: 0.042,
+    weight: 0.04,
     line: 'Batch of four and every one landed.',
   },
   {
@@ -62,7 +65,7 @@ export const GAMBLE_OUTCOMES: GambleOutcomeDef[] = [
     id: 's42',
     label: 'Seed 42',
     mult: 42,
-    weight: 0.003,
+    weight: 0.002,
     line: 'Seed 42. It was always 42.',
   },
 ]

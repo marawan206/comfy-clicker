@@ -106,7 +106,7 @@ const SAMPLES: Record<GameEvent['type'], GameEvent[]> = {
     { type: 'xp', amount: 16, source: 'post' },
     { type: 'xp', amount: 500, source: 'rebrand' },
   ],
-  clickBlocked: [{ type: 'clickBlocked', reason: 'cadence', until: 0 }],
+  clickBlocked: [{ type: 'clickBlocked', reason: 'rate', until: 0 }],
   spin: [
     { type: 'spin', outcome: 'seed42', mult: 42, wager: 100, payout: 4200, free: false, hot: true },
     { type: 'spin', outcome: 'dud', mult: 0, wager: 100, payout: 0, free: false, hot: false },
@@ -196,6 +196,7 @@ describe('sfxMap: event coverage', () => {
       { table: 'wheel', mult: 2 },
       { table: 'wheel', mult: 1 },
       { table: 'wheel', mult: 0.5 },
+      { table: 'wheel', mult: 0.25 },
       { table: 'wheel', mult: 0 },
       { table: 'coin', won: true },
       { table: 'coin', won: false },
@@ -212,10 +213,13 @@ describe('sfxMap: event coverage', () => {
     expect(cueForLanding({ table: 'wheel', mult: 4 }).name).toBe('cash')
     expect(cueForLanding({ table: 'wheel', mult: 2 }).name).toBe('cash')
     expect(cueForLanding({ table: 'wheel', mult: 1 }).name).toBe('tick')
-    expect(cueForLanding({ table: 'wheel', mult: 0 }).name).toBe('lose')
-    // Half back is the smaller sting: quieter and shorter than a NaN.
+    expect(cueForLanding({ table: 'wheel', mult: 0.25 }).name).toBe('lose')
+    // Half back is the smaller sting: quieter and shorter than a NaN, which hands a quarter back
+    // and still gets the heavy one. A table paying nothing at all sounds the same as the NaN.
     const half = cueForLanding({ table: 'wheel', mult: 0.5 })
-    const nan = cueForLanding({ table: 'wheel', mult: 0 })
+    const nan = cueForLanding({ table: 'wheel', mult: 0.25 })
+    expect(cueForLanding({ table: 'wheel', mult: 0 })).toEqual(nan)
+    expect(cueForLanding({ table: 'wheel', mult: 0.25 * 1.5 })).toEqual(nan)
     expect(half.name).toBe('lose')
     expect(half.gain ?? 1).toBeLessThan(nan.gain ?? 1)
     expect(half.rate ?? 1).toBeGreaterThan(nan.rate ?? 1)

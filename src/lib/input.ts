@@ -3,7 +3,7 @@
  *
  * `Event.isTrusted` is false for anything `dispatchEvent` produced, which covers the console
  * one-liners and the browser-extension clickers. Real automation can still drive the OS pointer,
- * which is what the engine's rate cap and cadence check are for.
+ * which is what the engine's rate cap is for.
  *
  * jsdom's synthetic events are all untrusted, so component tests call `overrideTrust(true)` once
  * in setup and `overrideTrust(false)` in teardown.
